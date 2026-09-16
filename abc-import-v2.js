@@ -1,12 +1,46 @@
 (() => {
   const CATALOG_API_URL='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/abc-catalog-api';
   const fmtInt=n=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:0}).format(Number(n||0));
+  const KNOWN_GIRO_ASSET_CODES=new Set(['24090','24274','24275','25299','25300','25303','25546','25936','25937','29635','31917']);
 
   async function catalogApi(action,payload={}){
     const res=await fetch(CATALOG_API_URL,{method:'POST',headers:{'Content-Type':'application/json','x-session-token':state.token},body:JSON.stringify({action,...payload})});
     const data=await res.json().catch(()=>({error:'Resposta inválida'}));
     if(!res.ok)throw new Error(data.error||'Erro na base 01.11');
     return data;
+  }
+
+  function isGiroAsset(code,...descriptions){
+    const c=normCode(code);
+    if(KNOWN_GIRO_ASSET_CODES.has(c))return true;
+    for(const raw of descriptions){
+      const s=normText(raw);
+      if(!s)continue;
+      if(/^(garrafeira|vasilhame|engradado|engrad|casco)\b/.test(s))return true;
+      if(/^(garrafa|gfa)\s+vazi[ao]\b/.test(s))return true;
+      if(/^caixa\s+plast(?:ica)?\s+(vazia|retornavel)\b/.test(s))return true;
+      if(/^embalagem\s+(vazia|retornavel)\b/.test(s))return true;
+      if(/^ativo\s+de\s+giro\b/.test(s))return true;
+    }
+    return false;
+  }
+
+  function removeGiroAssets(data){
+    if(!data?.values)return data;
+    const master=state.reports.catalog?.data?.values;
+    const kept=new Map(),excluded=[];
+    for(const [code,v] of data.values.entries()){
+      const m=master?.get(code);
+      if(isGiroAsset(code,v?.name,m?.name)){excluded.push(code);continue;}
+      kept.set(code,v);
+    }
+    return {...data,values:kept,count:kept.size,rawCount:data.values.size,excludedAssets:excluded.length,excludedAssetCodes:excluded};
+  }
+
+  function assetCodesStatus(){
+    const codes=new Set();
+    for(const kind of ['sales','picking'])for(const c of state.reports[kind]?.data?.excludedAssetCodes||[])codes.add(c);
+    return [...codes];
   }
 
   function catalogDataFromItems(items){
@@ -39,6 +73,22 @@
     return report;
   }
 
+  const originalParseSales=parseSales;
+  parseSales=function(rows){return removeGiroAssets(originalParseSales(rows));};
+  const originalParsePicking=parsePicking;
+  parsePicking=function(rows){return removeGiroAssets(originalParsePicking(rows));};
+
+  const originalMakeAreaRows=makeAreaRows;
+  makeAreaRows=function(source,master,filter,withPallets=false){
+    const clean=new Map();
+    for(const [code,v] of source.entries()){
+      const m=master?.get(code);
+      if(isGiroAsset(code,v?.name,m?.name))continue;
+      clean.set(code,v);
+    }
+    return originalMakeAreaRows(clean,master,filter,withPallets);
+  };
+
   const originalHandleReport=handleReport;
   handleReport=async function(kind,file){
     await originalHandleReport(kind,file);
@@ -64,6 +114,7 @@
       for(const [code,v] of source.entries()){
         if(!Number.isFinite(Number(v.boxes))||Number(v.boxes)<=0)continue;
         const m=master.get(code);
+        if(isGiroAsset(code,v?.name,m?.name))continue;
         if(!m)absent.add(code);
         else if(!Number.isFinite(Number(m.factor))||Number(m.factor)<=0)noFactor.add(code);
       }
@@ -75,7 +126,10 @@
     const checks=[];
     for(const kind of ['sales','picking']){
       const r=state.reports[kind];
-      if(r)checks.push(`<div class="check-item">✓ ${reportUi(kind).label}: ${r.data.count} SKUs identificados</div>`);
+      if(r){
+        const ex=Number(r.data.excludedAssets||0);
+        checks.push(`<div class="check-item">✓ ${reportUi(kind).label}: ${r.data.count} produtos${ex?` • ${ex} ativo(s) de giro ignorado(s)`:''}</div>`);
+      }
     }
     if(state.reports.catalog){
       const label=state.reports.catalog.saved?'01.11 salvo':'01.11 atualizado nesta importação';
@@ -97,8 +151,9 @@
     else if(!baseOk)$('importReady').textContent='Inclua uma Base Marketplace para a primeira atualização.';
     else if(!days)$('importReady').textContent='Não foi possível identificar os dias do período.';
     else {
-      const cov=coverageStatus(),warn=cov.absent.length+cov.noFactor.length;
-      $('importReady').textContent=warn?`Pronto para calcular • ${days} dias • ${warn} código(s) sem conversão em HL serão desconsiderados.`:`Pronto para calcular • ${days} dias • 01.11 reaproveitado.`;
+      const cov=coverageStatus(),warn=cov.absent.length+cov.noFactor.length,assets=assetCodesStatus().length;
+      const assetText=assets?` • ${assets} ativo(s) de giro fora da curva`:'';
+      $('importReady').textContent=warn?`Pronto para calcular • ${days} dias${assetText} • ${warn} código(s) sem conversão em HL serão desconsiderados.`:`Pronto para calcular • ${days} dias${assetText} • 01.11 reaproveitado.`;
     }
   };
 
@@ -147,6 +202,7 @@
 
       const coverage=coverageStatus();
       const skipped=[...new Set([...coverage.absent,...coverage.noFactor])];
+      const assets=assetCodesStatus();
       const areas=buildAreas();
       const empty=AREAS.filter(a=>!areas[a].length);
       if(empty.length)throw new Error(`Sem dados calculáveis para: ${empty.join(', ')}.`);
@@ -160,17 +216,19 @@
       await refreshMonths();
       $('monthFilter').value=month;
       await loadCurve();
-      if(skipped.length)showToast(`Curva atualizada. ${skipped.length} código(s) sem fator comercial ficaram fora do cálculo em HL.`);
-      else showToast('Curva ABC calculada com 03.05.19 e 03.02.36.01.');
+      const notes=[];
+      if(assets.length)notes.push(`${assets.length} ativo(s) de giro ignorado(s)`);
+      if(skipped.length)notes.push(`${skipped.length} código(s) sem fator comercial fora do cálculo`);
+      showToast(notes.length?`Curva atualizada. ${notes.join(' • ')}.`:'Curva ABC calculada com 03.05.19 e 03.02.36.01.');
     }catch(e){$('importError').textContent=e.message;}
     finally{btn.textContent='Gerar e atualizar';updateImportReady();}
   };
 
   const intro=document.querySelector('#importModal .modal-intro');
-  if(intro)intro.textContent='Envie 03.05.19 e 03.02.36.01 do período. O 01.11 fica salvo como base cadastral e só precisa ser reenviado quando houver alteração ou produto novo.';
+  if(intro)intro.textContent='Envie 03.05.19 e 03.02.36.01 do período. O sistema separa produto de ativo de giro; garrafeiras, vasilhames e embalagens vazias não entram na Curva ABC. O 01.11 fica salvo como base cadastral e só precisa ser reenviado quando houver alteração ou produto novo.';
   const catalogLabel=$('slotCatalog')?.querySelector('small');if(catalogLabel)catalogLabel.textContent='Base estática • atualizar somente quando necessário';
   const memory=document.querySelector('.calc-memory-body');
-  if(memory)memory.textContent='Cada área possui sua própria Curva ABC e seu próprio Pareto. Regulador usa a venda do 03.05.19, excluindo Câmara Fria e Marketplace. Picking considera somente as linhas com Pallet Fechado = NÃO no 03.02.36.01. Câmara Fria considera barris de chopp. Marketplace usa a base de SKUs salva. O 01.11 é uma base cadastral de descrição e fatores de conversão: fica armazenado no sistema e não é uma entrada mensal. Códigos sem fator comercial não entram no cálculo em HL e são apenas sinalizados.';
+  if(memory)memory.textContent='Cada área possui sua própria Curva ABC e seu próprio Pareto. Regulador usa a venda do 03.05.19, excluindo Câmara Fria e Marketplace. Picking considera somente as linhas com Pallet Fechado = NÃO no 03.02.36.01. Ativos de giro — como garrafeiras, vasilhames, engradados, cascos e embalagens vazias — são excluídos antes do cálculo. A identificação considera o código e a descrição do item, sem excluir produtos vendidos junto com garrafeira/vasilhame. Câmara Fria considera barris de chopp. Marketplace usa a base de SKUs salva. O 01.11 é uma base cadastral de descrição e fatores de conversão: fica armazenado no sistema e não é uma entrada mensal. Códigos sem fator comercial não entram no cálculo em HL e são apenas sinalizados.';
   if($('importReady'))$('importReady').textContent='Selecione 03.05.19 e 03.02.36.01.';
 
   $('importButton').onclick=openImport;
