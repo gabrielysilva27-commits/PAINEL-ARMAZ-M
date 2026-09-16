@@ -3,6 +3,7 @@
   const L={months:[],month:'2026-06',items:[],plan:null,totalSlots:207,streetCount:18,slotsPerStreet:12,catalogCount:0,family:'',curve:'',mounted:false};
   const fmtL=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1});
   const css=document.createElement('link');css.rel='stylesheet';css.href='layout-picking.css?v=20260916-5';document.head.appendChild(css);
+  const cssV5=document.createElement('link');cssV5.rel='stylesheet';cssV5.href='layout-picking-v5.css?v=20260916-1';document.head.appendChild(cssV5);
 
   async function lapi(action,payload={}){const res=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-session-token':state.token},body:JSON.stringify({action,...payload})});const data=await res.json().catch(()=>({error:'Resposta inválida'}));if(!res.ok)throw new Error(data.error||'Erro no Layout');return data;}
   const monthInfoL=m=>L.months.find(x=>String(x.reference_month||'').startsWith(m));
