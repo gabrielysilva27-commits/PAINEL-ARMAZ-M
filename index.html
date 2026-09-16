@@ -11,6 +11,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
+  <style>
+    .source-section{margin-top:18px}.source-section-title{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:9px}.source-section-title strong{font-size:12px}.source-section-title span{font-size:10px;color:#919298}.source-file-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.source-file{display:flex!important;align-items:center;gap:11px;border:1px dashed #d7d7da;border-radius:11px;padding:13px!important;cursor:pointer;background:#fafafa;color:var(--ink)!important;min-height:76px}.source-file:hover{border-color:#f2b183;background:#fffaf6}.source-file input{display:none}.source-file .source-icon{width:37px;height:37px;display:grid;place-items:center;border-radius:9px;background:var(--orange-soft);color:var(--orange);font-weight:800;flex:0 0 auto}.source-file .source-copy{min-width:0}.source-file strong,.source-file small{display:block}.source-file strong{font-size:12px}.source-file small{font-size:10px;color:#909196;font-weight:400;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.source-file.loaded{border-style:solid;border-color:#cfe8dc;background:#f9fdfb}.source-file.loaded .source-icon{background:#e9f8f1;color:#2f8664}.source-file.invalid{border-color:#efc4c0;background:#fff8f7}.marketplace-status{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;margin-top:8px;border-radius:9px;background:#f7f8f9;font-size:11px;color:#777}.marketplace-status strong{color:var(--ink)}.calc-memory{margin-top:13px;padding:11px 13px;border-radius:9px;background:#fff7f0;border:1px solid #f6dcc8;font-size:11px;line-height:1.5;color:#755843}.calc-memory strong{color:#b95510}.import-ready{margin-top:12px;font-size:11px;color:#5d7568}.import-ready.bad{color:#b64e46}@media(max-width:760px){.source-file-grid{grid-template-columns:1fr}}
+  </style>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -33,7 +36,7 @@
       <div class="brand"><img src="assets/logo-imperio.png" alt="Império" /><span>PAINEL<br />ARMAZÉM</span></div>
       <nav aria-label="Navegação principal">
         <button class="nav-link" data-view="overview"><span>▦</span> Visão geral</button>
-        <button class="nav-link active" data-view="abc"><span>◒</span> Curva ABC</button>
+        <button class="nav-link active" data-view="abc"><span>◫</span> Curva ABC</button>
         <button class="nav-link" data-view="operation"><span>◫</span> Operação</button>
         <button class="nav-link" data-view="indicators"><span>◌</span> Indicadores</button>
         <button class="nav-link" data-view="routines"><span>✓</span> Rotinas</button>
@@ -58,7 +61,7 @@
           <div class="filter-group"><label>Mês</label><select id="monthFilter"></select></div>
           <div class="filter-group"><label>Área</label><select id="areaFilter"><option>Regulador</option><option>Picking</option><option>Câmara Fria</option><option>Marketplace</option></select></div>
           <div class="toolbar-spacer"></div>
-          <button class="primary-button admin-only" id="importButton">＋ Importar atualização</button>
+          <button class="primary-button admin-only" id="importButton">＋ Atualizar Curva ABC</button>
         </div>
 
         <div class="month-strip" id="monthStrip"></div>
@@ -85,7 +88,7 @@
         <section class="panel table-panel">
           <div class="panel-heading table-heading"><div><p class="eyebrow">DETALHAMENTO</p><h2 id="tableTitle">SKUs por Curva ABC</h2></div><div class="table-tools"><input id="skuSearch" placeholder="Buscar SKU ou descrição" /><select id="classFilter"><option value="">Todas as curvas</option><option value="A">Curva A</option><option value="B">Curva B</option><option value="C">Curva C</option></select></div></div>
           <div class="table-wrap"><table><thead><tr><th>#</th><th>Código</th><th>Descrição</th><th>Volume (HL)</th><th>Média/dia (HL)</th><th>Peso</th><th>Pareto</th><th>Curva</th></tr></thead><tbody id="abcTableBody"></tbody></table></div>
-          <div class="empty-state hidden" id="abcEmpty"><strong>Sem dados para exibir</strong><span>Importe a planilha do mês para gerar a Curva ABC.</span></div>
+          <div class="empty-state hidden" id="abcEmpty"><strong>Sem dados para exibir</strong><span>Importe os relatórios Promax do mês para gerar a Curva ABC.</span></div>
         </section>
       </section>
 
@@ -97,13 +100,26 @@
 
   <div class="modal-backdrop hidden" id="importModal">
     <div class="modal-card">
-      <div class="modal-header"><div><p class="eyebrow">ATUALIZAÇÃO MENSAL</p><h2>Importar Curva ABC</h2></div><button class="close-button" id="closeImport">×</button></div>
-      <p class="modal-intro">Selecione a planilha mensal no mesmo padrão dos arquivos atuais. O sistema recalculará automaticamente a curva por <strong>Hectos</strong>, com limites <strong>A 70% / B 90% / C 100%</strong>.</p>
-      <div class="import-grid"><label>Mês de referência<select id="importMonth"></select></label><label>Dias trabalhados<input id="importDays" type="number" min="1" max="120" placeholder="Ex.: 76" /></label></div>
-      <label class="file-drop" id="fileDrop"><input id="abcFile" type="file" accept=".xlsx,.xls" /><span class="file-icon">⇧</span><strong>Selecionar planilha</strong><small id="fileName">Arquivo .xlsx com as abas Regulador, Picking, Câmara Fria e Marketplace</small></label>
+      <div class="modal-header"><div><p class="eyebrow">ATUALIZAÇÃO MENSAL</p><h2>Gerar Curva ABC</h2></div><button class="close-button" id="closeImport">×</button></div>
+      <p class="modal-intro">Envie os relatórios brutos do Promax. O painel cruza as bases, converte os volumes e recalcula automaticamente as quatro visões da Curva ABC. Não é necessário preparar uma planilha de Curva ABC.</p>
+      <div class="import-grid"><label>Mês de referência<select id="importMonth"></select></label><label>Dias do período<input id="importDays" type="text" value="Automático pelo 03.02.36.01" disabled /></label></div>
+
+      <div class="source-section">
+        <div class="source-section-title"><strong>Relatórios mensais</strong><span>Formato CSV</span></div>
+        <div class="source-file-grid">
+          <label class="source-file" id="slotSales"><input id="reportSales" type="file" accept=".csv" /><span class="source-icon">1</span><span class="source-copy"><strong>03.05.19</strong><small id="nameSales">Volume de venda por produto</small></span></label>
+          <label class="source-file" id="slotPicking"><input id="reportPicking" type="file" accept=".csv" /><span class="source-icon">2</span><span class="source-copy"><strong>03.02.36.01</strong><small id="namePicking">Movimentação / separação</small></span></label>
+          <label class="source-file" id="slotCatalog"><input id="reportCatalog" type="file" accept=".csv" /><span class="source-icon">3</span><span class="source-copy"><strong>01.11</strong><small id="nameCatalog">Cadastro e fatores dos SKUs</small></span></label>
+          <label class="source-file" id="slotMarketplace"><input id="reportMarketplace" type="file" accept=".csv,.xlsx,.xls" /><span class="source-icon">M</span><span class="source-copy"><strong>Base Marketplace</strong><small id="nameMarketplace">Opcional se a base já estiver salva</small></span></label>
+        </div>
+        <div class="marketplace-status" id="marketplaceStatus"><span>Base Marketplace</span><strong>Verificando...</strong></div>
+      </div>
+
+      <div class="calc-memory"><strong>Memória do cálculo:</strong> 03.05.19 fornece o volume total por SKU; 01.11 fornece descrição, fator Hecto Comercial e caixas por pallet; 03.02.36.01 fornece o volume do Picking e os dias distintos do período. Marketplace é identificado pela base de SKUs salva no painel. Câmara Fria considera os códigos 827, 828 e 838. O Pareto é recalculado por área em Hectos, com A até 70%, B até 90% e C acima de 90%.</div>
       <div class="import-checks" id="importChecks"></div>
+      <p class="import-ready bad" id="importReady">Selecione os três relatórios mensais.</p>
       <p class="form-error" id="importError"></p>
-      <div class="modal-actions"><button class="outline-button" id="cancelImport">Cancelar</button><button class="primary-button" id="confirmImport" disabled>Importar e recalcular</button></div>
+      <div class="modal-actions"><button class="outline-button" id="cancelImport">Cancelar</button><button class="primary-button" id="confirmImport" disabled>Gerar e atualizar</button></div>
     </div>
   </div>
 
