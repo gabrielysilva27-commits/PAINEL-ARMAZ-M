@@ -4,6 +4,7 @@
   const marketplaceApi = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/marketplace-api';
 
   window.__ABC_AREA_RULE_VERSION = '2026-09-16-picking-nao-v4';
+  window.__ABC_UI_VERSION = '2026-09-16-aesthetic-v2';
 
   window.fetch = (input, init = {}) => {
     try {
@@ -50,7 +51,7 @@
       const picking = makeAreaRows(
         pickingSource,
         master,
-        null, // parsePicking already selects only rows with Pallet Fechado = NÃO.
+        null,
         false
       );
 
@@ -91,17 +92,36 @@
       if (mkp && !document.getElementById('reportMarketplace')?.files?.length) mkp.textContent = 'Usar somente quando atualizar';
     };
 
+    const cleanKpis = () => {
+      const source = document.getElementById('kpiSource');
+      if (source) {
+        source.textContent = '';
+        source.style.display = 'none';
+        if (source.parentElement) source.parentElement.style.minWidth = '0';
+      }
+      document.querySelectorAll('.metric-card').forEach(card => {
+        card.style.minWidth = '0';
+      });
+    };
+
+    cleanKpis();
+    const monthFilter = document.getElementById('monthFilter');
+    const areaFilter = document.getElementById('areaFilter');
+    monthFilter?.addEventListener('change', () => setTimeout(cleanKpis, 0));
+    areaFilter?.addEventListener('change', () => setTimeout(cleanKpis, 0));
+
     document.getElementById('importButton')?.addEventListener('click', () => setTimeout(compactModalLabels, 0));
     document.querySelectorAll('.nav-link').forEach(button => {
       button.addEventListener('click', () => {
         if (button.dataset.view === 'abc') setTimeout(() => {
           const subtitle = document.getElementById('pageSubtitle');
           if (subtitle) subtitle.textContent = 'Análise mensal por área operacional.';
+          cleanKpis();
         }, 0);
       });
     });
 
     document.documentElement.dataset.abcAreaRules = '2026-09-16-picking-nao-v4';
-    document.documentElement.dataset.uiVersion = '2026-09-16-aesthetic-v1';
+    document.documentElement.dataset.uiVersion = '2026-09-16-aesthetic-v2';
   }, 0);
 })();
