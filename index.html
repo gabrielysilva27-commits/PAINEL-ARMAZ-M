@@ -1,68 +1,113 @@
 <!doctype html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f47a20" />
-    <meta name="description" content="Painel operacional do armazém Império." />
-    <title>Painel Armazém | Império</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2336363b'/%3E%3Cpath d='M14 43h36v7H14zm4-22 8 8 6-16 7 16 8-8-3 18H21z' fill='%23f47a20'/%3E%3C/svg%3E" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand"><img src="assets/logo-imperio.png" alt="Império" /><span>PAINEL<br />ARMAZÉM</span></div>
-        <nav aria-label="Navegação principal">
-          <a class="active" href="#visao-geral"><span>▦</span> Visão geral</a>
-          <a href="#operacao"><span>◫</span> Operação</a>
-          <a href="#indicadores"><span>◌</span> Indicadores</a>
-          <a href="#rotinas"><span>✓</span> Rotinas</a>
-          <a href="#pessoas"><span>♙</span> Pessoas</a>
-          <a href="#relatorios"><span>▤</span> Relatórios</a>
-        </nav>
-        <div class="sidebar-footer"><span class="status-dot"></span> Estrutura inicial</div>
-      </aside>
-      <main>
-        <header>
-          <button class="menu-button" aria-label="Abrir menu">☰</button>
-          <div><p class="eyebrow">CENTRO DE CONTROLE</p><h1>Painel Armazém</h1><p class="subtitle">Estrutura pronta para receber os dados reais da operação.</p></div>
-          <div class="header-actions"><button class="profile" aria-label="Perfil">PA</button></div>
-        </header>
-        <section class="date-bar" id="visao-geral">
-          <div><strong>Operação do armazém</strong><span>Nenhum dado operacional cadastrado</span></div>
-          <button class="outline-button" disabled>Sem atualização disponível</button>
-        </section>
-        <section class="kpi-grid" id="indicadores">
-          <article class="kpi"><div class="kpi-icon orange">↥</div><div><p>Expedição</p><strong>—</strong><small>Aguardando integração</small></div></article>
-          <article class="kpi"><div class="kpi-icon blue">▣</div><div><p>Volume movimentado</p><strong>—</strong><small>Aguardando integração</small></div></article>
-          <article class="kpi"><div class="kpi-icon green">⌁</div><div><p>Inventário</p><strong>—</strong><small>Aguardando integração</small></div></article>
-          <article class="kpi"><div class="kpi-icon red">!</div><div><p>Ocorrências</p><strong>—</strong><small>Nenhuma informação cadastrada</small></div></article>
-        </section>
-        <section class="content-grid" id="operacao">
-          <article class="panel flow-panel">
-            <div class="panel-heading"><div><p class="eyebrow">ACOMPANHAMENTO</p><h2>Fluxo operacional</h2></div></div>
-            <div class="flow-list">
-              <div class="flow-row"><div class="flow-label"><span class="flow-icon orange">↧</span><div><strong>Recebimento</strong><small>Sem dados cadastrados</small></div></div><b>—</b><div class="bar"></div><span>—</span></div>
-              <div class="flow-row"><div class="flow-label"><span class="flow-icon blue">▤</span><div><strong>Armazenagem</strong><small>Sem dados cadastrados</small></div></div><b>—</b><div class="bar"></div><span>—</span></div>
-              <div class="flow-row"><div class="flow-label"><span class="flow-icon purple">▧</span><div><strong>Separação</strong><small>Sem dados cadastrados</small></div></div><b>—</b><div class="bar"></div><span>—</span></div>
-              <div class="flow-row"><div class="flow-label"><span class="flow-icon green">↥</span><div><strong>Expedição</strong><small>Sem dados cadastrados</small></div></div><b>—</b><div class="bar"></div><span>—</span></div>
-            </div>
-          </article>
-          <article class="panel capacity-panel">
-            <div class="panel-heading"><div><p class="eyebrow">OCUPAÇÃO</p><h2>Capacidade do armazém</h2></div></div>
-            <div class="gauge"><div class="gauge-center"><strong>—</strong><span>sem dados</span></div></div>
-            <p class="capacity-note">Cadastre a capacidade e as posições para iniciar o acompanhamento.</p>
-          </article>
-        </section>
-        <section class="bottom-grid" id="rotinas">
-          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">PRIORIDADES</p><h2>Alertas operacionais</h2></div></div><div class="alerts"><div><span class="alert blue-dot">i</span><p><strong>Nenhum alerta cadastrado</strong><small>Os alertas reais da operação aparecerão aqui.</small></p></div></div></article>
-          <article class="panel shift"><div class="panel-heading"><div><p class="eyebrow">TURNO ATUAL</p><h2>Equipe em operação</h2></div></div><div class="team-number"><strong>—</strong><span>aguardando<br />dados da equipe</span></div></article>
-        </section>
-      </main>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f47a20" />
+  <meta name="description" content="Painel operacional do armazém Império." />
+  <title>Painel Armazém | Império</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2336363b'/%3E%3Cpath d='M14 43h36v7H14zm4-22 8 8 6-16 7 16 8-8-3 18H21z' fill='%23f47a20'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <section class="login-screen" id="loginScreen">
+    <div class="login-card">
+      <div class="login-brand"><img src="assets/logo-imperio.png" alt="Império" /><div><span>PAINEL</span><strong>ARMAZÉM</strong></div></div>
+      <div class="login-copy"><p class="eyebrow">ACESSO RESTRITO</p><h1>Bem-vinda ao Painel Armazém</h1><p>Entre com seu usuário e senha para acessar os módulos operacionais.</p></div>
+      <form id="loginForm" class="login-form">
+        <label>Usuário<input id="loginUser" autocomplete="username" required /></label>
+        <label>Senha<div class="password-field"><input id="loginPassword" type="password" autocomplete="current-password" required /><button type="button" id="togglePassword" aria-label="Mostrar senha">◉</button></div></label>
+        <p class="form-error" id="loginError"></p>
+        <button class="primary-button wide" type="submit" id="loginButton">Entrar</button>
+      </form>
+      <small class="security-note">Sessão protegida • acesso por perfil</small>
     </div>
-  </body>
+  </section>
+
+  <div class="app-shell hidden" id="appShell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand"><img src="assets/logo-imperio.png" alt="Império" /><span>PAINEL<br />ARMAZÉM</span></div>
+      <nav aria-label="Navegação principal">
+        <button class="nav-link" data-view="overview"><span>▦</span> Visão geral</button>
+        <button class="nav-link active" data-view="abc"><span>ABC</span> Curva ABC</button>
+        <button class="nav-link" data-view="operation"><span>◫</span> Operação</button>
+        <button class="nav-link" data-view="indicators"><span>◌</span> Indicadores</button>
+        <button class="nav-link" data-view="routines"><span>✓</span> Rotinas</button>
+        <button class="nav-link" data-view="people"><span>♙</span> Pessoas</button>
+        <button class="nav-link" data-view="reports"><span>▤</span> Relatórios</button>
+      </nav>
+      <div class="sidebar-footer"><span class="status-dot"></span> Painel conectado</div>
+    </aside>
+
+    <main>
+      <header class="app-header">
+        <button class="menu-button" id="menuButton" aria-label="Abrir menu">☰</button>
+        <div><p class="eyebrow">CENTRO DE CONTROLE</p><h1 id="pageTitle">Curva ABC</h1><p class="subtitle" id="pageSubtitle">Classificação mensal dos SKUs por participação de volume em Hectos.</p></div>
+        <div class="header-actions">
+          <div class="user-chip"><span id="userInitials">GS</span><div><strong id="userName">Gabriely</strong><small id="userRole">ADM</small></div></div>
+          <button class="icon-button" id="logoutButton" title="Sair">↪</button>
+        </div>
+      </header>
+
+      <section class="view" id="abcView">
+        <div class="abc-toolbar">
+          <div class="filter-group"><label>Mês</label><select id="monthFilter"></select></div>
+          <div class="filter-group"><label>Área</label><select id="areaFilter"><option>Regulador</option><option>Picking</option><option>Câmara Fria</option><option>Marketplace</option></select></div>
+          <div class="toolbar-spacer"></div>
+          <button class="primary-button admin-only" id="importButton">＋ Importar atualização</button>
+        </div>
+
+        <div class="month-strip" id="monthStrip"></div>
+
+        <section class="abc-kpis">
+          <article class="metric-card"><p>SKUs ativos</p><strong id="kpiSkus">—</strong><small id="kpiSource">Selecione um mês</small></article>
+          <article class="metric-card"><p>Volume total</p><strong id="kpiVolume">—</strong><small>Hectos no período-base</small></article>
+          <article class="metric-card curve-a"><p>Curva A</p><strong id="kpiA">—</strong><small>Até 70% do volume acumulado</small></article>
+          <article class="metric-card curve-b"><p>Curva B</p><strong id="kpiB">—</strong><small>De 70% a 90%</small></article>
+          <article class="metric-card curve-c"><p>Curva C</p><strong id="kpiC">—</strong><small>Acima de 90%</small></article>
+        </section>
+
+        <section class="abc-layout">
+          <article class="panel pareto-panel">
+            <div class="panel-heading"><div><p class="eyebrow">PARETO</p><h2>Concentração do volume</h2></div><div class="legend"><span><i class="dot a"></i>A</span><span><i class="dot b"></i>B</span><span><i class="dot c"></i>C</span></div></div>
+            <div class="pareto-summary" id="paretoSummary"><div class="pareto-empty">Nenhum dado carregado para este mês.</div></div>
+          </article>
+          <article class="panel area-panel">
+            <div class="panel-heading"><div><p class="eyebrow">ÁREAS</p><h2>Visão operacional</h2></div></div>
+            <div class="area-tabs" id="areaCards"></div>
+          </article>
+        </section>
+
+        <section class="panel table-panel">
+          <div class="panel-heading table-heading"><div><p class="eyebrow">DETALHAMENTO</p><h2 id="tableTitle">SKUs por Curva ABC</h2></div><div class="table-tools"><input id="skuSearch" placeholder="Buscar SKU ou descrição" /><select id="classFilter"><option value="">Todas as curvas</option><option value="A">Curva A</option><option value="B">Curva B</option><option value="C">Curva C</option></select></div></div>
+          <div class="table-wrap"><table><thead><tr><th>#</th><th>Código</th><th>Descrição</th><th>Volume (HL)</th><th>Média/dia (HL)</th><th>Peso</th><th>Pareto</th><th>Curva</th></tr></thead><tbody id="abcTableBody"></tbody></table></div>
+          <div class="empty-state hidden" id="abcEmpty"><strong>Sem dados para exibir</strong><span>Importe a planilha do mês para gerar a Curva ABC.</span></div>
+        </section>
+      </section>
+
+      <section class="view hidden" id="placeholderView">
+        <article class="panel placeholder"><p class="eyebrow">EM CONSTRUÇÃO</p><h2 id="placeholderTitle">Módulo</h2><p>Este módulo será desenvolvido nas próximas etapas do projeto.</p></article>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop hidden" id="importModal">
+    <div class="modal-card">
+      <div class="modal-header"><div><p class="eyebrow">ATUALIZAÇÃO MENSAL</p><h2>Importar Curva ABC</h2></div><button class="close-button" id="closeImport">×</button></div>
+      <p class="modal-intro">Selecione a planilha mensal no mesmo padrão dos arquivos atuais. O sistema recalculará automaticamente a curva por <strong>Hectos</strong>, com limites <strong>A 70% / B 90% / C 100%</strong>.</p>
+      <div class="import-grid"><label>Mês de referência<select id="importMonth"></select></label><label>Dias trabalhados<input id="importDays" type="number" min="1" max="120" placeholder="Ex.: 76" /></label></div>
+      <label class="file-drop" id="fileDrop"><input id="abcFile" type="file" accept=".xlsx,.xls" /><span class="file-icon">⇧</span><strong>Selecionar planilha</strong><small id="fileName">Arquivo .xlsx com as abas Regulador, Picking, Câmara Fria e Marketplace</small></label>
+      <div class="import-checks" id="importChecks"></div>
+      <p class="form-error" id="importError"></p>
+      <div class="modal-actions"><button class="outline-button" id="cancelImport">Cancelar</button><button class="primary-button" id="confirmImport" disabled>Importar e recalcular</button></div>
+    </div>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+  <script src="app.js"></script>
+</body>
 </html>
