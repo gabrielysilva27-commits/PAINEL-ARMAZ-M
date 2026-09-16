@@ -5,29 +5,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#f47a20" />
   <meta name="description" content="Painel operacional do armazém Império." />
+  <meta name="ui-version" content="2026-09-16-aesthetic-v1" />
   <title>Painel Armazém | Império</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2336363b'/%3E%3Cpath d='M14 43h36v7H14zm4-22 8 8 6-16 7 16 8-8-3 18H21z' fill='%23f47a20'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
-  <style>
-    .source-section{margin-top:18px}.source-section-title{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:9px}.source-section-title strong{font-size:12px}.source-section-title span{font-size:10px;color:#919298}.source-file-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.source-file{display:flex!important;align-items:center;gap:11px;border:1px dashed #d7d7da;border-radius:11px;padding:13px!important;cursor:pointer;background:#fafafa;color:var(--ink)!important;min-height:76px}.source-file:hover{border-color:#f2b183;background:#fffaf6}.source-file input{display:none}.source-file .source-icon{width:37px;height:37px;display:grid;place-items:center;border-radius:9px;background:var(--orange-soft);color:var(--orange);font-weight:800;flex:0 0 auto}.source-file .source-copy{min-width:0}.source-file strong,.source-file small{display:block}.source-file strong{font-size:12px}.source-file small{font-size:10px;color:#909196;font-weight:400;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.source-file.loaded{border-style:solid;border-color:#cfe8dc;background:#f9fdfb}.source-file.loaded .source-icon{background:#e9f8f1;color:#2f8664}.source-file.invalid{border-color:#efc4c0;background:#fff8f7}.marketplace-status{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;margin-top:8px;border-radius:9px;background:#f7f8f9;font-size:11px;color:#777}.marketplace-status strong{color:var(--ink)}.calc-memory{margin-top:13px;padding:11px 13px;border-radius:9px;background:#fff7f0;border:1px solid #f6dcc8;font-size:11px;line-height:1.5;color:#755843}.calc-memory strong{color:#b95510}.import-ready{margin-top:12px;font-size:11px;color:#5d7568}.import-ready.bad{color:#b64e46}@media(max-width:760px){.source-file-grid{grid-template-columns:1fr}}
-  </style>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
   <section class="login-screen" id="loginScreen">
     <div class="login-card">
-      <div class="login-brand"><img src="assets/logo-imperio.png" alt="Império" /><div><span>PAINEL</span><strong>ARMAZÉM</strong></div></div>
-      <div class="login-copy"><p class="eyebrow">ACESSO RESTRITO</p><h1>Bem-vinda ao Painel Armazém</h1><p>Entre com seu usuário e senha para acessar os módulos operacionais.</p></div>
+      <div class="login-brand">
+        <img src="assets/logo-imperio.png" alt="Império" />
+        <div><span>PAINEL</span><strong>ARMAZÉM</strong></div>
+      </div>
+      <div class="login-copy">
+        <p class="eyebrow">ACESSO RESTRITO</p>
+        <h1>Painel Armazém</h1>
+        <p>Entre com suas credenciais para acessar os módulos operacionais.</p>
+      </div>
       <form id="loginForm" class="login-form">
         <label>Usuário<input id="loginUser" autocomplete="username" required /></label>
         <label>Senha<div class="password-field"><input id="loginPassword" type="password" autocomplete="current-password" required /><button type="button" id="togglePassword" aria-label="Mostrar senha">◉</button></div></label>
         <p class="form-error" id="loginError"></p>
         <button class="primary-button wide" type="submit" id="loginButton">Entrar</button>
       </form>
-      <small class="security-note">Sessão protegida • acesso por perfil</small>
     </div>
   </section>
 
@@ -43,16 +47,20 @@
         <button class="nav-link" data-view="people"><span>♙</span> Pessoas</button>
         <button class="nav-link" data-view="reports"><span>▤</span> Relatórios</button>
       </nav>
-      <div class="sidebar-footer"><span class="status-dot"></span> Painel conectado</div>
+      <div class="sidebar-footer"><span class="status-dot"></span> Conectado</div>
     </aside>
 
     <main>
       <header class="app-header">
         <button class="menu-button" id="menuButton" aria-label="Abrir menu">☰</button>
-        <div><p class="eyebrow">CENTRO DE CONTROLE</p><h1 id="pageTitle">Curva ABC</h1><p class="subtitle" id="pageSubtitle">Classificação mensal dos SKUs por participação de volume em Hectos.</p></div>
+        <div class="page-heading">
+          <p class="eyebrow">GESTÃO DE ARMAZÉM</p>
+          <h1 id="pageTitle">Curva ABC</h1>
+          <p class="subtitle" id="pageSubtitle">Análise mensal por área operacional.</p>
+        </div>
         <div class="header-actions">
           <div class="user-chip"><span id="userInitials">GS</span><div><strong id="userName">Gabriely</strong><small id="userRole">ADM</small></div></div>
-          <button class="icon-button" id="logoutButton" title="Sair">↪</button>
+          <button class="icon-button" id="logoutButton" title="Sair" aria-label="Sair">↪</button>
         </div>
       </header>
 
@@ -61,34 +69,37 @@
           <div class="filter-group"><label>Mês</label><select id="monthFilter"></select></div>
           <div class="filter-group"><label>Área</label><select id="areaFilter"><option>Regulador</option><option>Picking</option><option>Câmara Fria</option><option>Marketplace</option></select></div>
           <div class="toolbar-spacer"></div>
-          <button class="primary-button admin-only" id="importButton">＋ Atualizar Curva ABC</button>
+          <button class="primary-button admin-only" id="importButton">＋ Atualizar dados</button>
         </div>
 
         <div class="month-strip" id="monthStrip"></div>
 
         <section class="abc-kpis">
-          <article class="metric-card"><p>SKUs ativos</p><strong id="kpiSkus">—</strong><small id="kpiSource">Selecione um mês</small></article>
-          <article class="metric-card"><p>Volume total</p><strong id="kpiVolume">—</strong><small>Hectos no período-base</small></article>
-          <article class="metric-card curve-a"><p>Curva A</p><strong id="kpiA">—</strong><small>Até 70% do volume acumulado</small></article>
-          <article class="metric-card curve-b"><p>Curva B</p><strong id="kpiB">—</strong><small>De 70% a 90%</small></article>
-          <article class="metric-card curve-c"><p>Curva C</p><strong id="kpiC">—</strong><small>Acima de 90%</small></article>
+          <article class="metric-card"><p>SKUs</p><strong id="kpiSkus">—</strong><small id="kpiSource">Selecione um mês</small></article>
+          <article class="metric-card"><p>Volume</p><strong id="kpiVolume">—</strong></article>
+          <article class="metric-card curve-a"><p>Curva A</p><strong id="kpiA">—</strong></article>
+          <article class="metric-card curve-b"><p>Curva B</p><strong id="kpiB">—</strong></article>
+          <article class="metric-card curve-c"><p>Curva C</p><strong id="kpiC">—</strong></article>
         </section>
 
         <section class="abc-layout">
           <article class="panel pareto-panel">
-            <div class="panel-heading"><div><p class="eyebrow">PARETO</p><h2>Concentração do volume</h2></div><div class="legend"><span><i class="dot a"></i>A</span><span><i class="dot b"></i>B</span><span><i class="dot c"></i>C</span></div></div>
+            <div class="panel-heading"><h2>Concentração do volume</h2><div class="legend"><span><i class="dot a"></i>A</span><span><i class="dot b"></i>B</span><span><i class="dot c"></i>C</span></div></div>
             <div class="pareto-summary" id="paretoSummary"><div class="pareto-empty">Nenhum dado carregado para este mês.</div></div>
           </article>
           <article class="panel area-panel">
-            <div class="panel-heading"><div><p class="eyebrow">ÁREAS</p><h2>Visão operacional</h2></div></div>
+            <div class="panel-heading"><h2>Áreas</h2></div>
             <div class="area-tabs" id="areaCards"></div>
           </article>
         </section>
 
         <section class="panel table-panel">
-          <div class="panel-heading table-heading"><div><p class="eyebrow">DETALHAMENTO</p><h2 id="tableTitle">SKUs por Curva ABC</h2></div><div class="table-tools"><input id="skuSearch" placeholder="Buscar SKU ou descrição" /><select id="classFilter"><option value="">Todas as curvas</option><option value="A">Curva A</option><option value="B">Curva B</option><option value="C">Curva C</option></select></div></div>
-          <div class="table-wrap"><table><thead><tr><th>#</th><th>Código</th><th>Descrição</th><th>Volume (HL)</th><th>Média/dia (HL)</th><th>Peso</th><th>Pareto</th><th>Curva</th></tr></thead><tbody id="abcTableBody"></tbody></table></div>
-          <div class="empty-state hidden" id="abcEmpty"><strong>Sem dados para exibir</strong><span>Importe os relatórios Promax do mês para gerar a Curva ABC.</span></div>
+          <div class="panel-heading table-heading">
+            <h2 id="tableTitle">SKUs • Regulador</h2>
+            <div class="table-tools"><input id="skuSearch" placeholder="Buscar SKU ou descrição" /><select id="classFilter"><option value="">Todas as curvas</option><option value="A">Curva A</option><option value="B">Curva B</option><option value="C">Curva C</option></select></div>
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>#</th><th>Código</th><th>Descrição</th><th>Volume (HL)</th><th>Média/dia</th><th>Peso</th><th>Pareto</th><th>Curva</th></tr></thead><tbody id="abcTableBody"></tbody></table></div>
+          <div class="empty-state hidden" id="abcEmpty"><strong>Sem dados para exibir</strong><span>Atualize o mês com os relatórios Promax.</span></div>
         </section>
       </section>
 
@@ -100,22 +111,25 @@
 
   <div class="modal-backdrop hidden" id="importModal">
     <div class="modal-card">
-      <div class="modal-header"><div><p class="eyebrow">ATUALIZAÇÃO MENSAL</p><h2>Gerar Curva ABC</h2></div><button class="close-button" id="closeImport">×</button></div>
-      <p class="modal-intro">Envie os relatórios brutos do Promax. O painel cruza as bases, converte os volumes e recalcula automaticamente as quatro visões da Curva ABC. Não é necessário preparar uma planilha de Curva ABC.</p>
+      <div class="modal-header"><div><p class="eyebrow">ATUALIZAÇÃO MENSAL</p><h2>Gerar Curva ABC</h2></div><button class="close-button" id="closeImport" aria-label="Fechar">×</button></div>
+      <p class="modal-intro">Envie os três relatórios Promax do período. A base Marketplace só precisa ser enviada quando houver alteração.</p>
       <div class="import-grid"><label>Mês de referência<select id="importMonth"></select></label><label>Dias do período<input id="importDays" type="text" value="Automático pelo 03.02.36.01" disabled /></label></div>
 
       <div class="source-section">
-        <div class="source-section-title"><strong>Relatórios mensais</strong><span>Formato CSV</span></div>
+        <div class="source-section-title"><strong>Arquivos</strong><span>CSV</span></div>
         <div class="source-file-grid">
-          <label class="source-file" id="slotSales"><input id="reportSales" type="file" accept=".csv" /><span class="source-icon">1</span><span class="source-copy"><strong>03.05.19</strong><small id="nameSales">Volume de venda por produto</small></span></label>
-          <label class="source-file" id="slotPicking"><input id="reportPicking" type="file" accept=".csv" /><span class="source-icon">2</span><span class="source-copy"><strong>03.02.36.01</strong><small id="namePicking">Movimentação / separação</small></span></label>
-          <label class="source-file" id="slotCatalog"><input id="reportCatalog" type="file" accept=".csv" /><span class="source-icon">3</span><span class="source-copy"><strong>01.11</strong><small id="nameCatalog">Cadastro e fatores dos SKUs</small></span></label>
-          <label class="source-file" id="slotMarketplace"><input id="reportMarketplace" type="file" accept=".csv,.xlsx,.xls" /><span class="source-icon">M</span><span class="source-copy"><strong>Base Marketplace</strong><small id="nameMarketplace">Opcional se a base já estiver salva</small></span></label>
+          <label class="source-file" id="slotSales"><input id="reportSales" type="file" accept=".csv" /><span class="source-icon">1</span><span class="source-copy"><strong>03.05.19</strong><small id="nameSales">Venda por produto</small></span></label>
+          <label class="source-file" id="slotPicking"><input id="reportPicking" type="file" accept=".csv" /><span class="source-icon">2</span><span class="source-copy"><strong>03.02.36.01</strong><small id="namePicking">Separação / pallet fechado</small></span></label>
+          <label class="source-file" id="slotCatalog"><input id="reportCatalog" type="file" accept=".csv" /><span class="source-icon">3</span><span class="source-copy"><strong>01.11</strong><small id="nameCatalog">Cadastro e fatores</small></span></label>
+          <label class="source-file" id="slotMarketplace"><input id="reportMarketplace" type="file" accept=".csv,.xlsx,.xls" /><span class="source-icon">M</span><span class="source-copy"><strong>Base Marketplace</strong><small id="nameMarketplace">Usar somente quando atualizar</small></span></label>
         </div>
         <div class="marketplace-status" id="marketplaceStatus"><span>Base Marketplace</span><strong>Verificando...</strong></div>
       </div>
 
-      <div class="calc-memory"><strong>Memória do cálculo:</strong> 03.05.19 fornece o volume total por SKU; 01.11 fornece descrição, fator Hecto Comercial e caixas por pallet; 03.02.36.01 fornece o volume do Picking e os dias distintos do período. Marketplace é identificado pela base de SKUs salva no painel. Câmara Fria considera os códigos 827, 828 e 838. O Pareto é recalculado por área em Hectos, com A até 70%, B até 90% e C acima de 90%.</div>
+      <details class="calc-memory">
+        <summary>Critérios e memória de cálculo</summary>
+        <div class="calc-memory-body">Cada área possui sua própria Curva ABC e seu próprio Pareto. Regulador usa a venda do 03.05.19, excluindo Câmara Fria e Marketplace. Picking considera somente os SKUs do Regulador com Pallet Fechado = NÃO no 03.02.36.01. Câmara Fria considera barris de chopp. Marketplace usa a base de SKUs salva. O 01.11 fornece descrição e fatores de conversão.</div>
+      </details>
       <div class="import-checks" id="importChecks"></div>
       <p class="import-ready bad" id="importReady">Selecione os três relatórios mensais.</p>
       <p class="form-error" id="importError"></p>
