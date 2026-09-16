@@ -3,7 +3,7 @@
   const mainApi = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/painel-api';
   const marketplaceApi = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/marketplace-api';
 
-  window.__ABC_AREA_RULE_VERSION = '2026-09-16-area-v3';
+  window.__ABC_AREA_RULE_VERSION = '2026-09-16-picking-nao-v4';
 
   window.fetch = (input, init = {}) => {
     try {
@@ -46,12 +46,11 @@
         code => !marketplaceSet.has(code) && !coldRoomSet.has(code),
         true
       );
-      const regulatorSet = new Set(regulator.map(item => normCode(item.sku_code)));
 
       const picking = makeAreaRows(
         pickingSource,
         master,
-        code => regulatorSet.has(code),
+        null, // parsePicking already selects only rows with Pallet Fechado = NÃO.
         false
       );
 
@@ -78,7 +77,7 @@
 
     const memory = document.querySelector('.calc-memory-body');
     if (memory) {
-      memory.innerHTML = 'Cada área possui seu próprio universo, peso e Pareto. <strong>Regulador:</strong> venda do 03.05.19, excluindo Câmara Fria e Marketplace. <strong>Picking:</strong> somente SKUs do Regulador com Pallet Fechado = NÃO no 03.02.36.01. <strong>Câmara Fria:</strong> barris de chopp identificados pelo 01.11, usando a venda do 03.05.19. <strong>Marketplace:</strong> códigos da base salva, usando a venda do 03.05.19. O 01.11 fornece descrição, fator Hecto Comercial e caixas por pallet. Após a separação por área, o painel converte para HL, ordena e calcula Peso e Pareto. A = até 70%, B = até 90%, C = acima de 90%; o SKU líder permanece A quando sozinho ultrapassa 70%.';
+      memory.innerHTML = 'Cada área possui seu próprio universo, peso e Pareto. <strong>Regulador:</strong> venda do 03.05.19, excluindo Câmara Fria e Marketplace. <strong>Picking:</strong> todos os SKUs das linhas com Pallet Fechado = NÃO no 03.02.36.01, somando somente essas linhas, independentemente do Regulador. Linhas com SIM não entram. <strong>Câmara Fria:</strong> barris de chopp identificados pelo 01.11, usando a venda do 03.05.19. <strong>Marketplace:</strong> códigos da base salva, usando a venda do 03.05.19. O 01.11 fornece descrição, fator Hecto Comercial e caixas por pallet. Após a separação por área, o painel converte para HL, ordena e calcula Peso e Pareto. A = até 70%, B = até 90%, C = acima de 90%; o SKU líder permanece A quando sozinho ultrapassa 70%.';
     }
 
     const compactModalLabels = () => {
@@ -102,7 +101,7 @@
       });
     });
 
-    document.documentElement.dataset.abcAreaRules = '2026-09-16-area-v3';
+    document.documentElement.dataset.abcAreaRules = '2026-09-16-picking-nao-v4';
     document.documentElement.dataset.uiVersion = '2026-09-16-aesthetic-v1';
   }, 0);
 })();
