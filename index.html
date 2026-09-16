@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f47a20" />
+    <meta name="description" content="Painel operacional do armazém Império." />
+    <title>Painel Armazém | Império</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2336363b'/%3E%3Cpath d='M14 43h36v7H14zm4-22 8 8 6-16 7 16 8-8-3 18H21z' fill='%23f47a20'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand"><img src="assets/logo-imperio.png" alt="Império" /><span>PAINEL<br />ARMAZÉM</span></div>
+        <nav aria-label="Navegação principal">
+          <a class="active" href="#visao-geral"><span>▦</span> Visão geral</a>
+          <a href="#operacao"><span>◫</span> Operação</a>
+          <a href="#indicadores"><span>◌</span> Indicadores</a>
+          <a href="#rotinas"><span>✓</span> Rotinas</a>
+          <a href="#pessoas"><span>♙</span> Pessoas</a>
+          <a href="#relatorios"><span>▤</span> Relatórios</a>
+        </nav>
+        <div class="sidebar-footer"><span class="status-dot"></span> Estrutura inicial</div>
+      </aside>
+      <main>
+        <header>
+          <button class="menu-button" aria-label="Abrir menu">☰</button>
+          <div><p class="eyebrow">CENTRO DE CONTROLE</p><h1>Painel Armazém</h1><p class="subtitle">Estrutura pronta para receber os dados reais da operação.</p></div>
+          <div class="header-actions"><button class="profile" aria-label="Perfil">PA</button></div>
+        </header>
+        <section class="date-bar" id="visao-geral">
+          <div><strong>Operação do armazém</strong><span>Nenhum dado operacional cadastrado</span></div>
+          <button class="outline-button" disabled>Sem atualização disponível</button>
+        </section>
+        <section class="kpi-grid" id="indicadores">
+          <article class="kpi"><div class="kpi-icon orange">↥</div><div><p>Expedição</p><strong>—</strong><small>Aguardando integração</small></div></article>
+          <article class="kpi"><div class="kpi-icon blue">▣</div><div><p>Volume movimentado</p><strong>—</strong><small>Aguardando integração</small></div></article>
+          <article class="kpi"><div class="kpi-icon green">⌁</div><div><p>Inventário</p><strong>—</strong><small>Aguardando integração</small></div></article>
+          <article class="kpi"><div class="kpi-icon red">!</div><div><p>Ocorrências</p><strong>—</strong><small>Nenhuma informação cadastrada</small></div></article>
+        </section>
+        <section class="content-grid" id="operacao">
+          <article class="panel flow-panel">
+            <div class="panel-heading"><div><p class="eyebrow">ACOMPANHAMENTO</p><h2>Fluxo operacional</h2></div></div>
+            <div class="flow-list">
+              <div class="flow-row"><div class="flow-label"><span class="flow-icon orange">↧</span><div><strong>Recebimento</strong><small>Sem dados cadastrados</small></div></div><b>—</b><div class="bar"></div><span>—</span></div>
+              <div class="flow-row"><div class="flow-label"><span class="flow-icon blue">▤</span><div><strong>Armazenagem</strong><small>Sem dados cadastrados</small></div></div><b>—</b><div class="bar"></div><span>—</span></div>
+              <div class="flow-row"><div class="flow-label"><span class="flow-icon purple">▧</span><div><strong>Separação</strong><small>Sem dados cadastrados</small></div></div><b>—</b><div class="bar"></div><span>—</span></div>
+              <div class="flow-row"><div class="flow-label"><span class="flow-icon green">↥</span><div><strong>Expedição</strong><small>Sem dados cadastrados</small></div></div><b>—</b><div class="bar"></div><span>—</span></div>
+            </div>
+          </article>
+          <article class="panel capacity-panel">
+            <div class="panel-heading"><div><p class="eyebrow">OCUPAÇÃO</p><h2>Capacidade do armazém</h2></div></div>
+            <div class="gauge"><div class="gauge-center"><strong>—</strong><span>sem dados</span></div></div>
+            <p class="capacity-note">Cadastre a capacidade e as posições para iniciar o acompanhamento.</p>
+          </article>
+        </section>
+        <section class="bottom-grid" id="rotinas">
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">PRIORIDADES</p><h2>Alertas operacionais</h2></div></div><div class="alerts"><div><span class="alert blue-dot">i</span><p><strong>Nenhum alerta cadastrado</strong><small>Os alertas reais da operação aparecerão aqui.</small></p></div></div></article>
+          <article class="panel shift"><div class="panel-heading"><div><p class="eyebrow">TURNO ATUAL</p><h2>Equipe em operação</h2></div></div><div class="team-number"><strong>—</strong><span>aguardando<br />dados da equipe</span></div></article>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
