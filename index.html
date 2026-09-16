@@ -5,14 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#f47a20" />
   <meta name="description" content="Painel operacional do armazém Império." />
-  <meta name="ui-version" content="2026-09-16-aesthetic-v1" />
+  <meta name="ui-version" content="2026-09-16-core-lite-v1" />
   <title>Painel Armazém | Império</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2336363b'/%3E%3Cpath d='M14 43h36v7H14zm4-22 8 8 6-16 7 16 8-8-3 18H21z' fill='%23f47a20'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
   <section class="login-screen" id="loginScreen">
@@ -39,13 +38,7 @@
     <aside class="sidebar" id="sidebar">
       <div class="brand"><img src="assets/logo-imperio.png" alt="Império" /><span>PAINEL<br />ARMAZÉM</span></div>
       <nav aria-label="Navegação principal">
-        <button class="nav-link" data-view="overview"><span>▦</span> Visão geral</button>
         <button class="nav-link active" data-view="abc"><span>◫</span> Curva ABC</button>
-        <button class="nav-link" data-view="operation"><span>◫</span> Operação</button>
-        <button class="nav-link" data-view="indicators"><span>◌</span> Indicadores</button>
-        <button class="nav-link" data-view="routines"><span>✓</span> Rotinas</button>
-        <button class="nav-link" data-view="people"><span>♙</span> Pessoas</button>
-        <button class="nav-link" data-view="reports"><span>▤</span> Relatórios</button>
       </nav>
       <div class="sidebar-footer"><span class="status-dot"></span> Conectado</div>
     </aside>
@@ -75,7 +68,7 @@
         <div class="month-strip" id="monthStrip"></div>
 
         <section class="abc-kpis">
-          <article class="metric-card"><p>SKUs</p><strong id="kpiSkus">—</strong><small id="kpiSource">Selecione um mês</small></article>
+          <article class="metric-card"><p>SKUs</p><strong id="kpiSkus">—</strong><small id="kpiSource"></small></article>
           <article class="metric-card"><p>Volume</p><strong id="kpiVolume">—</strong></article>
           <article class="metric-card curve-a"><p>Curva A</p><strong id="kpiA">—</strong></article>
           <article class="metric-card curve-b"><p>Curva B</p><strong id="kpiB">—</strong></article>
@@ -102,17 +95,13 @@
           <div class="empty-state hidden" id="abcEmpty"><strong>Sem dados para exibir</strong><span>Atualize o mês com os relatórios Promax.</span></div>
         </section>
       </section>
-
-      <section class="view hidden" id="placeholderView">
-        <article class="panel placeholder"><p class="eyebrow">EM CONSTRUÇÃO</p><h2 id="placeholderTitle">Módulo</h2><p>Este módulo será desenvolvido nas próximas etapas do projeto.</p></article>
-      </section>
     </main>
   </div>
 
   <div class="modal-backdrop hidden" id="importModal">
     <div class="modal-card">
       <div class="modal-header"><div><p class="eyebrow">ATUALIZAÇÃO MENSAL</p><h2>Gerar Curva ABC</h2></div><button class="close-button" id="closeImport" aria-label="Fechar">×</button></div>
-      <p class="modal-intro">Envie os três relatórios Promax do período. A base Marketplace só precisa ser enviada quando houver alteração.</p>
+      <p class="modal-intro">Envie 03.05.19 e 03.02.36.01 do período. O 01.11 e a Base Marketplace são reaproveitados e só precisam ser enviados quando houver alteração.</p>
       <div class="import-grid"><label>Mês de referência<select id="importMonth"></select></label><label>Dias do período<input id="importDays" type="text" value="Automático pelo 03.02.36.01" disabled /></label></div>
 
       <div class="source-section">
@@ -120,28 +109,27 @@
         <div class="source-file-grid">
           <label class="source-file" id="slotSales"><input id="reportSales" type="file" accept=".csv" /><span class="source-icon">1</span><span class="source-copy"><strong>03.05.19</strong><small id="nameSales">Venda por produto</small></span></label>
           <label class="source-file" id="slotPicking"><input id="reportPicking" type="file" accept=".csv" /><span class="source-icon">2</span><span class="source-copy"><strong>03.02.36.01</strong><small id="namePicking">Separação / pallet fechado</small></span></label>
-          <label class="source-file" id="slotCatalog"><input id="reportCatalog" type="file" accept=".csv" /><span class="source-icon">3</span><span class="source-copy"><strong>01.11</strong><small id="nameCatalog">Cadastro e fatores</small></span></label>
-          <label class="source-file" id="slotMarketplace"><input id="reportMarketplace" type="file" accept=".csv,.xlsx,.xls" /><span class="source-icon">M</span><span class="source-copy"><strong>Base Marketplace</strong><small id="nameMarketplace">Usar somente quando atualizar</small></span></label>
+          <label class="source-file" id="slotCatalog"><input id="reportCatalog" type="file" accept=".csv" /><span class="source-icon">3</span><span class="source-copy"><strong>01.11</strong><small id="nameCatalog">Base estática • opcional</small></span></label>
+          <label class="source-file" id="slotMarketplace"><input id="reportMarketplace" type="file" accept=".csv,.xlsx,.xls" /><span class="source-icon">M</span><span class="source-copy"><strong>Base Marketplace</strong><small id="nameMarketplace">Opcional se já estiver salva</small></span></label>
         </div>
         <div class="marketplace-status" id="marketplaceStatus"><span>Base Marketplace</span><strong>Verificando...</strong></div>
       </div>
 
       <details class="calc-memory">
         <summary>Critérios e memória de cálculo</summary>
-        <div class="calc-memory-body">Cada área possui sua própria Curva ABC e seu próprio Pareto. Regulador usa a venda do 03.05.19, excluindo Câmara Fria e Marketplace. Picking considera todos os SKUs das linhas com Pallet Fechado = NÃO no 03.02.36.01, somando somente essas linhas, independentemente do Regulador. Linhas com SIM não entram. Câmara Fria considera barris de chopp. Marketplace usa a base de SKUs salva. O 01.11 fornece descrição e fatores de conversão.</div>
+        <div class="calc-memory-body">Cada área possui sua própria Curva ABC e seu próprio Pareto.</div>
       </details>
       <div class="import-checks" id="importChecks"></div>
-      <p class="import-ready bad" id="importReady">Selecione os três relatórios mensais.</p>
+      <p class="import-ready bad" id="importReady">Selecione 03.05.19 e 03.02.36.01.</p>
       <p class="form-error" id="importError"></p>
       <div class="modal-actions"><button class="outline-button" id="cancelImport">Cancelar</button><button class="primary-button" id="confirmImport" disabled>Gerar e atualizar</button></div>
     </div>
   </div>
 
   <div class="toast hidden" id="toast"></div>
-  <script src="api-router.js"></script>
-  <script src="app.js"></script>
-  <script src="abc-import-v2.js?v=20260916-3"></script>
-  <script src="layout-picking.js"></script>
-  <script src="layout-auto-sync.js?v=20260916-1"></script>
+  <script src="api-router.js?v=20260916-2"></script>
+  <script src="app.js?v=20260916-2"></script>
+  <script src="abc-import-v2.js?v=20260916-4"></script>
+  <script src="performance-core.js?v=20260916-1"></script>
 </body>
 </html>
