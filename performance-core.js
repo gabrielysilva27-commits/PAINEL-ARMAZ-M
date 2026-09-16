@@ -34,8 +34,12 @@
     if(action==='import'){
       const month=String(payload?.month||'');
       if(month)bundleCache.delete(month);else bundleCache.clear();
+      window.__pickingLayout?.invalidate?.(month||undefined);
     }
-    if(action==='marketplace_import')bundleCache.clear();
+    if(action==='marketplace_import'){
+      bundleCache.clear();
+      window.__pickingLayout?.invalidate?.();
+    }
     return result;
   };
 
