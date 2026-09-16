@@ -4,4 +4,5 @@
 .croqui-corridor.croqui-corridor-empty{height:72px;margin:10px 0;background:transparent;border:0;padding:0;display:block}
 .croqui-corridor.croqui-corridor-empty:before,.croqui-corridor.croqui-corridor-empty:after{display:none!important}
 .croqui-flow .croqui-lane-id span{color:#a04b43}
+.croqui-block>header{display:none!important}
 @media(max-width:900px){.croqui-lane-id{height:36px}.croqui-lane-id span{font-size:6.5px}}
