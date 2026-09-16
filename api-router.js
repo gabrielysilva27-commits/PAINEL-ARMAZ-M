@@ -47,6 +47,7 @@
     const abcNav=document.querySelector('.nav-link[data-view="abc"]');
     const abcView=document.getElementById('abcView');
     if(!abcNav||!abcView)return;
+    abcNav.onclick=null;
 
     const layoutNav=document.createElement('button');
     layoutNav.className='nav-link';layoutNav.dataset.view='layout';layoutNav.innerHTML='<span>⌗</span> Layout';abcNav.insertAdjacentElement('afterend',layoutNav);
