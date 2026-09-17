@@ -36,6 +36,7 @@ async function requireSession(req: Request) {
 const canEdit = (u: any) => ["admin", "conferente"].includes(String(u?.role || "").toLowerCase());
 const todayBR = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 const rowKey = (r: any) => String(r?.id || `${r?.area || ""}|${r?.address || ""}|${r?.sku_code || ""}`);
+const isFefoReady = (r: any) => ["Prioridade FEFO", "Aguardar lote anterior"].includes(String(r?.fefo_status || "")) && Number.isFinite(Number(r?.pallets)) && Number(r.pallets) > 0;
 
 function diffRows(before: any[] = [], after: any[] = []) {
   const a = new Map(before.map((r) => [rowKey(r), r]));
@@ -52,6 +53,12 @@ function diffRows(before: any[] = [], after: any[] = []) {
     if (Object.keys(changes).length) out.push({ id: k, type: "CHANGED", area: y?.area || x?.area, address: y?.address || x?.address, sku_code: y?.sku_code || x?.sku_code, changes });
   }
   return out;
+}
+
+function sortedFefoRows(rows: any[], sku: string, area: string) {
+  return rows
+    .filter((r: any) => r.source_sheet === "Base Ruas" && String(r.sku_code || "") === sku && r.area === area && isFefoReady(r))
+    .sort((a: any, b: any) => (a.expires_on || "9999").localeCompare(b.expires_on || "9999") || (a.received_on || "9999").localeCompare(b.received_on || "9999") || String(a.address || "").localeCompare(String(b.address || ""), "pt-BR", { numeric: true }));
 }
 
 async function latestSnapshot() {
@@ -128,6 +135,29 @@ Deno.serve(async (req: Request) => {
       return json({ snapshot: latest, curves, ...enrich(latest.payload, curves, today) });
     }
 
+    if (body.action === "lookup_replenishment") {
+      if (!latest) return json({ snapshot: null, rows: [] });
+      const area = String(body.area || "Regulador");
+      if (area !== "Regulador") return json({ error: "Área inválida para reabastecimento" }, 400);
+      const codes = [...new Set((Array.isArray(body.codes) ? body.codes : []).map((x: any) => String(x || "").trim()).filter((x: string) => /^\d+$/.test(x)))].slice(0, 50);
+      if (!codes.length) return json({ error: "Informe ao menos um código de produto" }, 400);
+      const enriched = enrich(latest.payload, [], todayBR());
+      const wanted = new Set(codes);
+      const rows = enriched.rows.filter((r: any) => r.source_sheet === "Base Ruas" && r.area === area && wanted.has(String(r.sku_code || ""))).map((r: any) => ({
+        id: r.id,
+        area: r.area,
+        address: r.address,
+        sku_code: r.sku_code,
+        sku_name: r.sku_name,
+        received_on: r.received_on,
+        expires_on: r.expires_on,
+        pallets: r.pallets,
+        lock: r.lock,
+        fefo_status: r.fefo_status,
+      }));
+      return json({ snapshot: { id: latest.id, as_of: latest.as_of, created_at: latest.created_at }, rows });
+    }
+
     if (body.action === "history") {
       const limit = Math.min(200, Math.max(1, Number(body.limit || 50)));
       const { data, error } = await db.from("stock_audit_log").select("id,created_at,action,changed_count,changed_rows,note,user_id,app_users(display_name,username,role)").order("created_at", { ascending: false }).limit(limit);
@@ -155,6 +185,49 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, ...data, changed_count: changes.length });
     }
 
+    if (body.action === "consume_plan") {
+      if (!canEdit(user)) return json({ error: "Seu perfil não possui permissão para registrar consumo" }, 403);
+      if (!latest) return json({ error: "Nenhuma base de estoque ativa" }, 409);
+      if (String(body.previous_id || "") !== String(latest.id)) return json({ error: "O estoque foi atualizado por outra pessoa. Atualize o produto antes de consumir." }, 409);
+      const sku = String(body.sku_code || "").trim();
+      const area = String(body.area || "Regulador");
+      const requested = Number(body.requested);
+      if (!/^\d+$/.test(sku)) return json({ error: "Código de produto inválido" }, 400);
+      if (area !== "Regulador") return json({ error: "Área inválida para reabastecimento" }, 400);
+      if (!Number.isFinite(requested) || requested <= 0) return json({ error: "Informe a necessidade em paletes" }, 400);
+
+      const today = todayBR();
+      const current = enrich(latest.payload, [], today);
+      const candidates = sortedFefoRows(current.rows, sku, area);
+      const available = Number(candidates.reduce((s: number, r: any) => s + Number(r.pallets || 0), 0).toFixed(4));
+      if (available + 0.000001 < requested) return json({ error: `Estoque insuficiente. Disponível: ${available} PLT`, available, requested }, 409);
+
+      const payload = structuredClone(latest.payload);
+      let remainingNeed = Number(requested.toFixed(4));
+      const changed: any[] = [];
+      for (const row of candidates) {
+        if (remainingNeed <= 0.000001) break;
+        const before = Number(row.pallets || 0);
+        const used = Math.min(before, remainingNeed);
+        const after = Math.max(0, Number((before - used).toFixed(4)));
+        const target = payload.rows.find((r: any) => String(r.id) === String(row.id));
+        if (!target) continue;
+        target.pallets = after;
+        target.inventory_confirmed = true;
+        changed.push({ id: target.id, type: "CONSUME", area: target.area, address: target.address, sku_code: target.sku_code, used: Number(used.toFixed(4)), before_pallets: before, after_pallets: after });
+        remainingNeed = Math.max(0, Number((remainingNeed - used).toFixed(4)));
+      }
+      if (remainingNeed > 0.000001) return json({ error: "Não foi possível montar o consumo completo. Atualize a consulta." }, 409);
+
+      payload.as_of = today;
+      payload.source_name = "Consumo consolidado via Reabastecimento";
+      validateSnapshot(payload);
+      const baseNote = `Consumo consolidado ${sku} · ${requested} PLT · ${changed.length} posição(ões)`;
+      const note = body.note ? `${baseNote} · ${String(body.note).slice(0, 180)}` : baseNote;
+      const data = await persistSnapshot({ latest, payload, user, action: "CONSUME", changedRows: changed, note });
+      return json({ ok: true, ...data, sku_code: sku, used: requested, positions: changed.length, available_before: available, plan: changed.map((x: any) => ({ address: x.address, used: x.used, remaining: x.after_pallets })) });
+    }
+
     if (body.action === "consume") {
       if (!canEdit(user)) return json({ error: "Seu perfil não possui permissão para registrar consumo" }, 403);
       if (!latest) return json({ error: "Nenhuma base de estoque ativa" }, 409);
@@ -168,19 +241,19 @@ Deno.serve(async (req: Request) => {
       const currentView = enriched.rows.find((r: any) => String(r.id) === rowId);
       if (!currentView || currentView.source_sheet !== "Base Ruas") return json({ error: "Posição da Base Ruas não encontrada" }, 404);
       if (currentView.fefo_status !== "Prioridade FEFO") return json({ error: "Este lote não é a prioridade FEFO atual. Atualize a consulta antes de consumir." }, 409);
-      const current = Number(currentView.pallets);
-      if (!Number.isFinite(current) || current <= 0) return json({ error: "Saldo da posição não está informado" }, 400);
-      if (used > current) return json({ error: `Consumo maior que o saldo disponível (${current})` }, 400);
+      const currentPallets = Number(currentView.pallets);
+      if (!Number.isFinite(currentPallets) || currentPallets <= 0) return json({ error: "Saldo da posição não está informado" }, 400);
+      if (used > currentPallets) return json({ error: `Consumo maior que o saldo disponível (${currentPallets})` }, 400);
 
       const payload = structuredClone(latest.payload);
       const target = payload.rows.find((r: any) => String(r.id) === rowId);
-      const remaining = Math.max(0, Number((current - used).toFixed(4)));
+      const remaining = Math.max(0, Number((currentPallets - used).toFixed(4)));
       target.pallets = remaining;
       target.inventory_confirmed = true;
       payload.as_of = today;
       payload.source_name = "Consumo via Reabastecimento";
       validateSnapshot(payload);
-      const changed = [{ id: rowId, type: "CONSUME", area: target.area, address: target.address, sku_code: target.sku_code, used, before_pallets: current, after_pallets: remaining }];
+      const changed = [{ id: rowId, type: "CONSUME", area: target.area, address: target.address, sku_code: target.sku_code, used, before_pallets: currentPallets, after_pallets: remaining }];
       const data = await persistSnapshot({ latest, payload, user, action: "CONSUME", changedRows: changed, note: body.note || `Consumo ${target.sku_code} · ${target.address}` });
       return json({ ok: true, ...data, remaining, used, address: target.address, sku_code: target.sku_code });
     }
