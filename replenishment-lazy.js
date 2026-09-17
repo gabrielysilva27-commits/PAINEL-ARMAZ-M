@@ -2,29 +2,113 @@
   const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/stock-api';
   const AREA='Regulador';
   const MIN_ROWS=10;
-  const R={data:null,month:null,rows:Array.from({length:MIN_ROWS},()=>({code:'',result:null,loading:false,error:'',request:0})),installed:false};
+  const R={snapshot:null,rows:Array.from({length:MIN_ROWS},()=>({code:'',result:null,loading:false,error:'',request:0})),installed:false};
   const $=id=>document.getElementById(id);
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const nf=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2});
   const dt=v=>v?String(v).slice(0,10).split('-').reverse().join('/'):'—';
   const canEdit=()=>['admin','conferente'].includes(String(window.state?.user?.role||'').toLowerCase());
   const toast=(m,e=false)=>window.showToast?.(m,e);
-  async function call(action,payload={}){const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-session-token':window.state?.token||''},body:JSON.stringify({action,...payload})});const d=await r.json().catch(()=>({error:'Resposta inválida'}));if(!r.ok)throw new Error(d.error||'Falha ao consultar estoque');return d;}
-  async function ensureData(force=false){const month=window.state?.currentMonth||'2026-06';if(!force&&R.data&&R.month===month)return R.data;R.data=await call('get',{month});R.month=month;return R.data;}
-  function readyRowsFor(code){if(!R.data?.rows)return [];const rank=s=>['Prioridade FEFO','Aguardar lote anterior'].includes(s)?0:1;return R.data.rows.filter(r=>String(r.sku_code||'')===String(code)&&r.area===AREA).sort((a,b)=>rank(a.fefo_status)-rank(b.fefo_status)||(a.expires_on||'9999').localeCompare(b.expires_on||'9999')||(a.received_on||'9999').localeCompare(b.received_on||'9999')||String(a.address).localeCompare(String(b.address),'pt-BR',{numeric:true}));}
-  function computeResult(code){const all=readyRowsFor(code);return{name:all[0]?.sku_name||'',sequence:all.filter(r=>['Prioridade FEFO','Aguardar lote anterior'].includes(r.fefo_status)&&Number(r.pallets)!==0).slice(0,8),found:all.length>0};}
-  function rowHtml(item,index){const result=item.result;const product=item.loading?'Consultando…':item.error?`<span class="rpl-error-text">${esc(item.error)}</span>`:result?(result.found?esc(result.name||'Produto sem descrição'):'Não localizado'):'';const cells=Array.from({length:8},(_,j)=>{const r=result?.sequence?.[j];if(!r)return '<td class="rplv2-address"></td>';const first=j===0;const tooltip=`Validade ${dt(r.expires_on)} · ${r.pallets==null?'saldo não informado':nf.format(r.pallets)+' PLT'}${r.received_on?' · Recebimento '+dt(r.received_on):''}`;return `<td class="rplv2-address ${first?'priority':''}" title="${esc(tooltip)}"><strong>${esc(r.address)}</strong>${first&&canEdit()?`<button type="button" class="rplv2-consume" data-consume="${esc(r.id)}" data-row="${index}">Consumir</button>`:''}</td>`;}).join('');return `<tr data-rpl-row="${index}"><td class="rplv2-code"><input value="${esc(item.code)}" data-code="${index}" inputmode="numeric" autocomplete="off" aria-label="Código do produto"></td><td class="rplv2-product">${product}</td>${cells}</tr>`;}
+
+  async function call(action,payload={}){
+    const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-session-token':window.state?.token||''},body:JSON.stringify({action,...payload})});
+    const d=await r.json().catch(()=>({error:'Resposta inválida'}));
+    if(!r.ok)throw new Error(d.error||'Falha ao consultar estoque');
+    return d;
+  }
+  function emptyItem(code=''){return {code,result:null,loading:false,error:'',request:0};}
+  function sortRows(rows){
+    return [...rows].sort((a,b)=>(a.expires_on||'9999').localeCompare(b.expires_on||'9999')||(a.received_on||'9999').localeCompare(b.received_on||'9999')||String(a.address).localeCompare(String(b.address),'pt-BR',{numeric:true}));
+  }
+  function computeResult(code,rows){
+    const all=sortRows((rows||[]).filter(r=>String(r.sku_code||'')===String(code)));
+    const sequence=all.filter(r=>['Prioridade FEFO','Aguardar lote anterior'].includes(r.fefo_status)&&Number.isFinite(Number(r.pallets))&&Number(r.pallets)>0);
+    return {name:all[0]?.sku_name||'',sequence,found:all.length>0,total:sequence.reduce((s,r)=>s+Number(r.pallets||0),0)};
+  }
+  function rowHtml(item,index){
+    const result=item.result;
+    const product=item.loading?'Consultando…':item.error?`<span class="rpl-error-text">${esc(item.error)}</span>`:result?(result.found?esc(result.name||'Produto sem descrição'):'Não localizado'):'';
+    const cells=Array.from({length:8},(_,j)=>{
+      const r=result?.sequence?.[j];
+      if(!r)return '<td class="rplv2-address"></td>';
+      const first=j===0;
+      const qty=Number(r.pallets);
+      const tooltip=`Validade ${dt(r.expires_on)} · ${nf.format(qty)} PLT${r.received_on?' · Recebimento '+dt(r.received_on):''}`;
+      return `<td class="rplv2-address ${first?'priority':''}" title="${esc(tooltip)}"><strong>${esc(r.address)}</strong><small>${nf.format(qty)} PLT</small>${first&&canEdit()?`<button type="button" class="rplv2-consume" data-consume-row="${index}">Consumir</button>`:''}</td>`;
+    }).join('');
+    return `<tr data-rpl-row="${index}"><td class="rplv2-code"><input value="${esc(item.code)}" data-code="${index}" inputmode="numeric" autocomplete="off" aria-label="Código do produto"></td><td class="rplv2-product">${product}</td>${cells}</tr>`;
+  }
   function tableHtml(){return `<div class="rplv2-table-wrap"><table class="rplv2-table"><thead><tr><th>CÓDIGO</th><th>PRODUTO</th><th>1º A SER CONSUMIDO</th><th>2º A SER CONSUMIDO</th><th>3º A SER CONSUMIDO</th><th>4º A SER CONSUMIDO</th><th>5º A SER CONSUMIDO</th><th>6º A SER CONSUMIDO</th><th>7º A SER CONSUMIDO</th><th>8º A SER CONSUMIDO</th></tr></thead><tbody>${R.rows.map(rowHtml).join('')}</tbody></table></div>`;}
-  function renderShell(){const view=$('replenishmentView');if(!view)return;view.innerHTML=`<div class="rplv2" data-rpl-v3 data-rpl-lazy><div class="rplv2-toolbar"><div><strong>Origem: Estoque Geral</strong><span>Digite o código e pressione Enter. O restante da linha é preenchido somente quando consultado.</span></div><div class="rplv2-actions"><button type="button" class="outline-button" data-paste>Colar lista</button><button type="button" class="outline-button" data-clear>Limpar</button></div></div><div data-table>${tableHtml()}</div><p class="rplv2-footnote">A primeira posição exibida é a prioridade FEFO atual. As demais representam a sequência de consumo.</p></div>`;bind(view);}
+  function renderShell(){
+    const view=$('replenishmentView');if(!view)return;
+    view.innerHTML=`<div class="rplv2" data-rpl-v3 data-rpl-lazy><div class="rplv2-toolbar"><div><strong>Origem: Estoque Geral</strong><span>Digite o código e pressione Enter. A consulta acontece somente para os produtos informados.</span></div><div class="rplv2-actions"><button type="button" class="outline-button" data-paste>Colar lista</button><button type="button" class="outline-button" data-clear>Limpar</button></div></div><div data-table>${tableHtml()}</div><p class="rplv2-footnote">Cada posição mostra rua e quantidade disponível. O botão Consumir planeja uma única retirada usando quantas ruas forem necessárias, sempre em FEFO.</p></div>`;
+    bind(view);
+  }
   function renderTable(){const root=$('replenishmentView')?.querySelector('[data-rpl-lazy]');if(!root)return;root.querySelector('[data-table]').innerHTML=tableHtml();bindTable(root);}
-  function bind(view){const root=view.querySelector('[data-rpl-lazy]');root.querySelector('[data-clear]').onclick=()=>{R.rows=Array.from({length:MIN_ROWS},()=>({code:'',result:null,loading:false,error:'',request:0}));renderTable();};root.querySelector('[data-paste]').onclick=openPaste;bindTable(root);}
-  function bindTable(root){root.querySelectorAll('[data-code]').forEach(input=>{input.addEventListener('input',e=>{const i=Number(e.target.dataset.code),value=e.target.value.replace(/\D+/g,'');if(e.target.value!==value)e.target.value=value;const item=R.rows[i];if(item.code!==value){item.code=value;item.result=null;item.error='';}});input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();lookupRow(Number(e.target.dataset.code));}});input.addEventListener('change',e=>lookupRow(Number(e.target.dataset.code)));});root.querySelectorAll('[data-consume]').forEach(btn=>btn.onclick=()=>openConsume(btn.dataset.consume,Number(btn.dataset.row)));}
-  async function lookupRow(index,force=false){const item=R.rows[index],code=String(item?.code||'').trim();if(!code){item.result=null;item.error='';item.loading=false;renderTable();return;}if(!/^\d+$/.test(code)){item.result=null;item.error='Código inválido';renderTable();return;}const request=++item.request;item.loading=true;item.error='';renderTable();try{await ensureData(force);if(request!==item.request)return;item.result=computeResult(code);}catch(err){if(request===item.request){item.result=null;item.error=err.message||'Erro na consulta';}}finally{if(request===item.request){item.loading=false;renderTable();}}}
-  async function lookupAll(){const indices=R.rows.map((r,i)=>r.code?i:-1).filter(i=>i>=0);if(!indices.length)return;indices.forEach(i=>{R.rows[i].loading=true;R.rows[i].error='';});renderTable();try{await ensureData(false);indices.forEach(i=>{R.rows[i].result=computeResult(R.rows[i].code);R.rows[i].loading=false;});}catch(err){indices.forEach(i=>{R.rows[i].result=null;R.rows[i].loading=false;R.rows[i].error=err.message||'Erro na consulta';});}renderTable();}
+  function bind(view){const root=view.querySelector('[data-rpl-lazy]');root.querySelector('[data-clear]').onclick=()=>{R.snapshot=null;R.rows=Array.from({length:MIN_ROWS},()=>emptyItem());renderTable();};root.querySelector('[data-paste]').onclick=openPaste;bindTable(root);}
+  function bindTable(root){
+    root.querySelectorAll('[data-code]').forEach(input=>{
+      input.addEventListener('input',e=>{const i=Number(e.target.dataset.code),value=e.target.value.replace(/\D+/g,'');if(e.target.value!==value)e.target.value=value;const item=R.rows[i];if(item.code!==value){item.code=value;item.result=null;item.error='';}});
+      input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();lookupRows([Number(e.target.dataset.code)]);}});
+      input.addEventListener('change',e=>lookupRows([Number(e.target.dataset.code)]));
+    });
+    root.querySelectorAll('[data-consume-row]').forEach(btn=>btn.onclick=()=>openConsumePlan(Number(btn.dataset.consumeRow)));
+  }
+  async function lookupRows(indices){
+    const valid=indices.filter(i=>R.rows[i]&&/^\d+$/.test(String(R.rows[i].code||'')));
+    for(const i of indices){const item=R.rows[i];if(!item)continue;if(!item.code){item.result=null;item.error='';item.loading=false;}else if(!/^\d+$/.test(item.code)){item.result=null;item.error='Código inválido';item.loading=false;}}
+    if(!valid.length){renderTable();return;}
+    const requests=new Map();
+    valid.forEach(i=>{const item=R.rows[i];item.loading=true;item.error='';requests.set(i,++item.request);});
+    renderTable();
+    try{
+      const codes=[...new Set(valid.map(i=>String(R.rows[i].code)))];
+      const data=await call('lookup_replenishment',{codes,area:AREA});
+      R.snapshot=data.snapshot||null;
+      valid.forEach(i=>{const item=R.rows[i];if(requests.get(i)!==item.request)return;item.result=computeResult(item.code,data.rows||[]);item.loading=false;});
+    }catch(err){
+      valid.forEach(i=>{const item=R.rows[i];if(requests.get(i)===item.request){item.result=null;item.loading=false;item.error=err.message||'Erro na consulta';}});
+    }
+    renderTable();
+  }
   function dialog(title,body){$('rplv2Dialog')?.remove();const d=document.createElement('dialog');d.id='rplv2Dialog';d.className='stock-dialog';d.innerHTML=`<div class="stock-heading"><h2>${esc(title)}</h2><button class="outline-button" data-close>Fechar</button></div>${body}<p class="stock-error" data-error></p>`;document.body.appendChild(d);d.querySelector('[data-close]').onclick=()=>d.close();d.showModal();return d;}
-  function openPaste(){const d=dialog('Colar lista de produtos',`<p>Cole os códigos separados por linha, espaço, vírgula ou ponto e vírgula.</p><textarea class="rplv2-paste" rows="10" placeholder="11191\n9084\n9071"></textarea><button class="primary-button" data-apply>Aplicar lista</button>`);d.querySelector('[data-apply]').onclick=()=>{const codes=[...new Set(d.querySelector('textarea').value.split(/[\s,;|]+/).map(v=>v.replace(/\D+/g,'')).filter(Boolean))].slice(0,50);R.rows=Array.from({length:Math.max(MIN_ROWS,codes.length)},(_,i)=>({code:codes[i]||'',result:null,loading:false,error:'',request:0}));d.close();renderTable();lookupAll();};}
-  async function openConsume(id,rowIndex){if(!canEdit())return;const item=R.rows[rowIndex],row=item?.result?.sequence?.find(r=>String(r.id)===String(id));if(!row)return toast('Atualize esta linha antes de consumir.',true);if(row.fefo_status!=='Prioridade FEFO')return toast('Esta posição não é mais a prioridade FEFO.',true);const current=Number(row.pallets);if(!Number.isFinite(current)||current<=0)return toast('Saldo da posição não está informado.',true);const d=dialog('Registrar consumo',`<div class="consume-summary"><strong>${esc(row.sku_code)} · ${esc(row.sku_name)}</strong><span>Rua ${esc(row.address)} · validade ${dt(row.expires_on)}</span><b>Saldo atual: ${nf.format(current)} PLT</b></div><form class="stock-form consume-form" data-form><label class="consume-choice"><input type="radio" name="mode" value="all" checked> Usou tudo</label><label class="consume-choice"><input type="radio" name="mode" value="partial"> Sobrou saldo</label><label>Quantidade utilizada (PLT)<input name="used" type="number" min="0.01" max="${current}" step="0.01" value="1" disabled></label><label>Saldo restante<input name="remaining" value="0" disabled></label><label class="consume-note">Observação<input name="note" placeholder="Opcional"></label><button class="primary-button" type="submit">Confirmar consumo</button></form>`);const f=d.querySelector('[data-form]'),used=f.elements.used,remaining=f.elements.remaining;const calc=()=>{const all=f.elements.mode.value==='all';used.disabled=all;const q=all?current:Number(used.value||0);remaining.value=nf.format(Math.max(0,current-q));};f.querySelectorAll('[name=mode]').forEach(x=>x.onchange=calc);used.oninput=calc;calc();f.onsubmit=async e=>{e.preventDefault();const b=e.submitter;b.disabled=true;try{const all=f.elements.mode.value==='all',qty=all?current:Number(used.value);if(!Number.isFinite(qty)||qty<=0||qty>current)throw new Error('Informe uma quantidade válida.');const result=await call('consume',{previous_id:R.data.snapshot.id,row_id:id,used:qty,note:f.elements.note.value||''});d.close();R.data=null;await lookupRow(rowIndex,true);toast(`Consumo registrado. Saldo restante: ${nf.format(result.remaining)} PLT.`);}catch(err){d.querySelector('[data-error]').textContent=err.message;}finally{b.disabled=false;}};}
-  function openModule(prefill=''){const view=$('replenishmentView');if(!view)return;if(prefill){R.rows=Array.from({length:MIN_ROWS},(_,i)=>({code:i===0?String(prefill):'',result:null,loading:false,error:'',request:0}));}renderShell();document.querySelectorAll('main > .view').forEach(v=>v.classList.add('hidden'));document.querySelectorAll('.nav-link').forEach(n=>n.classList.remove('active'));view.classList.remove('hidden');document.querySelector('[data-view="replenishment"]')?.classList.add('active');$('sidebar')?.classList.remove('open');if($('pageTitle'))$('pageTitle').textContent='Reabastecimento';if($('pageSubtitle'))$('pageSubtitle').textContent='Sequência FEFO sob demanda.';if(prefill)lookupRow(0,false);setTimeout(()=>view.querySelector('[data-code]')?.focus(),0);}
-  function install(){if(R.installed)return;const nav=document.querySelector('[data-view="replenishment"]'),view=$('replenishmentView');if(!nav||!view||!window.state)return setTimeout(install,100);const clone=nav.cloneNode(true);clone.onclick=e=>{e.preventDefault();openModule();};nav.replaceWith(clone);document.addEventListener('click',e=>{const btn=e.target.closest?.('[data-fefo]');if(!btn)return;e.preventDefault();e.stopImmediatePropagation();openModule(btn.dataset.fefo||'');},true);if(!$('rplv2Css')){const l=document.createElement('link');l.id='rplv2Css';l.rel='stylesheet';l.href='replenishment-lazy.css?v=20260917-1';document.head.appendChild(l);}R.installed=true;}
+  function openPaste(){
+    const d=dialog('Colar lista de produtos',`<p>Cole os códigos separados por linha, espaço, vírgula ou ponto e vírgula.</p><textarea class="rplv2-paste" rows="10" placeholder="11191\n9084\n9071"></textarea><button class="primary-button" data-apply>Aplicar lista</button>`);
+    d.querySelector('[data-apply]').onclick=()=>{const codes=[...new Set(d.querySelector('textarea').value.split(/[\s,;|]+/).map(v=>v.replace(/\D+/g,'')).filter(Boolean))].slice(0,50);R.snapshot=null;R.rows=Array.from({length:Math.max(MIN_ROWS,codes.length)},(_,i)=>emptyItem(codes[i]||''));d.close();renderTable();lookupRows(codes.map((_,i)=>i));};
+  }
+  function buildClientPlan(sequence,requested){
+    let remaining=requested;const lines=[];const total=(sequence||[]).reduce((s,r)=>s+Number(r.pallets||0),0);
+    for(const r of sequence||[]){if(remaining<=0.000001)break;const current=Number(r.pallets||0);if(!Number.isFinite(current)||current<=0)continue;const used=Math.min(current,remaining);lines.push({address:r.address,used,available:current,expires_on:r.expires_on});remaining=Number((remaining-used).toFixed(4));}
+    return {lines,total,missing:Math.max(0,Number((requested-total).toFixed(4)))};
+  }
+  function openConsumePlan(rowIndex){
+    if(!canEdit())return;
+    const item=R.rows[rowIndex];if(!item?.result?.found||!item.result.sequence.length)return toast('Não há saldo disponível para este produto.',true);
+    const d=dialog('Planejar consumo',`<div class="consume-summary"><strong>${esc(item.code)} · ${esc(item.result.name)}</strong><span>Disponível em FEFO: ${nf.format(item.result.total)} PLT · ${item.result.sequence.length} posição(ões)</span></div><form class="stock-form consume-form rplv2-plan-form" data-plan-form><label>Necessidade (PLT)<input name="requested" type="number" min="0.01" step="0.01" placeholder="Ex.: 3,5" autofocus></label><label class="consume-note">Observação<input name="note" placeholder="Opcional"></label><div class="rplv2-plan" data-plan></div><button class="primary-button" type="submit" data-confirm disabled>Confirmar consumo</button></form>`);
+    const f=d.querySelector('[data-plan-form]'),input=f.elements.requested,box=d.querySelector('[data-plan]'),confirm=d.querySelector('[data-confirm]');
+    const recalc=()=>{
+      const requested=Number(input.value);if(!Number.isFinite(requested)||requested<=0){box.innerHTML='<span class="rplv2-plan-hint">Informe a quantidade necessária para montar a retirada.</span>';confirm.disabled=true;return;}
+      const plan=buildClientPlan(item.result.sequence,requested);
+      if(plan.missing>0){box.innerHTML=`<div class="rplv2-shortage"><strong>Estoque insuficiente</strong><span>Disponível: ${nf.format(plan.total)} PLT · Necessidade: ${nf.format(requested)} PLT · Falta: ${nf.format(plan.missing)} PLT</span></div>`;confirm.disabled=true;return;}
+      box.innerHTML=`<div class="rplv2-plan-status"><strong>Necessidade atendida</strong><span>${nf.format(requested)} PLT em ${plan.lines.length} posição(ões)</span></div><div class="rplv2-plan-list">${plan.lines.map((p,i)=>`<div><b>${i+1}º · ${esc(p.address)}</b><span>Retirar ${nf.format(p.used)} PLT${p.used<p.available?` · sobra ${nf.format(p.available-p.used)} PLT`:''}</span></div>`).join('')}</div>`;
+      confirm.disabled=false;
+    };
+    input.addEventListener('input',recalc);recalc();
+    f.onsubmit=async e=>{e.preventDefault();const requested=Number(input.value);if(!R.snapshot?.id)throw new Error('Atualize o produto antes de consumir.');const btn=e.submitter;btn.disabled=true;try{const result=await call('consume_plan',{previous_id:R.snapshot.id,sku_code:item.code,area:AREA,requested,note:f.elements.note.value||''});d.close();R.snapshot=null;await lookupRows([rowIndex]);toast(`Consumo registrado: ${nf.format(result.used)} PLT em ${result.positions} posição(ões).`);}catch(err){d.querySelector('[data-error]').textContent=err.message;btn.disabled=false;}};
+  }
+  function openModule(prefill=''){
+    const view=$('replenishmentView');if(!view)return;
+    R.snapshot=null;
+    R.rows=Array.from({length:MIN_ROWS},(_,i)=>emptyItem(i===0&&prefill?String(prefill):''));
+    renderShell();
+    document.querySelectorAll('main > .view').forEach(v=>v.classList.add('hidden'));document.querySelectorAll('.nav-link').forEach(n=>n.classList.remove('active'));view.classList.remove('hidden');document.querySelector('[data-view="replenishment"]')?.classList.add('active');$('sidebar')?.classList.remove('open');if($('pageTitle'))$('pageTitle').textContent='Reabastecimento';if($('pageSubtitle'))$('pageSubtitle').textContent='Sequência FEFO sob demanda.';
+    if(prefill)lookupRows([0]);setTimeout(()=>view.querySelector('[data-code]')?.focus(),0);
+  }
+  function install(){
+    if(R.installed)return;const nav=document.querySelector('[data-view="replenishment"]'),view=$('replenishmentView');if(!nav||!view||!window.state)return setTimeout(install,100);
+    const clone=nav.cloneNode(true);clone.onclick=e=>{e.preventDefault();openModule();};nav.replaceWith(clone);
+    document.addEventListener('click',e=>{const btn=e.target.closest?.('[data-fefo]');if(!btn)return;e.preventDefault();e.stopImmediatePropagation();openModule(btn.dataset.fefo||'');},true);
+    if(!$('rplv2Css')){const l=document.createElement('link');l.id='rplv2Css';l.rel='stylesheet';l.href='replenishment-lazy.css?v=20260917-2';document.head.appendChild(l);}R.installed=true;
+  }
   install();
 })();
