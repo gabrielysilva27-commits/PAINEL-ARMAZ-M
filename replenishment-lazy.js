@@ -2,7 +2,7 @@
   const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/stock-api';
   const AREA='Regulador';
   const MIN_ROWS=10;
-  const R={snapshot:null,rows:Array.from({length:MIN_ROWS},()=>({code:'',result:null,loading:false,error:'',request:0})),installed:false};
+  const R={rows:Array.from({length:MIN_ROWS},()=>({code:'',result:null,loading:false,error:'',request:0,snapshotId:null})),installed:false};
   const $=id=>document.getElementById(id);
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const nf=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2});
@@ -16,7 +16,7 @@
     if(!r.ok)throw new Error(d.error||'Falha ao consultar estoque');
     return d;
   }
-  function emptyItem(code=''){return {code,result:null,loading:false,error:'',request:0};}
+  function emptyItem(code=''){return {code,result:null,loading:false,error:'',request:0,snapshotId:null};}
   function sortRows(rows){
     return [...rows].sort((a,b)=>(a.expires_on||'9999').localeCompare(b.expires_on||'9999')||(a.received_on||'9999').localeCompare(b.received_on||'9999')||String(a.address).localeCompare(String(b.address),'pt-BR',{numeric:true}));
   }
@@ -45,10 +45,10 @@
     bind(view);
   }
   function renderTable(){const root=$('replenishmentView')?.querySelector('[data-rpl-lazy]');if(!root)return;root.querySelector('[data-table]').innerHTML=tableHtml();bindTable(root);}
-  function bind(view){const root=view.querySelector('[data-rpl-lazy]');root.querySelector('[data-clear]').onclick=()=>{R.snapshot=null;R.rows=Array.from({length:MIN_ROWS},()=>emptyItem());renderTable();};root.querySelector('[data-paste]').onclick=openPaste;bindTable(root);}
+  function bind(view){const root=view.querySelector('[data-rpl-lazy]');root.querySelector('[data-clear]').onclick=()=>{R.rows=Array.from({length:MIN_ROWS},()=>emptyItem());renderTable();};root.querySelector('[data-paste]').onclick=openPaste;bindTable(root);}
   function bindTable(root){
     root.querySelectorAll('[data-code]').forEach(input=>{
-      input.addEventListener('input',e=>{const i=Number(e.target.dataset.code),value=e.target.value.replace(/\D+/g,'');if(e.target.value!==value)e.target.value=value;const item=R.rows[i];if(item.code!==value){item.code=value;item.result=null;item.error='';}});
+      input.addEventListener('input',e=>{const i=Number(e.target.dataset.code),value=e.target.value.replace(/\D+/g,'');if(e.target.value!==value)e.target.value=value;const item=R.rows[i];if(item.code!==value){item.code=value;item.result=null;item.error='';item.snapshotId=null;}});
       input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();lookupRows([Number(e.target.dataset.code)]);}});
       input.addEventListener('change',e=>lookupRows([Number(e.target.dataset.code)]));
     });
@@ -56,7 +56,7 @@
   }
   async function lookupRows(indices){
     const valid=indices.filter(i=>R.rows[i]&&/^\d+$/.test(String(R.rows[i].code||'')));
-    for(const i of indices){const item=R.rows[i];if(!item)continue;if(!item.code){item.result=null;item.error='';item.loading=false;}else if(!/^\d+$/.test(item.code)){item.result=null;item.error='Código inválido';item.loading=false;}}
+    for(const i of indices){const item=R.rows[i];if(!item)continue;if(!item.code){item.result=null;item.error='';item.loading=false;item.snapshotId=null;}else if(!/^\d+$/.test(item.code)){item.result=null;item.error='Código inválido';item.loading=false;item.snapshotId=null;}}
     if(!valid.length){renderTable();return;}
     const requests=new Map();
     valid.forEach(i=>{const item=R.rows[i];item.loading=true;item.error='';requests.set(i,++item.request);});
@@ -64,17 +64,16 @@
     try{
       const codes=[...new Set(valid.map(i=>String(R.rows[i].code)))];
       const data=await call('lookup_replenishment',{codes,area:AREA});
-      R.snapshot=data.snapshot||null;
-      valid.forEach(i=>{const item=R.rows[i];if(requests.get(i)!==item.request)return;item.result=computeResult(item.code,data.rows||[]);item.loading=false;});
+      valid.forEach(i=>{const item=R.rows[i];if(requests.get(i)!==item.request)return;item.result=computeResult(item.code,data.rows||[]);item.snapshotId=data.snapshot?.id||null;item.loading=false;});
     }catch(err){
-      valid.forEach(i=>{const item=R.rows[i];if(requests.get(i)===item.request){item.result=null;item.loading=false;item.error=err.message||'Erro na consulta';}});
+      valid.forEach(i=>{const item=R.rows[i];if(requests.get(i)===item.request){item.result=null;item.loading=false;item.snapshotId=null;item.error=err.message||'Erro na consulta';}});
     }
     renderTable();
   }
   function dialog(title,body){$('rplv2Dialog')?.remove();const d=document.createElement('dialog');d.id='rplv2Dialog';d.className='stock-dialog';d.innerHTML=`<div class="stock-heading"><h2>${esc(title)}</h2><button class="outline-button" data-close>Fechar</button></div>${body}<p class="stock-error" data-error></p>`;document.body.appendChild(d);d.querySelector('[data-close]').onclick=()=>d.close();d.showModal();return d;}
   function openPaste(){
     const d=dialog('Colar lista de produtos',`<p>Cole os códigos separados por linha, espaço, vírgula ou ponto e vírgula.</p><textarea class="rplv2-paste" rows="10" placeholder="11191\n9084\n9071"></textarea><button class="primary-button" data-apply>Aplicar lista</button>`);
-    d.querySelector('[data-apply]').onclick=()=>{const codes=[...new Set(d.querySelector('textarea').value.split(/[\s,;|]+/).map(v=>v.replace(/\D+/g,'')).filter(Boolean))].slice(0,50);R.snapshot=null;R.rows=Array.from({length:Math.max(MIN_ROWS,codes.length)},(_,i)=>emptyItem(codes[i]||''));d.close();renderTable();lookupRows(codes.map((_,i)=>i));};
+    d.querySelector('[data-apply]').onclick=()=>{const codes=[...new Set(d.querySelector('textarea').value.split(/[\s,;|]+/).map(v=>v.replace(/\D+/g,'')).filter(Boolean))].slice(0,50);R.rows=Array.from({length:Math.max(MIN_ROWS,codes.length)},(_,i)=>emptyItem(codes[i]||''));d.close();renderTable();lookupRows(codes.map((_,i)=>i));};
   }
   function buildClientPlan(sequence,requested){
     let remaining=requested;const lines=[];const total=(sequence||[]).reduce((s,r)=>s+Number(r.pallets||0),0);
@@ -94,11 +93,10 @@
       confirm.disabled=false;
     };
     input.addEventListener('input',recalc);recalc();
-    f.onsubmit=async e=>{e.preventDefault();const requested=Number(input.value);if(!R.snapshot?.id)throw new Error('Atualize o produto antes de consumir.');const btn=e.submitter;btn.disabled=true;try{const result=await call('consume_plan',{previous_id:R.snapshot.id,sku_code:item.code,area:AREA,requested,note:f.elements.note.value||''});d.close();R.snapshot=null;await lookupRows([rowIndex]);toast(`Consumo registrado: ${nf.format(result.used)} PLT em ${result.positions} posição(ões).`);}catch(err){d.querySelector('[data-error]').textContent=err.message;btn.disabled=false;}};
+    f.onsubmit=async e=>{e.preventDefault();const requested=Number(input.value);if(!item.snapshotId){d.querySelector('[data-error]').textContent='Atualize o produto antes de consumir.';return;}const btn=e.submitter;btn.disabled=true;try{const result=await call('consume_plan',{previous_id:item.snapshotId,sku_code:item.code,area:AREA,requested,note:f.elements.note.value||''});d.close();item.snapshotId=null;await lookupRows([rowIndex]);toast(`Consumo registrado: ${nf.format(result.used)} PLT em ${result.positions} posição(ões).`);}catch(err){d.querySelector('[data-error]').textContent=err.message;btn.disabled=false;}};
   }
   function openModule(prefill=''){
     const view=$('replenishmentView');if(!view)return;
-    R.snapshot=null;
     R.rows=Array.from({length:MIN_ROWS},(_,i)=>emptyItem(i===0&&prefill?String(prefill):''));
     renderShell();
     document.querySelectorAll('main > .view').forEach(v=>v.classList.add('hidden'));document.querySelectorAll('.nav-link').forEach(n=>n.classList.remove('active'));view.classList.remove('hidden');document.querySelector('[data-view="replenishment"]')?.classList.add('active');$('sidebar')?.classList.remove('open');if($('pageTitle'))$('pageTitle').textContent='Reabastecimento';if($('pageSubtitle'))$('pageSubtitle').textContent='Sequência FEFO sob demanda.';
