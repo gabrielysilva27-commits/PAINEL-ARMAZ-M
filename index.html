@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#f47a20" />
   <meta name="description" content="Painel operacional do armazém Império." />
-  <meta name="ui-version" content="2026-09-17-stock-fefo-v2" />
+  <meta name="ui-version" content="2026-09-17-stock-fefo-v3" />
   <title>Painel Armazém | Império</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2336363b'/%3E%3Cpath d='M14 43h36v7H14zm4-22 8 8 6-16 7 16 8-8-3 18H21z' fill='%23f47a20'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -64,9 +64,7 @@
           <div class="toolbar-spacer"></div>
           <button class="primary-button admin-only" id="importButton">＋ Atualizar dados</button>
         </div>
-
         <div class="month-strip" id="monthStrip"></div>
-
         <section class="abc-kpis">
           <article class="metric-card"><p>SKUs</p><strong id="kpiSkus">—</strong><small id="kpiSource"></small></article>
           <article class="metric-card"><p>Volume</p><strong id="kpiVolume">—</strong></article>
@@ -74,23 +72,12 @@
           <article class="metric-card curve-b"><p>Curva B</p><strong id="kpiB">—</strong></article>
           <article class="metric-card curve-c"><p>Curva C</p><strong id="kpiC">—</strong></article>
         </section>
-
         <section class="abc-layout">
-          <article class="panel pareto-panel">
-            <div class="panel-heading"><h2>Concentração do volume</h2><div class="legend"><span><i class="dot a"></i>A</span><span><i class="dot b"></i>B</span><span><i class="dot c"></i>C</span></div></div>
-            <div class="pareto-summary" id="paretoSummary"><div class="pareto-empty">Nenhum dado carregado para este mês.</div></div>
-          </article>
-          <article class="panel area-panel">
-            <div class="panel-heading"><h2>Áreas</h2></div>
-            <div class="area-tabs" id="areaCards"></div>
-          </article>
+          <article class="panel pareto-panel"><div class="panel-heading"><h2>Concentração do volume</h2><div class="legend"><span><i class="dot a"></i>A</span><span><i class="dot b"></i>B</span><span><i class="dot c"></i>C</span></div></div><div class="pareto-summary" id="paretoSummary"><div class="pareto-empty">Nenhum dado carregado para este mês.</div></div></article>
+          <article class="panel area-panel"><div class="panel-heading"><h2>Áreas</h2></div><div class="area-tabs" id="areaCards"></div></article>
         </section>
-
         <section class="panel table-panel">
-          <div class="panel-heading table-heading">
-            <h2 id="tableTitle">SKUs • Regulador</h2>
-            <div class="table-tools"><input id="skuSearch" placeholder="Buscar SKU ou descrição" /><select id="classFilter"><option value="">Todas as curvas</option><option value="A">Curva A</option><option value="B">Curva B</option><option value="C">Curva C</option></select></div>
-          </div>
+          <div class="panel-heading table-heading"><h2 id="tableTitle">SKUs • Regulador</h2><div class="table-tools"><input id="skuSearch" placeholder="Buscar SKU ou descrição" /><select id="classFilter"><option value="">Todas as curvas</option><option value="A">Curva A</option><option value="B">Curva B</option><option value="C">Curva C</option></select></div></div>
           <div class="table-wrap"><table><thead><tr><th>#</th><th>Código</th><th>Descrição</th><th>Volume (HL)</th><th>Média/dia</th><th>Peso</th><th>Pareto</th><th>Curva</th></tr></thead><tbody id="abcTableBody"></tbody></table></div>
           <div class="empty-state hidden" id="abcEmpty"><strong>Sem dados para exibir</strong><span>Atualize o mês com os relatórios Promax.</span></div>
         </section>
@@ -103,26 +90,14 @@
       <div class="modal-header"><div><p class="eyebrow">ATUALIZAÇÃO MENSAL</p><h2>Gerar Curva ABC</h2></div><button class="close-button" id="closeImport" aria-label="Fechar">×</button></div>
       <p class="modal-intro">Envie 03.05.19 e 03.02.36.01 do período. O 01.11 e a Base Marketplace são reaproveitados e só precisam ser enviados quando houver alteração.</p>
       <div class="import-grid"><label>Mês de referência<select id="importMonth"></select></label><label>Dias do período<input id="importDays" type="text" value="Automático pelo 03.02.36.01" disabled /></label></div>
-
-      <div class="source-section">
-        <div class="source-section-title"><strong>Arquivos</strong><span>CSV</span></div>
-        <div class="source-file-grid">
-          <label class="source-file" id="slotSales"><input id="reportSales" type="file" accept=".csv" /><span class="source-icon">1</span><span class="source-copy"><strong>03.05.19</strong><small id="nameSales">Venda por produto</small></span></label>
-          <label class="source-file" id="slotPicking"><input id="reportPicking" type="file" accept=".csv" /><span class="source-icon">2</span><span class="source-copy"><strong>03.02.36.01</strong><small id="namePicking">Separação / pallet fechado</small></span></label>
-          <label class="source-file" id="slotCatalog"><input id="reportCatalog" type="file" accept=".csv" /><span class="source-icon">3</span><span class="source-copy"><strong>01.11</strong><small id="nameCatalog">Base estática • opcional</small></span></label>
-          <label class="source-file" id="slotMarketplace"><input id="reportMarketplace" type="file" accept=".csv,.xlsx,.xls" /><span class="source-icon">M</span><span class="source-copy"><strong>Base Marketplace</strong><small id="nameMarketplace">Opcional se já estiver salva</small></span></label>
-        </div>
-        <div class="marketplace-status" id="marketplaceStatus"><span>Base Marketplace</span><strong>Verificando...</strong></div>
-      </div>
-
-      <details class="calc-memory">
-        <summary>Critérios e memória de cálculo</summary>
-        <div class="calc-memory-body">Cada área possui sua própria Curva ABC e seu próprio Pareto.</div>
-      </details>
-      <div class="import-checks" id="importChecks"></div>
-      <p class="import-ready bad" id="importReady">Selecione 03.05.19 e 03.02.36.01.</p>
-      <p class="form-error" id="importError"></p>
-      <div class="modal-actions"><button class="outline-button" id="cancelImport">Cancelar</button><button class="primary-button" id="confirmImport" disabled>Gerar e atualizar</button></div>
+      <div class="source-section"><div class="source-section-title"><strong>Arquivos</strong><span>CSV</span></div><div class="source-file-grid">
+        <label class="source-file" id="slotSales"><input id="reportSales" type="file" accept=".csv" /><span class="source-icon">1</span><span class="source-copy"><strong>03.05.19</strong><small id="nameSales">Venda por produto</small></span></label>
+        <label class="source-file" id="slotPicking"><input id="reportPicking" type="file" accept=".csv" /><span class="source-icon">2</span><span class="source-copy"><strong>03.02.36.01</strong><small id="namePicking">Separação / pallet fechado</small></span></label>
+        <label class="source-file" id="slotCatalog"><input id="reportCatalog" type="file" accept=".csv" /><span class="source-icon">3</span><span class="source-copy"><strong>01.11</strong><small id="nameCatalog">Base estática • opcional</small></span></label>
+        <label class="source-file" id="slotMarketplace"><input id="reportMarketplace" type="file" accept=".csv,.xlsx,.xls" /><span class="source-icon">M</span><span class="source-copy"><strong>Base Marketplace</strong><small id="nameMarketplace">Opcional se já estiver salva</small></span></label>
+      </div><div class="marketplace-status" id="marketplaceStatus"><span>Base Marketplace</span><strong>Verificando...</strong></div></div>
+      <details class="calc-memory"><summary>Critérios e memória de cálculo</summary><div class="calc-memory-body">Cada área possui sua própria Curva ABC e seu próprio Pareto.</div></details>
+      <div class="import-checks" id="importChecks"></div><p class="import-ready bad" id="importReady">Selecione 03.05.19 e 03.02.36.01.</p><p class="form-error" id="importError"></p><div class="modal-actions"><button class="outline-button" id="cancelImport">Cancelar</button><button class="primary-button" id="confirmImport" disabled>Gerar e atualizar</button></div>
     </div>
   </div>
 
@@ -133,5 +108,6 @@
   <script src="performance-core.js?v=20260916-2"></script>
   <script src="stock-module.js?v=20260916-3"></script>
   <script src="stock-enhancements.js?v=20260917-1"></script>
+  <script src="stock-actions-v2.js?v=20260917-1"></script>
 </body>
 </html>
