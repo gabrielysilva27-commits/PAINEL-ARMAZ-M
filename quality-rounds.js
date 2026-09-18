@@ -32,7 +32,7 @@
  }
  function historyRows(items){
    if(!items?.length)return '<tr><td colspan="6"><div class="quality-empty">Sem rondas para este filtro.</div></td></tr>';
-   return items.map(r=>{const open=Q.openDetail===r.id;const sku=(r.sku_codes||[]).join(', ')||'—';return '<tr class="quality-history-main" data-round="'+r.id+'"><td>'+date(r.date)+'</td><td><strong>'+esc(r.auditor)+'</strong></td><td><span class="quality-score '+(r.compliance<.95?'warn':'')+'">'+pct(r.compliance)+'</span></td><td>'+int(r.anomaly_count)+'</td><td class="quality-skus">'+esc(sku)+'</td><td><button class="quality-detail-btn" data-round="'+r.id+'">'+(open?'Fechar':'Detalhes')+'</button></td></tr>'+(open?'<tr class="quality-detail-row"><td colspan="6">'+detail(r)+'</td></tr>':'');}).join('');
+   return items.map(r=>{const open=Q.openDetail===r.id;const sku=(r.sku_codes||[]).join(', ')||'—';return '<tr class="quality-history-main" data-unused-round="'+r.id+'"><td>'+date(r.date)+'</td><td><strong>'+esc(r.auditor)+'</strong></td><td><span class="quality-score '+(r.compliance<.95?'warn':'')+'">'+pct(r.compliance)+'</span></td><td>'+int(r.anomaly_count)+'</td><td class="quality-skus">'+esc(sku)+'</td><td><button class="quality-detail-btn" data-detail="'+r.id+'">'+(open?'Fechar':'Detalhes')+'</button></td></tr>'+(open?'<tr class="quality-detail-row"><td colspan="6">'+detail(r)+'</td></tr>':'');}).join('');
  }
  function detail(r){
    if(!r.anomaly_count)return '<div class="quality-round-detail ok"><strong>Ronda sem anomalias</strong><span>Nenhum item foi marcado como “Sim”.</span></div>';
@@ -50,7 +50,7 @@
     (s.timestamp_mismatch?'<p class="quality-audit-note">Auditoria de dados: '+int(s.timestamp_mismatch)+' registro(s) possuem ano do envio diferente da DATA da ronda. O painel usa a DATA da ronda como referência.</p>':'')+
    '</div>';
    $('qualityMonth').onchange=e=>{Q.month=e.target.value;load();};$('qualityAuditor').onchange=e=>{Q.auditor=e.target.value;load();};$('qualityRefresh').onclick=()=>load(true);
-   root.querySelectorAll('[data-round]').forEach(el=>el.addEventListener('click',e=>{if(e.target.closest('button')||el.tagName==='BUTTON'){const id=Number(el.dataset.round);Q.openDetail=Q.openDetail===id?null:id;render();}}));
+   root.querySelectorAll('[data-detail]').forEach(btn=>btn.addEventListener('click',()=>{const id=Number(btn.dataset.detail);Q.openDetail=Q.openDetail===id?null:id;render();}));
  }
  async function load(force=false){
    const root=$('qualityRoundsView'),req=++Q.req;if(root)root.innerHTML='<div class="quality-loading"><span></span>Carregando indicadores de 2026…</div>';
