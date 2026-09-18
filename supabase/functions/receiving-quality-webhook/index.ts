@@ -80,6 +80,7 @@ function transform(item:any){
       answers,other_nonconformity:clean(values[13]),post_unload_damage:clean(values[21]),
       sku_text:skuText(values),sku_codes:skuCodes(values),
       binary_nonconformity_count:bad,binary_checks_answered:answered,
+      damage_count:bad+(meaningful(values[13])?1:0)+(meaningful(values[21])?1:0),
       nonconformity_categories:[...cats],has_nonconformity:cats.size>0,
       submitted_year_mismatch:submitted?submitted.y!==received.y:false,imported_at:new Date().toISOString()
     }
