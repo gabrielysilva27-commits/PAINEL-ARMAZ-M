@@ -15,6 +15,9 @@ async function requireSession(req:Request){
 }
 const monthName=(m:number)=>["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"][m]||String(m);
 const isoWeek=(date:string)=>{const d=new Date(date+"T12:00:00Z");const day=(d.getUTCDay()+6)%7;d.setUTCDate(d.getUTCDate()-day+3);const first=new Date(Date.UTC(d.getUTCFullYear(),0,4));return 1+Math.round(((d.getTime()-first.getTime())/86400000-3+(first.getUTCDay()+6)%7)/7);};
+const PERIOD_YEAR=2026;
+const PALLETS_PER_TRUCK=28;
+const PULL_VEHICLES=["229","231","246","264","271","289","298","312"];
 
 Deno.serve(async(req:Request)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
@@ -27,22 +30,32 @@ Deno.serve(async(req:Request)=>{
     const month=String(body.month||"all"),checker=String(body.checker||"").trim(),origin=String(body.origin||"").trim();
     if(month!=="all"&&!/^(0[1-9]|1[0-2])$/.test(month))return json({error:"Mês inválido"},400);
 
-    let q=db.from("receiving_quality_checks").select("id,received_date,checker,driver,origin,sku_codes,sku_text,binary_nonconformity_count,binary_checks_answered,nonconformity_categories,has_nonconformity,other_nonconformity,post_unload_damage,submitted_year_mismatch,imported_at").gte("received_date","2026-01-01").lte("received_date","2026-12-31").order("received_date",{ascending:false}).order("id",{ascending:false});
-    if(month!=="all"){
-      const mm=Number(month),start=`2026-${month}-01`,next=mm===12?"2027-01-01":`2026-${String(mm+1).padStart(2,"0")}-01`;
-      q=q.gte("received_date",start).lt("received_date",next);
-    }
+    const mm=month==="all"?null:Number(month);
+    const periodStart=month==="all"?"2026-01-01":`2026-${month}-01`;
+    const periodEnd=month==="all"?"2027-01-01":mm===12?"2027-01-01":`2026-${String(mm!+1).padStart(2,"0")}-01`;
+
+    let q=db.from("receiving_quality_checks").select("id,received_date,checker,driver,origin,sku_codes,sku_text,binary_nonconformity_count,binary_checks_answered,damage_count,nonconformity_categories,has_nonconformity,other_nonconformity,post_unload_damage,submitted_year_mismatch,imported_at").gte("received_date",periodStart).lt("received_date",periodEnd).order("received_date",{ascending:false}).order("id",{ascending:false});
     if(checker)q=q.eq("checker",checker);
     if(origin)q=q.eq("origin",origin);
     const {data:rows,error}=await q;if(error)throw error;
 
-    const [{data:people,error:pErr},{data:origins,error:oErr},{data:sync,error:sErr}]=await Promise.all([
-      db.from("receiving_quality_checks").select("checker").gte("received_date","2026-01-01").lte("received_date","2026-12-31"),
-      db.from("receiving_quality_checks").select("origin").gte("received_date","2026-01-01").lte("received_date","2026-12-31"),
-      db.from("receiving_quality_sync_state").select("last_source_row,last_synced_at,last_status,last_error").eq("source_id","1cZ3-elTqS4sFTXDiB5vGXDamt-E_XRdOGg_mC959M9w").maybeSingle()
-    ]);if(pErr)throw pErr;if(oErr)throw oErr;if(sErr)throw sErr;
-    const checkers=[...new Set((people||[]).map((r:any)=>r.checker).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),"pt-BR"));
-    const originList=[...new Set((origins||[]).map((r:any)=>r.origin).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),"pt-BR"));
+    const periodRowsPromise=(checker||origin)
+      ? db.from("receiving_quality_checks").select("received_date,damage_count").gte("received_date",periodStart).lt("received_date",periodEnd)
+      : Promise.resolve({data:(rows||[]).map((r:any)=>({received_date:r.received_date,damage_count:r.damage_count})),error:null} as any);
+
+    const [peopleRes,originsRes,syncRes,pullsRes,importRes,periodRowsRes]=await Promise.all([
+      db.from("receiving_quality_checks").select("checker").gte("received_date","2026-01-01").lt("received_date","2027-01-01"),
+      db.from("receiving_quality_checks").select("origin").gte("received_date","2026-01-01").lt("received_date","2027-01-01"),
+      db.from("receiving_quality_sync_state").select("last_source_row,last_synced_at,last_status,last_error").eq("source_id","1cZ3-elTqS4sFTXDiB5vGXDamt-E_XRdOGg_mC959M9w").maybeSingle(),
+      db.from("receiving_pull_daily").select("pull_date,truck_count,pallets_pulled,source_file,imported_at").gte("pull_date",periodStart).lt("pull_date",periodEnd).order("pull_date"),
+      db.from("receiving_pull_imports").select("source_file,min_date,max_date,truck_count,pallets_pulled,imported_at").order("imported_at",{ascending:false}).limit(1).maybeSingle(),
+      periodRowsPromise
+    ]);
+    if(peopleRes.error)throw peopleRes.error;if(originsRes.error)throw originsRes.error;if(syncRes.error)throw syncRes.error;if(pullsRes.error)throw pullsRes.error;if(importRes.error)throw importRes.error;if(periodRowsRes.error)throw periodRowsRes.error;
+
+    const people=peopleRes.data||[],origins=originsRes.data||[],sync=syncRes.data||null,pulls=pullsRes.data||[],periodRows=periodRowsRes.data||[];
+    const checkers=[...new Set(people.map((r:any)=>r.checker).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),"pt-BR"));
+    const originList=[...new Set(origins.map((r:any)=>r.origin).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),"pt-BR"));
 
     let checks=0,binaryNc=0,ncReceipts=0,mismatch=0;
     const trend=new Map<string,{label:string,receipts:number,checks:number,nc:number,nc_receipts:number}>();
@@ -70,11 +83,34 @@ Deno.serve(async(req:Request)=>{
 
       if(history.length<30)history.push({
         id:r.id,date:d,checker:r.checker,driver:r.driver,origin:r.origin,
-        compliance:c?1-n/c:null,has_nonconformity:has,binary_nc:n,
+        compliance:c?1-n/c:null,has_nonconformity:has,binary_nc:n,damage_count:Number(r.damage_count||0),
         sku_codes:r.sku_codes||[],sku_text:r.sku_text||"",categories:r.nonconformity_categories||[],
         other_nonconformity:r.other_nonconformity||"",post_unload_damage:r.post_unload_damage||""
       });
     }
+
+    const damageByDate=new Map<string,number>();
+    for(const r of periodRows)damageByDate.set(String(r.received_date),(damageByDate.get(String(r.received_date))||0)+Number(r.damage_count||0));
+    const pullDateSet=new Set(pulls.map((p:any)=>String(p.pull_date)));
+    let palletsPulled=0,trucksPulled=0,damagedPallets=0,uncoveredDamaged=0;
+    for(const p of pulls){palletsPulled+=Number(p.pallets_pulled||0);trucksPulled+=Number(p.truck_count||0);damagedPallets+=damageByDate.get(String(p.pull_date))||0;}
+    for(const [d,n] of damageByDate)if(!pullDateSet.has(d))uncoveredDamaged+=n;
+
+    const palletTrendMap=new Map<string,{key:string,label:string,trucks:number,pulled:number,damaged:number}>();
+    for(const p of pulls){
+      const d=String(p.pull_date),date=new Date(d+"T12:00:00Z"),damage=damageByDate.get(d)||0;
+      const key=month==="all"?d.slice(0,7):d;
+      const label=month==="all"?monthName(date.getUTCMonth()+1):d.slice(8,10)+"/"+d.slice(5,7);
+      const cur=palletTrendMap.get(key)||{key,label,trucks:0,pulled:0,damaged:0};
+      cur.trucks+=Number(p.truck_count||0);cur.pulled+=Number(p.pallets_pulled||0);cur.damaged+=damage;palletTrendMap.set(key,cur);
+    }
+    const palletTrend=[...palletTrendMap.values()].sort((a,b)=>a.key.localeCompare(b.key)).map(x=>({...x,damage_rate:x.pulled?x.damaged/x.pulled:null}));
+
+    const latestImport=importRes.data||null;
+    const coverageMonths=new Set((await db.from("receiving_pull_daily").select("pull_date").gte("pull_date","2026-01-01").lt("pull_date","2027-01-01")).data?.map((x:any)=>String(x.pull_date).slice(5,7))||[]);
+    const currentMonth=Math.min(12,new Date().getUTCFullYear()===2026?new Date().getUTCMonth()+1:12);
+    const missingMonths=[] as string[];
+    for(let i=1;i<=currentMonth;i++){const m=String(i).padStart(2,"0");if(!coverageMonths.has(m))missingMonths.push(m);}
 
     const topSkuEntries=[...sku.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"pt-BR",{numeric:true})).slice(0,10);
     let catalog:any[]=[];
@@ -90,10 +126,21 @@ Deno.serve(async(req:Request)=>{
     const trendData=[...trend.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([key,v])=>({key,...v,compliance:v.checks?1-v.nc/v.checks:null,nc_rate:v.receipts?v.nc_receipts/v.receipts:null}));
 
     return json({
-      filters:{year:2026,month,checker,origin,checkers,origins:originList},
-      summary:{receipts:(rows||[]).length,nc_receipts:ncReceipts,binary_nonconformities:binaryNc,compliance:checks?1-binaryNc/checks:null,unique_nc_skus:sku.size,timestamp_mismatch:mismatch},
-      trend:trendData,top_categories:topCategories,top_skus:topSkus,by_checker:checkerData,by_origin:originData,top_drivers:driverData,history,
+      filters:{year:PERIOD_YEAR,month,checker,origin,checkers,origins:originList},
+      summary:{
+        receipts:(rows||[]).length,nc_receipts:ncReceipts,binary_nonconformities:binaryNc,compliance:checks?1-binaryNc/checks:null,
+        unique_nc_skus:sku.size,timestamp_mismatch:mismatch,
+        pallets_pulled:palletsPulled,trucks_pulled:trucksPulled,damaged_pallets:damagedPallets,
+        damage_rate:palletsPulled?damagedPallets/palletsPulled:null,uncovered_damaged_pallets:uncoveredDamaged
+      },
+      trend:trendData,pallet_trend:palletTrend,top_categories:topCategories,top_skus:topSkus,by_checker:checkerData,by_origin:originData,top_drivers:driverData,history,
       sync:sync||null,
+      pull_source:{
+        vehicles:PULL_VEHICLES,pallets_per_truck:PALLETS_PER_TRUCK,
+        latest_import:latestImport,
+        missing_months:missingMonths,
+        note:"Indicador de paletes segue o período selecionado e cruza cada dia do Forms com as entradas Entrada Cdd/Fab do relatório 03.11.20."
+      },
       source:{form:"CHECK QUALIDADE DE RECEBIMENTO PUXADA",sheet:"CHECK QUALIDADE DE RECEBIMENTO PUXADA (respostas)"}
     });
   }catch(e){console.error(e);return json({error:e instanceof Error?e.message:"Erro ao carregar Qualidade do Recebimento"},500);}
