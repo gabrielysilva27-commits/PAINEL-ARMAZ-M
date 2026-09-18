@@ -62,7 +62,7 @@ Deno.serve(async(req:Request)=>{
       const a=Number(r.anomaly_count||0),t=Number(r.total_checks||0);
       anomalyFlags+=a;checks+=t;if(a>0)anomalyRounds++;if(r.submitted_year_mismatch)mismatch++;
       const p=people.get(r.auditor)||{rounds:0,anomalies:0,checks:0};p.rounds++;p.anomalies+=a;p.checks+=t;people.set(r.auditor,p);
-      for(const c of r.sku_codes||[])sku.set(String(c),(sku.get(String(c))||0)+1);
+      if(a>0)for(const c of new Set(r.sku_codes||[]))sku.set(String(c),(sku.get(String(c))||0)+1);
       for(const [key,val] of Object.entries(r.answers||{})){
         if(!val)continue;const q=qByKey.get(key);if(!q)continue;const nk=norm(q.label);const cur=qAgg.get(nk)||{label:q.label,count:0};cur.count++;qAgg.set(nk,cur);
       }
@@ -81,7 +81,7 @@ Deno.serve(async(req:Request)=>{
     }
     const uniqueSku=[...sku.keys()].length;
     const topQuestions=[...qAgg.values()].sort((a,b)=>b.count-a.count||a.label.localeCompare(b.label,"pt-BR")).slice(0,10);
-    const topSkus=[...sku.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"pt-BR",{numeric:true})).slice(0,10).map(([code,count])=>({code,count}));
+    const topSkus=[...sku.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"pt-BR",{numeric:true})).slice(0,10).map(([code,count],index)=>({rank:index+1,code,count}));
     const byPerson=[...people.entries()].map(([name,v])=>({name,...v,compliance:v.checks?1-v.anomalies/v.checks:null})).sort((a,b)=>b.rounds-a.rounds);
     const trendData=[...trend.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([key,v])=>({key,...v,compliance:v.checks?1-v.anomalies/v.checks:null}));
 
