@@ -5,8 +5,8 @@
     if(window.__receivingQuality)return Promise.resolve(window.__receivingQuality);
     if(loading)return loading;
     loading=new Promise((resolve,reject)=>{
-      if(!$('receivingQualityCss')){const l=document.createElement('link');l.id='receivingQualityCss';l.rel='stylesheet';l.href='receiving-quality.css?v=20260918-1';document.head.appendChild(l);}
-      const s=document.createElement('script');s.src='receiving-quality.js?v=20260918-1';s.async=true;s.onload=()=>resolve(window.__receivingQuality);s.onerror=()=>reject(new Error('Falha ao carregar Qualidade do Recebimento'));document.body.appendChild(s);
+      if(!$('receivingQualityCss')){const l=document.createElement('link');l.id='receivingQualityCss';l.rel='stylesheet';l.href='receiving-quality.css?v=20260918-2';document.head.appendChild(l);}
+      const s=document.createElement('script');s.src='receiving-quality.js?v=20260918-2';s.async=true;s.onload=()=>resolve(window.__receivingQuality);s.onerror=()=>reject(new Error('Falha ao carregar Qualidade do Recebimento'));document.body.appendChild(s);
     });
     return loading;
   }
