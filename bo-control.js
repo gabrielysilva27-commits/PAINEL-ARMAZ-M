@@ -43,7 +43,6 @@
       '<div class="bo-control-actions"><button class="bo-btn-secondary" id="boRefresh">Atualizar</button><button class="bo-btn-secondary" id="boExportPa">PA (.xlsx)</button><button class="bo-btn-secondary" id="boPreviewDaily">Visualizar Informativo</button><button class="bo-btn-secondary" id="boExportDaily">Informativo (.xlsx)</button></div>'+
       '</div><div style="display:flex;justify-content:flex-end;margin-top:10px"><label style="display:grid;gap:5px;font-size:12px;font-weight:700">Data do Informativo<input id="boDailyDate" type="date" value="'+today()+'" style="border:1px solid #d7d8dd;border-radius:9px;padding:9px 10px"></label></div>'+
       '<div class="bo-table-wrap"><table class="bo-table"><thead><tr><th>B.O.</th><th>Data/Hora</th><th>Conferente</th><th>Funcionário</th><th>Turno</th><th>Motivo</th><th>Local</th><th>Status</th><th>Ação</th></tr></thead><tbody id="boTableBody"></tbody></table></div><div class="bo-empty hidden" id="boEmpty">Nenhum B.O. encontrado.</div><p class="bo-export-note">A PA e o Informativo são derivados automaticamente dos B.O.s validados. Não há nova digitação.</p></section>'+
-      (permissions&&permissions.can_manage_pins?'<section class="bo-control-panel" id="boPinPanel"><div><p class="eyebrow">ACESSO DOS CONFERENTES</p><h2 style="margin:0">PINs do B.O. Digital</h2><p class="bo-export-note">Os PINs são individuais e exibidos somente no momento da geração/reset.</p></div><div class="bo-control-actions" style="margin-top:12px"><button class="bo-btn-primary" id="boGeneratePins">Gerar PINs faltantes</button></div><div id="boPinIssued"></div><div id="boPinList" class="bo-pin-list" style="margin-top:12px"></div></section>':'')+
       '</div>'+
       '<dialog id="boReviewDialog" class="bo-review-dialog"><div class="bo-review-inner"><div class="bo-review-header"><div><p class="eyebrow">VALIDAÇÃO DO CONTROLE</p><h2 id="boDialogTitle"></h2></div><button id="boDialogClose" aria-label="Fechar">×</button></div><div id="boDialogBody"></div></div></dialog>'+
       '<dialog id="boInformativoDialog" class="bo-informativo-dialog"><div class="bo-review-inner"><div class="bo-review-header"><div><p class="eyebrow">INFORMATIVO DE QUEBRA DIÁRIA</p><h2 id="boInfDialogTitle"></h2></div><button id="boInfClose" aria-label="Fechar">×</button></div><div class="bo-dialog-tools"><button class="bo-btn-secondary" id="boInfPrint">Imprimir / PDF</button><button class="bo-btn-primary" id="boInfDownload">Baixar XLSX</button></div><div id="boInfBody"></div></div></dialog>';
@@ -57,7 +56,6 @@
     $('boRefresh').onclick=load;$('boExportPa').onclick=exportPaXlsx;$('boPreviewDaily').onclick=previewDaily;$('boExportDaily').onclick=exportDailyXlsx;
     $('boDialogClose').onclick=()=>$('boReviewDialog').close();$('boInfClose').onclick=()=>$('boInformativoDialog').close();
     $('boInfPrint').onclick=printInformativo;$('boInfDownload').onclick=exportDailyXlsx;
-    if(permissions&&permissions.can_manage_pins){$('boGeneratePins').onclick=generateMissingPins;loadPins();}
   }
 
   async function load(){
