@@ -269,3 +269,46 @@ $('reportMarketplace').onchange=e=>{if(e.target.files[0])handleReport('marketpla
   if(!state.token)return;
   try{const d=await api('session');setLoggedIn(d.user);await refreshMonths();await loadCurve();}catch{logoutLocal();}
 })();
+
+
+/* Administração — acessada pelo botão de perfil ADM */
+(() => {
+  const BO_ADMIN_API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/bo-api';
+  const BO_ADMIN_URL='https://painel-armaz-m.gabrielysilva27.workers.dev/bo/';
+  const BO_ADMIN_QR="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAZoAAAGaAQAAAAAefbjOAAADAUlEQVR4nO2bQY6cMBBFX8VIszQ36KPAzaLcDI4yB4iEly0Z/SxsAzMZKUqi0JmmvLDohicKyfpVriqb+O0xf/l9BhxyyCGHHHLIoeeErI6OMo2pA1IHs3VAag+MDzHPofOhQZK0AMS7aYoZs9vdIGaAIEnSW+g88xw6H0qbABAErCYtUNUCing8zDyHHgZJr2ZAUHUYRSP+wZsc+hyQjQSZmRnDAtJr92voj97k0P8NRUkToG+3DMMSxHyTIN4NAEn5PXSeeQ6dBnGMGAkqi+GnqT0wSNL0n3+TQ38DFZ+wp7IFGc19KFcQMzo+cK55Dp0OVY0YdpcQM7soSEsQRFWhcI24FDQot1AyZjQBNrZ9KHMfSqjxqb7JoT+F9iRlD5pSh32VBDFj1gOwes7yAlCLLGNGU5Qk5c1X5HJXWqBO7jWuAVVfkcx2oYD0IhtTh43AMVf1Kb7Job+MLNtUMhNRAoI0bUJRFcQ14smhtiKWFjaWBETzJGWBaAlt8hXx7FDLUce7ifi9EwmAtROpQ7B2LXEZsGE61zyHToe2yLJKQalmvI8xoRXMXSOuAWliNRvj3Uo2CtYSY5r1oImg8nN8iHkOPcBrpBcZqUezhWzDa4cNU+4Eq2lYetPch/PNc+h0aIsjvhtEYQAigWYDG6YgG6btxsnmOXQ6tNU+w5vKRdlz1unNfx5HPDl0yEfUDoi4pScWqG0zbdH4irgQtBqzddS2mX6tMeZ8y9iYzCDeva5xAWjLUHHwEHXDEdvPoSWxvBp+GWi+ZSC9CJKZtLQaeBUPs/rIY8xz6GyN2Mfh5MbQcte7RngccRVoP9P1pid/tXqMJ3UfQOeZ59D50K4MZR30UDPbraWKufeOmStAh8iyxI5A3XBM1D6ZMryucVkoHPYaNtK6qb75SeBLQO9PbLVCBhh0iLSWEzw2LP355jn0MCiqdszM1mEjq9WO/ZiPruNR5jl0GvTTma7Df3GrayxQA02PI54d+uBM1+GqlsD8TJdDDjnkkEMOOfTB+AFczmEtToF0HwAAAABJRU5ErkJggg==";
+  let adminMounted=false;
+  const adminEsc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  async function adminBoCall(action,payload={}){
+    const r=await fetch(BO_ADMIN_API,{method:'POST',headers:{'Content-Type':'application/json','x-session-token':state.token||''},body:JSON.stringify({action,...payload})});
+    const d=await r.json().catch(()=>({error:'Resposta inválida'}));if(!r.ok)throw new Error(d.error||'Erro na Administração');return d;
+  }
+  function ensureAdminView(){
+    if(adminMounted)return;const main=document.querySelector('main');if(!main)return;
+    const view=document.createElement('section');view.id='adminView';view.className='view hidden';main.appendChild(view);
+    document.querySelectorAll('.nav-link').forEach(n=>n.addEventListener('click',()=>view.classList.add('hidden')));adminMounted=true;
+  }
+  function adminInitials(){return (state.user?.display_name||state.user?.username||'ADM').split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase();}
+  function adminShell(){
+    const u=state.user||{};
+    return '<div class="admin-module"><section class="admin-card"><div class="admin-profile-line"><div class="admin-avatar">'+adminEsc(adminInitials())+'</div><div><strong>'+adminEsc(u.display_name||u.username||'Administrador')+'</strong><small>ADMINISTRAÇÃO</small></div></div><p>Configurações administrativas e acessos operacionais do Painel Armazém.</p></section><div class="admin-module-grid"><section class="admin-card"><div class="admin-access"><div><p class="eyebrow">B.O. DIGITAL</p><h2>Acesso dos conferentes</h2><p>Endereço permanente do B.O. O mesmo QR continua válido mesmo quando o Controle tiver um painel próprio.</p><div class="admin-url">'+BO_ADMIN_URL+'</div><div class="admin-actions"><button class="primary" id="adminCopyBo">Copiar link</button><button id="adminOpenBo">Abrir B.O.</button><button id="adminPrintQr">Imprimir QR</button><button id="adminDownloadQr">Baixar QR</button></div></div><img class="admin-qr" src="'+BO_ADMIN_QR+'" alt="QR Code de acesso ao B.O. Digital"></div></section><section class="admin-card"><p class="eyebrow">SEGURANÇA</p><h2>PINs dos conferentes</h2><p>PIN individual para identificar quem emitiu cada B.O. O novo PIN aparece somente no momento da geração.</p><div class="admin-actions"><button class="primary" id="adminGeneratePins">Gerar PINs faltantes</button></div><div id="adminIssued"></div><div id="adminPinList" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div></section></div></div>';
+  }
+  async function adminLoadPins(){
+    try{const d=await adminBoCall('pin_status');$('adminPinList').innerHTML=(d.conferencers||[]).map(x=>'<div class="admin-pin-item"><div><strong>'+adminEsc(x.display_name)+'</strong><small>'+(x.pin_ready?'PIN configurado':'PIN pendente')+'</small></div><button data-pin-reset="'+adminEsc(x.id)+'">'+(x.pin_ready?'Resetar':'Gerar')+'</button></div>').join('');$('adminPinList').querySelectorAll('[data-pin-reset]').forEach(b=>b.onclick=()=>adminResetPin(b.dataset.pinReset));}catch(e){$('adminPinList').innerHTML='<p class="form-error">'+adminEsc(e.message)+'</p>';}
+  }
+  function adminShowIssued(items){
+    $('adminIssued').innerHTML=items?.length?'<div class="admin-issued"><strong>Copie agora. Estes PINs não serão exibidos novamente.</strong>'+items.map(x=>'<div class="admin-issued-row"><span>'+adminEsc(x.display_name)+'</span><code>'+adminEsc(x.pin)+'</code><button data-copy-pin="'+adminEsc(x.pin)+'">Copiar</button></div>').join('')+'</div>':'';
+    $('adminIssued').querySelectorAll('[data-copy-pin]').forEach(b=>b.onclick=async()=>{await navigator.clipboard?.writeText(b.dataset.copyPin);showToast('PIN copiado.');});
+  }
+  async function adminGenerateMissing(){try{const d=await adminBoCall('generate_missing_pins');adminShowIssued(d.issued||[]);await adminLoadPins();if(!d.issued?.length)showToast('Todos os conferentes já possuem PIN.');}catch(e){showToast(e.message,true);}}
+  async function adminResetPin(id){try{const d=await adminBoCall('reset_pin',{id});adminShowIssued([d.issued]);await adminLoadPins();}catch(e){showToast(e.message,true);}}
+  function adminPrintQr(){const w=window.open('','_blank','noopener,noreferrer');if(!w)return showToast('O navegador bloqueou a janela de impressão.',true);w.document.write('<!doctype html><html><head><title>QR B.O. Digital</title><style>body{font-family:Arial;text-align:center;padding:40px}img{width:320px;height:320px}h1{font-size:24px}p{font-size:14px;word-break:break-all}</style></head><body><h1>B.O. Digital — Armazém</h1><img src="'+BO_ADMIN_QR+'"><p>'+BO_ADMIN_URL+'</p><script>window.onload=()=>window.print()<\/script></body></html>');w.document.close();}
+  function adminDownloadQr(){const a=document.createElement('a');a.href=BO_ADMIN_QR;a.download='QR_BO_Digital_Conferentes.png';a.click();}
+  async function openAdminModule(){
+    if(state.user?.role!=='admin')return showToast('Área restrita à administração.',true);
+    ensureAdminView();document.querySelectorAll('main > .view').forEach(v=>v.classList.add('hidden'));document.querySelectorAll('.nav-link').forEach(n=>n.classList.remove('active'));
+    $('adminView').classList.remove('hidden');$('pageTitle').textContent='Administração';$('pageSubtitle').textContent='Acessos, credenciais e configurações do Painel Armazém.';$('adminView').innerHTML=adminShell();
+    $('adminCopyBo').onclick=async()=>{await navigator.clipboard?.writeText(BO_ADMIN_URL);showToast('Link do B.O. copiado.');};$('adminOpenBo').onclick=()=>window.open(BO_ADMIN_URL,'_blank','noopener,noreferrer');$('adminPrintQr').onclick=adminPrintQr;$('adminDownloadQr').onclick=adminDownloadQr;$('adminGeneratePins').onclick=adminGenerateMissing;await adminLoadPins();
+  }
+  function bindAdminButton(){const btn=$('adminProfileButton');if(!btn)return setTimeout(bindAdminButton,100);btn.onclick=openAdminModule;btn.title='Abrir Administração';btn.setAttribute('aria-label','Abrir Administração');}
+  bindAdminButton();window.__openAdminModule=openAdminModule;
+})();
