@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260919-2" />
+  <link rel="stylesheet" href="styles.css?v=20260919-3" />
 </head>
 <body>
   <main class="app">
@@ -37,28 +37,37 @@
         <div class="section-heading"><div><h2>Nova carreta</h2><p class="muted">O nome operacional será: Nº carreta · fábrica · carreteiro.</p></div></div>
         <form id="receiptForm" class="stack">
           <div class="grid-3">
-            <label>Número da carreta<input id="truckNumber" required /></label>
-            <label>Fábrica<input id="factoryName" required /></label>
-            <label>Carreteiro / motorista<input id="driverName" required /></label>
+            <label>Número da carreta
+              <select id="truckNumber" required>
+                <option value="">Selecione...</option>
+                <option>246</option><option>271</option><option>229</option><option>160</option><option>231</option><option>264</option><option>203</option><option>225</option><option>210</option><option>289</option><option>298</option><option>312</option><option>MKTP</option>
+              </select>
+            </label>
+            <label>Placa<input id="plate" readonly /></label>
+            <label>Fábrica
+              <select id="factoryName" required>
+                <option value="">Selecione...</option>
+                <option>NOVA RIO</option><option>MACACU</option><option>PIRAI</option><option>JPA</option><option>MKP</option>
+              </select>
+            </label>
           </div>
           <div class="grid-3">
+            <label>Carreteiro / motorista
+              <select id="driverName" required>
+                <option value="">Selecione...</option>
+                <option>COELHO</option><option>RONALDO</option><option>MESSIAS</option><option>ANDERSON</option><option>RODRIGO</option><option>KAYQUE</option><option>DEIVID</option><option>NETO</option><option>V.HUGO</option>
+              </select>
+            </label>
             <label>Data chegada<input id="arrivalDate" type="date" required /></label>
             <label>Hora chegada<input id="arrivalTime" type="time" required /></label>
-            <label>Placa<input id="plate" /></label>
           </div>
           <div class="grid-3">
             <label>NF Império<input id="nfImperio" /></label>
             <label>NF Ambev<input id="nfAmbev" /></label>
             <label>Nº Mapa<input id="mapNumber" /></label>
           </div>
-          <div class="grid-3">
-            <label>Nº Pedido<input id="orderNumber" /></label>
-            <label>Frota<input id="fleet" /></label>
-            <label>Turno<select id="shift"><option value="">—</option><option>A</option><option>B</option><option>C</option></select></label>
-          </div>
           <div class="grid-2">
-            <label>Recepção fiscal<input id="gateReception" /></label>
-            <label>Observações<input id="comments" /></label>
+            <label>Nº Pedido<input id="orderNumber" /></label>
           </div>
           <p id="formError" class="error"></p>
           <div class="form-actions"><button id="cancelEditButton" class="secondary hidden" type="button">Cancelar edição</button><button id="saveButton" class="primary" type="submit">Abrir recebimento</button></div>
@@ -72,6 +81,6 @@
     </section>
   </main>
   <div id="toast" class="toast hidden"></div>
-  <script src="app.js?v=20260919-2"></script>
+  <script src="app.js?v=20260919-3"></script>
 </body>
 </html>
