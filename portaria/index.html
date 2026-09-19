@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f47a20" />
+  <meta name="description" content="Portaria — abertura de recebimentos do Armazém Império." />
+  <title>Portaria | Armazém Império</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=20260919-1" />
+</head>
+<body>
+  <main class="app">
+    <header class="brand"><img src="../assets/logo-imperio.png" alt="Império" /><div><span>ARMAZÉM</span><strong>PORTARIA</strong></div></header>
+
+    <section id="loginView" class="card">
+      <p class="eyebrow">ACESSO PORTARIA</p>
+      <h1>Entrada de carreta</h1>
+      <p class="muted">Acesso único da Portaria. Informe o PIN para abrir os recebimentos.</p>
+      <form id="loginForm" class="stack">
+        <label>PIN<input id="pinInput" type="password" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="4 dígitos" required /></label>
+        <p id="loginError" class="error"></p>
+        <button id="loginButton" class="primary" type="submit">Entrar</button>
+      </form>
+    </section>
+
+    <section id="homeView" class="hidden">
+      <div class="toolbar">
+        <div><p class="eyebrow">PORTARIA</p><h1>Recebimentos</h1><p class="muted">Abra a carreta uma única vez. O mesmo registro seguirá para Conferência, NRI e Puxada.</p></div>
+        <button id="logoutButton" class="ghost">Sair</button>
+      </div>
+
+      <section class="card">
+        <div class="section-heading"><div><h2>Nova carreta</h2><p class="muted">O nome operacional será: Nº carreta · fábrica · carreteiro.</p></div></div>
+        <form id="receiptForm" class="stack">
+          <div class="grid-3">
+            <label>Número da carreta<input id="truckNumber" required /></label>
+            <label>Fábrica<input id="factoryName" required /></label>
+            <label>Carreteiro / motorista<input id="driverName" required /></label>
+          </div>
+          <div class="grid-3">
+            <label>Data chegada<input id="arrivalDate" type="date" required /></label>
+            <label>Hora chegada<input id="arrivalTime" type="time" required /></label>
+            <label>Placa<input id="plate" /></label>
+          </div>
+          <div class="grid-3">
+            <label>NF Império<input id="nfImperio" /></label>
+            <label>NF Ambev<input id="nfAmbev" /></label>
+            <label>Nº Mapa<input id="mapNumber" /></label>
+          </div>
+          <div class="grid-3">
+            <label>Nº Pedido<input id="orderNumber" /></label>
+            <label>Frota<input id="fleet" /></label>
+            <label>Turno<select id="shift"><option value="">—</option><option>A</option><option>B</option><option>C</option></select></label>
+          </div>
+          <div class="grid-2">
+            <label>Recepção fiscal<input id="gateReception" /></label>
+            <label>Observações<input id="comments" /></label>
+          </div>
+          <p id="formError" class="error"></p>
+          <div class="form-actions"><button id="cancelEditButton" class="secondary hidden" type="button">Cancelar edição</button><button id="saveButton" class="primary" type="submit">Abrir recebimento</button></div>
+        </form>
+      </section>
+
+      <section class="card">
+        <div class="section-heading"><div><h2>Carretas de hoje</h2><p class="muted">Após o conferente iniciar a conferência, os dados da Portaria ficam bloqueados.</p></div><button id="refreshButton" class="secondary">Atualizar</button></div>
+        <div id="receiptList" class="receipt-list"></div>
+      </section>
+    </section>
+  </main>
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js?v=20260919-1"></script>
+</body>
+</html>
