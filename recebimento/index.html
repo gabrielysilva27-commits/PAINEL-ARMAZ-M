@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f47a20" />
+  <title>Conferência de Recebimento | Armazém Império</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=20260919-1" />
+</head>
+<body>
+  <main class="rx-app">
+    <header class="rx-brand">
+      <img src="../assets/logo-imperio.png" alt="Império" />
+      <div><span>ARMAZÉM</span><strong>CONFERÊNCIA DE RECEBIMENTO</strong></div>
+    </header>
+
+    <section id="loginView" class="rx-card">
+      <p class="eyebrow">IDENTIFICAÇÃO DO CONFERENTE</p>
+      <h1>Recebimento às cegas</h1>
+      <p class="muted">Entre com seu PIN. A quantidade esperada pelo sistema não é exibida durante a conferência.</p>
+      <form id="loginForm" class="stack">
+        <label>Conferente<select id="confSelect" required><option value="">Carregando...</option></select></label>
+        <label>PIN<input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="4 dígitos" required /></label>
+        <p id="loginError" class="error"></p>
+        <button class="primary" id="loginButton" type="submit">Entrar</button>
+      </form>
+    </section>
+
+    <section id="queueView" class="hidden">
+      <div class="rx-toolbar">
+        <div><p class="eyebrow">RECEBIMENTOS</p><h1>Carretas para conferir</h1><p class="muted" id="loggedConf"></p></div>
+        <div class="actions"><button class="secondary" id="historyButton" type="button">Meu histórico</button><button class="ghost" id="logoutButton" type="button">Sair</button></div>
+      </div>
+      <div id="queueList" class="queue-list"></div>
+    </section>
+
+    <section id="conferenceView" class="hidden">
+      <div class="rx-toolbar">
+        <div><p class="eyebrow">CONFERÊNCIA FÍSICA ÀS CEGAS</p><h1 id="receiptTitle"></h1><p class="muted" id="receiptMeta"></p></div>
+        <button class="secondary" id="backQueueButton" type="button">Voltar</button>
+      </div>
+      <div class="blind-note">Você está registrando apenas o <strong>físico</strong>. Os dados de quantidade do sistema só serão liberados para a Puxada após a finalização.</div>
+      <form id="conferenceForm" class="rx-card stack">
+        <div class="section-heading"><div><h2>Produtos recebidos</h2><p class="muted">Código e descrição vêm do 01.11. Quantidade, paletes e validade são da conferência física.</p></div><button class="secondary" id="addItemButton" type="button">+ Adicionar produto</button></div>
+        <div id="itemsList" class="items-list"></div>
+        <p id="formError" class="error"></p>
+        <div class="submit-row"><button class="secondary" id="saveDraftButton" type="button">Salvar rascunho</button><button class="primary" id="finalizeButton" type="submit">Finalizar conferência</button></div>
+      </form>
+    </section>
+
+    <section id="doneView" class="rx-card hidden done">
+      <div class="done-icon">✓</div><p class="eyebrow">CONFERÊNCIA FINALIZADA</p>
+      <h1 id="doneTitle"></h1>
+      <p>O físico foi congelado e já está disponível para a Puxada. As NRIs também foram liberadas para impressão no Painel Armazém.</p>
+      <button class="primary" id="doneBackButton" type="button">Voltar para carretas</button>
+    </section>
+
+    <section id="historyView" class="hidden">
+      <div class="rx-toolbar"><div><p class="eyebrow">HISTÓRICO</p><h1>Minhas conferências</h1></div><button class="secondary" id="historyBackButton" type="button">Carretas pendentes</button></div>
+      <div id="historyList" class="queue-list"></div>
+    </section>
+  </main>
+
+  <template id="itemTemplate">
+    <article class="item-card">
+      <div class="item-head"><strong class="item-title">Produto</strong><button class="remove" type="button" aria-label="Remover">×</button></div>
+      <label>Código<div class="search-box"><input class="sku" inputmode="numeric" autocomplete="off" placeholder="Digite o código" required /><div class="results hidden"></div></div></label>
+      <label>Descrição<input class="name" readonly /></label>
+      <div class="params">
+        <div><span>Capacidade palete</span><strong class="capacity">—</strong></div>
+        <div><span>Lastro</span><strong class="layer">—</strong></div>
+        <div><span>Curva</span><strong class="curve">—</strong></div>
+      </div>
+      <div class="grid3">
+        <label>Quantidade física<input class="physical" type="number" min="0" step="0.001" required /></label>
+        <label>Paletes recebidos<input class="pallets" type="number" min="1" step="1" required /></label>
+        <label>Unidade<input class="unit" placeholder="Ex.: P" /></label>
+      </div>
+      <div class="grid2">
+        <label>Validade<input class="expiry" type="date" required /></label>
+        <div class="validity"><span>Status de validade</span><strong class="validity-status">—</strong><small class="validity-days"></small></div>
+      </div>
+      <details><summary>Ajustar parâmetros / comentário</summary>
+        <div class="grid3 detail-grid">
+          <label>Capacidade<input class="capacity-input" type="number" min="0" step="0.001" /></label>
+          <label>Lastro<input class="layer-input" type="number" min="0" step="0.001" /></label>
+          <label>Curva<input class="curve-input" maxlength="3" /></label>
+        </div>
+        <label style="margin-top:10px">Comentário<input class="comment" /></label>
+      </details>
+    </article>
+  </template>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js?v=20260919-1"></script>
+</body>
+</html>
