@@ -25,18 +25,60 @@
     $('rxpReceiptClose').onclick=()=>$('rxpReceiptDialog').close();$('rxpDetailClose').onclick=()=>$('rxpDetailDialog').close();$('rxpPrintClose').onclick=()=>$('rxpPrintDialog').close();$('rxpPullClose').onclick=()=>$('rxpPullDialog').close();$('rxpAuthClose').onclick=()=>$('rxpAuthDialog').close();$('rxpAuthCancel').onclick=()=>$('rxpAuthDialog').close();
   }
   function shell(which){
-    if(which==='nri')return '<div class="rxp-shell"><section class="rxp-kpis"><article class="rxp-kpi"><span>Aguardando conferência</span><strong id="rxpAwait">—</strong></article><article class="rxp-kpi"><span>Em conferência</span><strong id="rxpIn">—</strong></article><article class="rxp-kpi"><span>Concluídas</span><strong id="rxpDone">—</strong></article></section><section class="rxp-panel"><div class="rxp-toolbar"><label class="grow">Buscar<input id="rxpSearch" placeholder="Carreta, fábrica, carreteiro, placa, NF ou produto"></label><label>Status<select id="rxpStatus"><option value="all">Todos</option><option value="awaiting_conference">Aguardando</option><option value="in_conference">Em conferência</option><option value="conference_completed">Concluída</option></select></label><button class="rxp-btn" id="rxpOpenConf">Abrir tela do conferente</button><button class="rxp-btn" id="rxpRefresh">Atualizar</button><button class="rxp-btn primary" id="rxpNew">+ Nova carreta</button></div><div class="rxp-table-wrap"><table class="rxp-table"><thead><tr><th>Recebimento</th><th>Chegada</th><th>Placa</th><th>NF / Pedido</th><th>Status</th><th>Portaria</th><th>Conferente</th><th>Produtos</th><th>Ações</th></tr></thead><tbody id="rxpBody"></tbody></table></div><div class="rxp-empty hidden" id="rxpEmpty">Nenhum recebimento encontrado.</div></section></div>';
+    if(which==='nri')return '<div class="rxp-shell">'+
+      '<section class="rxp-kpis">'+
+        '<article class="rxp-kpi"><span>Aguardando conferência</span><strong id="rxpAwait">—</strong></article>'+
+        '<article class="rxp-kpi"><span>Em conferência</span><strong id="rxpIn">—</strong></article>'+
+        '<article class="rxp-kpi print-queue" id="rxpPrintPendingCard"><span>Aguardando impressão</span><strong id="rxpPrintPending">—</strong></article>'+
+        '<article class="rxp-kpi"><span>Conferências concluídas</span><strong id="rxpDone">—</strong></article>'+
+      '</section>'+
+      '<section class="rxp-panel"><div class="rxp-toolbar">'+
+        '<label class="grow">Buscar<input id="rxpSearch" placeholder="Carreta, fábrica, carreteiro, placa, NF ou produto"></label>'+
+        '<label>Status<select id="rxpStatus"><option value="all">Todos</option><option value="awaiting_conference">Aguardando</option><option value="in_conference">Em conferência</option><option value="conference_completed">Concluída</option></select></label>'+
+        '<label>Impressão<select id="rxpPrintFilter"><option value="all">Todas</option><option value="pending_print">Fila de impressão</option><option value="printed">Já impressas</option></select></label>'+
+        '<button class="rxp-btn" id="rxpOpenConf">Abrir tela do conferente</button><button class="rxp-btn" id="rxpRefresh">Atualizar</button><button class="rxp-btn primary" id="rxpNew">+ Nova carreta</button>'+
+      '</div>'+
+      '<div class="rxp-note"><strong>Fila de impressão:</strong> após o conferente finalizar no celular, as NRIs ficam aqui aguardando impressão no computador da sala. A impressão exige novamente o PIN do conferente responsável.</div>'+
+      '<div class="rxp-table-wrap"><table class="rxp-table"><thead><tr><th>Recebimento</th><th>Chegada</th><th>Placa</th><th>NF / Pedido</th><th>Status</th><th>Portaria</th><th>Conferente</th><th>NRIs</th><th>Ações</th></tr></thead><tbody id="rxpBody"></tbody></table></div><div class="rxp-empty hidden" id="rxpEmpty">Nenhum recebimento encontrado.</div></section></div>';
     return '<div class="rxp-shell"><section class="rxp-kpis"><article class="rxp-kpi"><span>Aguardando Puxada</span><strong id="pullPending">—</strong></article><article class="rxp-kpi"><span>Sem divergência</span><strong id="pullMatched">—</strong></article><article class="rxp-kpi"><span>Com divergência</span><strong id="pullDivergent">—</strong></article></section><section class="rxp-panel"><div class="rxp-note"><strong>Conferência cega preservada:</strong> a Puxada só recebe o físico depois que o conferente finaliza a carreta.</div><div class="rxp-toolbar"><label class="grow">Buscar<input id="pullSearch" placeholder="Carreta, fábrica, carreteiro, código ou produto"></label><label>Status<select id="pullStatus"><option value="all">Todos</option><option value="pending">Aguardando</option><option value="in_progress">Em cruzamento</option><option value="matched">Sem divergência</option><option value="divergent">Com divergência</option></select></label><button class="rxp-btn" id="pullRefresh">Atualizar</button></div><div class="rxp-table-wrap"><table class="rxp-table"><thead><tr><th>Recebimento</th><th>Conferido em</th><th>Conferente</th><th>Itens</th><th>Status Puxada</th><th>Ação</th></tr></thead><tbody id="pullBody"></tbody></table></div><div class="rxp-empty hidden" id="pullEmpty">Nenhuma conferência concluída.</div></section></div>';
   }
   async function open(which='nri'){
     mode=which;const root=$(which==='nri'?'receivingNriView':'pullCompareView');document.querySelectorAll('main > .view').forEach(v=>v.classList.add('hidden'));document.querySelectorAll('.nav-link').forEach(n=>n.classList.remove('active'));root.classList.remove('hidden');document.querySelector('[data-view="'+(which==='nri'?'receiving-nri':'pull-compare')+'"]')?.classList.add('active');document.querySelector(which==='nri'?'.receiving-nav-group':'.pull-nav-group')?.classList.add('open');$('sidebar')?.classList.remove('open');
     $('pageTitle').textContent=which==='nri'?'Recebimento / NRI':'Puxada · Físico × Sistema';$('pageSubtitle').textContent=which==='nri'?'Da entrada da carreta à identificação dos paletes.':'Cruzamento do físico conferido às cegas com a quantidade do sistema.';
     root.innerHTML=shell(which);ensureDialogs(root);
-    if(which==='nri'){let t;$('rxpSearch').oninput=()=>{clearTimeout(t);t=setTimeout(loadNri,250)};$('rxpStatus').onchange=loadNri;$('rxpRefresh').onclick=loadNri;$('rxpNew').onclick=()=>openReceiptForm();$('rxpOpenConf').onclick=()=>window.open(CONF_URL,'_blank','noopener,noreferrer');await loadNri()}
+    if(which==='nri'){let t;$('rxpSearch').oninput=()=>{clearTimeout(t);t=setTimeout(loadNri,250)};$('rxpStatus').onchange=loadNri;$('rxpPrintFilter').onchange=loadNri;$('rxpRefresh').onclick=loadNri;$('rxpNew').onclick=()=>openReceiptForm();$('rxpOpenConf').onclick=()=>window.open(CONF_URL,'_blank','noopener,noreferrer');$('rxpPrintPendingCard').onclick=()=>{$('rxpStatus').value='conference_completed';$('rxpPrintFilter').value='pending_print';loadNri()};await loadNri()}
     else{let t;$('pullSearch').oninput=()=>{clearTimeout(t);t=setTimeout(loadPull,250)};$('pullStatus').onchange=loadPull;$('pullRefresh').onclick=loadPull;await loadPull()}
   }
   async function loadNri(){
-    try{const d=await call('list_receipts',{status:$('rxpStatus').value,search:$('rxpSearch').value});receipts=d.receipts||[];$('rxpAwait').textContent=d.counts.awaiting_conference||0;$('rxpIn').textContent=d.counts.in_conference||0;$('rxpDone').textContent=d.counts.conference_completed||0;$('rxpBody').innerHTML=receipts.map(r=>'<tr><td><strong>'+esc(r.display_name)+'</strong><br><small>'+esc(r.receipt_code)+'</small></td><td>'+fd(r.arrival_date)+'<br><small>'+esc(String(r.arrival_time||'').slice(0,5))+'</small></td><td>'+esc(r.plate||'—')+'</td><td>'+esc(r.nf_imperio||r.nf_ambev||'—')+'<br><small>Pedido '+esc(r.order_number||'—')+'</small></td><td><span class="rxp-status '+r.status+'">'+receiptStatus(r.status)+'</span></td><td>'+esc(r.conferencer?.display_name||'—')+'</td><td>'+((r.items||[]).length)+'</td><td><button class="rxp-btn" data-detail="'+r.id+'">Visualizar</button> '+(r.status==='conference_completed'?'<button class="rxp-btn primary" data-print="'+r.id+'">NRIs</button>':'')+'</td></tr>').join('');$('rxpEmpty').classList.toggle('hidden',receipts.length>0);$('rxpBody').querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>detail(Number(b.dataset.detail)));$('rxpBody').querySelectorAll('[data-print]').forEach(b=>b.onclick=()=>previewNri(Number(b.dataset.print)))}catch(e){showToast(e.message,true)}
+    try{
+      const d=await call('list_receipts',{status:$('rxpStatus').value,search:$('rxpSearch').value});
+      receipts=d.receipts||[];
+      $('rxpAwait').textContent=d.counts.awaiting_conference||0;
+      $('rxpIn').textContent=d.counts.in_conference||0;
+      $('rxpPrintPending').textContent=d.counts.print_pending||0;
+      $('rxpDone').textContent=d.counts.conference_completed||0;
+      const pf=$('rxpPrintFilter').value;
+      const visible=receipts.filter(r=>pf==='all'||r.print_status===pf);
+      $('rxpBody').innerHTML=visible.map(r=>{
+        const printLabel=r.print_status==='pending_print'?'Aguardando impressão':r.print_status==='printed'?'Impresso':'—';
+        const printClass=r.print_status==='pending_print'?'pending':r.print_status==='printed'?'good':'';
+        const action=r.status==='conference_completed'
+          ?'<button class="rxp-btn primary" data-print="'+r.id+'">'+(r.print_status==='printed'?'NRIs / 2ª via':'Imprimir NRIs')+'</button>'
+          :'';
+        return '<tr><td><strong>'+esc(r.display_name)+'</strong><br><small>'+esc(r.receipt_code)+'</small></td>'+
+          '<td>'+fd(r.arrival_date)+'<br><small>'+esc(String(r.arrival_time||'').slice(0,5))+'</small></td>'+
+          '<td>'+esc(r.plate||'—')+'</td>'+
+          '<td>'+esc(r.nf_imperio||r.nf_ambev||'—')+'<br><small>Pedido '+esc(r.order_number||'—')+'</small></td>'+
+          '<td><span class="rxp-status '+r.status+'">'+receiptStatus(r.status)+'</span><br><small class="'+printClass+'">'+printLabel+'</small></td>'+
+          '<td>'+esc(r.gate_creator?.display_name||'—')+'</td>'+
+          '<td>'+esc(r.conferencer?.display_name||'—')+'</td>'+
+          '<td><strong>'+n(r.nri_count||0)+'</strong><br><small>'+((r.items||[]).length)+' produto(s)</small></td>'+
+          '<td><button class="rxp-btn" data-detail="'+r.id+'">Visualizar</button> '+action+'</td></tr>';
+      }).join('');
+      $('rxpEmpty').classList.toggle('hidden',visible.length>0);
+      $('rxpBody').querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>detail(Number(b.dataset.detail)));
+      $('rxpBody').querySelectorAll('[data-print]').forEach(b=>b.onclick=()=>previewNri(Number(b.dataset.print)));
+    }catch(e){showToast(e.message,true)}
   }
   async function loadPull(){
     try{const d=await call('list_receipts',{status:'conference_completed',pull_status:$('pullStatus').value,search:$('pullSearch').value});receipts=d.receipts||[];$('pullPending').textContent=d.counts.pull_pending||0;$('pullMatched').textContent=d.counts.pull_matched||0;$('pullDivergent').textContent=d.counts.pull_divergent||0;$('pullBody').innerHTML=receipts.map(r=>'<tr><td><strong>'+esc(r.display_name)+'</strong><br><small>'+esc(r.receipt_code)+'</small></td><td>'+fd(r.conference_completed_at)+'<br><small>'+esc(String(r.conference_completed_at||'').slice(11,16))+'</small></td><td>'+esc(r.conferencer?.display_name||'—')+'</td><td>'+((r.items||[]).length)+'</td><td><span class="rxp-status '+r.pull_status+'">'+pullStatus(r.pull_status)+'</span></td><td><button class="rxp-btn primary" data-pull="'+r.id+'">Cruzar dados</button></td></tr>').join('');$('pullEmpty').classList.toggle('hidden',receipts.length>0);$('pullBody').querySelectorAll('[data-pull]').forEach(b=>b.onclick=()=>openPull(Number(b.dataset.pull)))}catch(e){showToast(e.message,true)}
