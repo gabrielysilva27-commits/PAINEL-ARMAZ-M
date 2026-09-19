@@ -4,7 +4,7 @@
   const REASONS=['Falha no Manuseio','Falta','Falta de fitilho','Vencido','Consumo interno','Avaria','Falha manobrista','Descarte repack','Quebra ao descarregar','Sem tampa/Liq. pela metade','Produto sem gás','Quebra ao carregar','Embalagem secundária','Corrosão','Outros'];
   const RESPONSIBILITIES=['Conferente','SVA','COA','GOD'];
   const $=id=>document.getElementById(id);
-  let token=sessionStorage.getItem('bo_token')||'',conferencer=null,shift='',movement='',subjectType='Funcionário',employeeTimer=null,skuTimers=new WeakMap();
+  let token=sessionStorage.getItem('bo_token')||'',conferencer=null,shift='',movement='',subjectType='Funcionário',editingOccurrence=null,employeeTimer=null,skuTimers=new WeakMap();
 
   async function call(action,payload={},auth=true){
     const headers={'Content-Type':'application/json'};if(auth&&token)headers['x-bo-token']=token;
@@ -48,17 +48,66 @@
   }
   $('addProductButton').onclick=()=>addItem();
 
-  function resetForm(){
-    $('boForm').reset();shift='';movement='';subjectType='Funcionário';$('shiftOptions').querySelectorAll('button').forEach(x=>x.classList.remove('active'));$('movementOptions').querySelectorAll('button').forEach(x=>x.classList.remove('active'));$('occurrenceDate').value=today();$('occurrenceTime').value=nowTime();$('employeeFunction').value='';$('itemsList').innerHTML='';addItem();$('formError').textContent='';setSubjectType('Funcionário');
+  function updateEditingUi(){
+    const editing=!!editingOccurrence;
+    $('editingBanner').classList.toggle('hidden',!editing);
+    if(editing){
+      $('editingTitle').textContent='Editando '+editingOccurrence.bo_number;
+      $('editingSubtitle').textContent=editingOccurrence.status==='returned'?'Corrija o B.O. devolvido e reenvie para validação.':'Enquanto estiver pendente, você pode alterar o B.O.';
+    }
+    $('submitButton').textContent=editing?'Salvar alterações':'Enviar B.O.';
+  }
+  function resetForm(clearEditing=true){
+    if(clearEditing)editingOccurrence=null;
+    $('boForm').reset();shift='';movement='';subjectType='Funcionário';$('shiftOptions').querySelectorAll('button').forEach(x=>x.classList.remove('active'));$('movementOptions').querySelectorAll('button').forEach(x=>x.classList.remove('active'));$('occurrenceDate').value=today();$('occurrenceTime').value=nowTime();$('employeeFunction').value='';$('itemsList').innerHTML='';addItem();$('formError').textContent='';setSubjectType('Funcionário');updateEditingUi();
+  }
+  function editOccurrence(row){
+    editingOccurrence=row;
+    resetForm(false);
+    $('occurrenceDate').value=String(row.occurrence_date||'').slice(0,10);
+    $('occurrenceTime').value=String(row.occurrence_time||'').slice(0,5);
+    const sb=$('shiftOptions').querySelector('[data-value="'+row.shift+'"]');if(sb)sb.click();
+    const mb=$('movementOptions').querySelector('[data-value="'+row.movement_type+'"]');if(mb)mb.click();
+    setSubjectType(row.subject_type||'Funcionário');
+    $('locationSelect').value=row.location||'';
+    $('employeeInput').value=row.employee_name||'';
+    $('employeeFunction').value=row.employee_function||'';
+    $('factoryInput').value=row.factory_name||'';
+    $('reasonSelect').value=row.reason||'';
+    $('responsibilitySelect').value=row.responsibility||'';
+    $('comments').value=row.comments||'';
+    $('interviewReport').value=row.interview_report||'';
+    updateInterview();
+    $('itemsList').innerHTML='';
+    (row.items||[]).sort((a,b)=>(a.line_no||0)-(b.line_no||0)).forEach(item=>addItem(item));
+    if(!$('itemsList').children.length)addItem();
+    updateEditingUi();show('formView');window.scrollTo({top:0,behavior:'smooth'});
   }
   function collect(){
     if(!shift)throw new Error('Selecione o turno.');if(!movement)throw new Error('Selecione Entrada ou Saída.');
     const items=[...$('itemsList').children].map(card=>({sku_code:card.querySelector('.sku-input').value,total_qty:card.querySelector('.qty-total').value,repacked_qty:card.querySelector('.qty-repacked').value,discarded_qty:card.querySelector('.qty-discarded').value,invoice_number:card.querySelector('.invoice-number').value,lot_number:card.querySelector('.lot-number').value,expiry_date:card.querySelector('.expiry-date').value}));
     return{occurrence_date:$('occurrenceDate').value,occurrence_time:$('occurrenceTime').value,shift,movement_type:movement,location:$('locationSelect').value,subject_type:subjectType,factory_name:$('factoryInput').value,employee_name:$('employeeInput').value,employee_function:$('employeeFunction').value,reason:$('reasonSelect').value,responsibility:$('responsibilitySelect').value,comments:$('comments').value,interview_report:$('interviewReport').value,items};
   }
-  $('boForm').onsubmit=async e=>{e.preventDefault();const b=$('submitButton');$('formError').textContent='';try{b.disabled=true;b.textContent='Enviando...';const d=await call('submit',{occurrence:collect()});$('successNumber').textContent=d.occurrence.bo_number;show('successView');}catch(err){$('formError').textContent=err.message;window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});}finally{b.disabled=false;b.textContent='Enviar B.O.';}};
-  $('newBoButton').onclick=()=>{show('formView');resetForm();};$('successHistoryButton').onclick=()=>openHistory();$('historyButton').onclick=()=>openHistory();$('backToFormButton').onclick=()=>{show('formView');resetForm();};
+  $('boForm').onsubmit=async e=>{e.preventDefault();const b=$('submitButton');$('formError').textContent='';const editing=!!editingOccurrence;try{b.disabled=true;b.textContent=editing?'Salvando...':'Enviando...';const d=editing?await call('update_occurrence',{id:editingOccurrence.id,occurrence:collect()}):await call('submit',{occurrence:collect()});$('successNumber').textContent=d.occurrence.bo_number;$('successMessage').textContent=editing?'As alterações foram salvas e o B.O. voltou para a fila de validação.':'O registro foi enviado para validação do Controle.';editingOccurrence=null;show('successView');}catch(err){$('formError').textContent=err.message;window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});}finally{b.disabled=false;updateEditingUi();}};
+  $('newBoButton').onclick=()=>{show('formView');resetForm();};$('successHistoryButton').onclick=()=>openHistory();$('historyButton').onclick=()=>openHistory();$('backToFormButton').onclick=()=>{show('formView');resetForm();};$('cancelEditButton').onclick=()=>{editingOccurrence=null;openHistory();};
 
-  async function openHistory(){show('historyView');$('historyList').innerHTML='<div class="history-card">Carregando...</div>';try{const d=await call('my_occurrences');$('historyList').innerHTML=d.occurrences.length?d.occurrences.map(row=>'<article class="history-card"><div class="history-top"><strong>'+escapeHtml(row.bo_number)+'</strong><span class="status '+row.status+'">'+({pending:'Pendente',validated:'Validado',returned:'Devolvido'}[row.status]||row.status)+'</span></div><p>'+escapeHtml(row.reason)+' · '+escapeHtml(row.location)+' · Turno '+escapeHtml(row.shift)+'</p><small>'+escapeHtml(row.occurrence_date)+' · '+(row.items?.length||0)+' produto(s)'+(row.validation_comment?' · '+escapeHtml(row.validation_comment):'')+'</small></article>').join(''):'<div class="history-card">Nenhum B.O. registrado por você ainda.</div>';}catch(e){$('historyList').innerHTML='<div class="history-card error">'+escapeHtml(e.message)+'</div>';}}
+  async function deleteOccurrence(row){
+    if(!confirm('Excluir '+row.bo_number+'?\n\nEle deixará de aparecer como pendente e não poderá ser usado na PA ou no Informativo.'))return;
+    try{await call('delete_occurrence',{id:row.id});toast('B.O. excluído.');await openHistory();}catch(e){toast(e.message,true);}
+  }
+  async function openHistory(){
+    editingOccurrence=null;show('historyView');$('historyList').innerHTML='<div class="history-card">Carregando...</div>';
+    try{
+      const d=await call('my_occurrences'),rows=d.occurrences||[];
+      const labels={pending:'Pendente',validated:'Validado',returned:'Devolvido',cancelled:'Excluído'};
+      $('historyList').innerHTML=rows.length?rows.map(row=>{
+        const editable=row.status==='pending'||row.status==='returned';
+        const origin=(row.subject_type||'Funcionário')+(row.subject_type==='Fábrica'&&row.factory_name?' · '+row.factory_name:'');
+        return '<article class="history-card '+(row.status==='cancelled'?'cancelled':'')+'"><div class="history-top"><strong>'+escapeHtml(row.bo_number)+'</strong><span class="status '+row.status+'">'+escapeHtml(labels[row.status]||row.status)+'</span></div><p>'+escapeHtml(row.reason)+' · '+escapeHtml(row.location)+' · '+escapeHtml(origin)+' · Turno '+escapeHtml(row.shift)+'</p><small>'+escapeHtml(row.occurrence_date)+' · '+(row.items?.length||0)+' produto(s)'+(row.validation_comment?' · '+escapeHtml(row.validation_comment):'')+'</small>'+(editable?'<div class="history-actions"><button type="button" data-edit="'+row.id+'">'+(row.status==='returned'?'Corrigir':'Editar')+'</button><button type="button" class="danger" data-delete="'+row.id+'">Excluir</button></div>':'')+'</article>';
+      }).join(''):'<div class="history-card">Nenhum B.O. registrado por você ainda.</div>';
+      $('historyList').querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{const row=rows.find(x=>String(x.id)===b.dataset.edit);if(row)editOccurrence(row);});
+      $('historyList').querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>{const row=rows.find(x=>String(x.id)===b.dataset.delete);if(row)deleteOccurrence(row);});
+    }catch(e){$('historyList').innerHTML='<div class="history-card error">'+escapeHtml(e.message)+'</div>';}
+  }
   initSelects();loadConferencers();restore();
 })();
