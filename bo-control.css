@@ -44,3 +44,4 @@
  .bo-paper-reasons{grid-template-columns:1fr 1fr}
  .bo-review-dialog{width:calc(100vw - 10px)}
 }
+.bo-badge.cancelled{background:#eeeeef;color:#666}
