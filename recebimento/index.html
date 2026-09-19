@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260919-1" />
+  <link rel="stylesheet" href="styles.css?v=20260919-2" />
 </head>
 <body>
   <main class="app">
@@ -21,7 +21,7 @@
     <section id="loginView" class="card">
       <p class="eyebrow">IDENTIFICAÇÃO DO CONFERENTE</p>
       <h1>Conferência cega</h1>
-      <p class="muted">Entre com seu PIN. A impressão das NRIs ficará vinculada à sua conferência.</p>
+      <p class="muted">Entre com seu PIN para realizar a conferência cega. A impressão será feita depois no computador da sala.</p>
       <form id="loginForm" class="stack">
         <label>Conferente<select id="conferencerSelect" required><option value="">Carregando...</option></select></label>
         <label>PIN<input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="4 dígitos" required /></label>
@@ -53,6 +53,16 @@
         <p id="conferenceError" class="error"></p>
         <div class="form-actions"><button class="secondary" id="saveDraftButton" type="button">Salvar rascunho</button><button class="primary" id="finalizeButton" type="submit">Finalizar conferência</button></div>
       </form>
+    </section>
+
+    <section id="successView" class="card hidden success-card">
+      <div class="success-icon">✓</div>
+      <p class="eyebrow">CONFERÊNCIA FINALIZADA</p>
+      <h1 id="successTitle">Recebimento concluído</h1>
+      <p id="successText">O físico foi enviado para a Puxada e as NRIs ficaram aguardando impressão no computador da sala.</p>
+      <div class="success-summary" id="successSummary"></div>
+      <button class="primary" id="successQueueButton" type="button">Voltar às carretas</button>
+      <button class="secondary" id="successHistoryButton" type="button">Meu histórico</button>
     </section>
 
     <section id="historyView" class="hidden">
@@ -96,6 +106,6 @@
   </dialog>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="app.js?v=20260919-1"></script>
+  <script src="app.js?v=20260919-2"></script>
 </body>
 </html>
