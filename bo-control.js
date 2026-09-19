@@ -101,10 +101,16 @@
     try{
       const d=await call('export',{});if(!d.pa||!d.pa.length)return showToast('Não há B.O.s validados para gerar a PA.',true);
       const XLSX=await ensureXlsx();const headers=['Data','Responsável','Código','Descrição do produto','Qtde','Motivo','Situação','Área/ Local','Conferente','Turno'];
-      const aoa=[headers].concat(d.pa.map(r=>headers.map(h=>r[h]??'')));const ws=XLSX.utils.aoa_to_sheet(aoa);
+      const rows=d.pa.map(r=>headers.map(h=>{
+        if(h!=='Data')return r[h]??'';
+        const raw=String(r[h]||'').slice(0,10),parts=raw.split('-');
+        return parts.length===3?new Date(Number(parts[0]),Number(parts[1])-1,Number(parts[2])):raw;
+      }));
+      const aoa=[headers].concat(rows);const ws=XLSX.utils.aoa_to_sheet(aoa,{cellDates:true});
+      for(let row=2;row<=aoa.length;row++){const cell=ws['A'+row];if(cell){cell.t='d';cell.z='dd/mm/yyyy';}}
       ws['!cols']=[12,30,12,48,9,28,14,24,16,8].map(w=>({wch:w}));ws['!autofilter']={ref:'A1:J'+aoa.length};
-      const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'PA');XLSX.writeFile(wb,'PA_BOs_validados.xlsx',{compression:true});
-      showToast('PA gerada somente com os campos de entrada manual da planilha.');
+      const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'PA');XLSX.writeFile(wb,'PA_BOs_validados.xlsx',{compression:true,cellDates:true});
+      showToast('PA gerada com a data em DD/MM/AAAA e somente os campos de entrada manual.');
     }catch(e){showToast(e.message,true);}
   }
 
