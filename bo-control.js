@@ -16,7 +16,7 @@
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function fmtDate(v){if(!v)return'—';const p=String(v).slice(0,10).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:v;}
   function num(v){return new Intl.NumberFormat('pt-BR',{maximumFractionDigits:3}).format(Number(v||0));}
-  function statusLabel(s){return({pending:'Pendente',validated:'Validado',returned:'Devolvido'})[s]||s;}
+  function statusLabel(s){return({pending:'Pendente',validated:'Validado',returned:'Devolvido',cancelled:'Excluído'})[s]||s;}
   function today(){return new Date().toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'});}
   function subjectName(row){const type=row?.subject_type||'Funcionário';if(type==='Fábrica')return row.factory_name||'Fábrica';if(type==='Armazém')return 'Armazém';return row.employee_name||'—';}
   function subjectFunction(row){return (row?.subject_type||'Funcionário')==='Funcionário'?(row.employee_function||'—'):'';}
@@ -40,7 +40,7 @@
       '<section class="bo-control-kpis"><article class="bo-kpi pending"><span>Pendentes</span><strong id="boCountPending">—</strong></article><article class="bo-kpi validated"><span>Validados</span><strong id="boCountValidated">—</strong></article><article class="bo-kpi returned"><span>Devolvidos</span><strong id="boCountReturned">—</strong></article></section>'+
       '<section class="bo-control-panel"><div class="bo-control-toolbar">'+
       '<label>Buscar<input id="boSearch" placeholder="B.O., funcionário, fábrica, código ou produto" /></label>'+
-      '<label>Status<select id="boStatus"><option value="pending">Pendentes</option><option value="validated">Validados</option><option value="returned">Devolvidos</option><option value="all">Todos</option></select></label>'+
+      '<label>Status<select id="boStatus"><option value="pending">Pendentes</option><option value="validated">Validados</option><option value="returned">Devolvidos</option><option value="cancelled">Excluídos</option><option value="all">Todos</option></select></label>'+
       '<div class="bo-control-actions"><button class="bo-btn-secondary" id="boRefresh">Atualizar</button><button class="bo-btn-secondary" id="boExportPa">PA (.xlsx)</button><button class="bo-btn-secondary" id="boPreviewDaily">Visualizar Informativo</button><button class="bo-btn-secondary" id="boExportDaily">Informativo (.xlsx)</button></div>'+
       '</div><div style="display:flex;justify-content:flex-end;margin-top:10px"><label style="display:grid;gap:5px;font-size:12px;font-weight:700">Data do Informativo<input id="boDailyDate" type="date" value="'+today()+'" style="border:1px solid #d7d8dd;border-radius:9px;padding:9px 10px"></label></div>'+
       '<div class="bo-table-wrap"><table class="bo-table"><thead><tr><th>B.O.</th><th>Data/Hora</th><th>Conferente</th><th>Origem</th><th>Turno</th><th>Motivo</th><th>Local</th><th>Status</th><th>Ação</th></tr></thead><tbody id="boTableBody"></tbody></table></div><div class="bo-empty hidden" id="boEmpty">Nenhum B.O. encontrado.</div><p class="bo-export-note">A PA e o Informativo são derivados automaticamente dos B.O.s validados. Não há nova digitação.</p></section>'+
