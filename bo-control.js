@@ -100,11 +100,11 @@
   async function exportPaXlsx(){
     try{
       const d=await call('export',{});if(!d.pa||!d.pa.length)return showToast('Não há B.O.s validados para gerar a PA.',true);
-      const XLSX=await ensureXlsx();const headers=['FÁBRICA','Semana','Data','Responsavél','Código','Descrição do produto','Qtde','Motivo','Situação','Área/ Local','Conferente','Turno','Hl','Valor','NF','LOTE','VALIDADE','DATA DA BAIXA'];
+      const XLSX=await ensureXlsx();const headers=['Data','Responsável','Código','Descrição do produto','Qtde','Motivo','Situação','Área/ Local','Conferente','Turno'];
       const aoa=[headers].concat(d.pa.map(r=>headers.map(h=>r[h]??'')));const ws=XLSX.utils.aoa_to_sheet(aoa);
-      ws['!cols']=[8,8,12,30,12,48,9,28,14,24,16,8,12,14,14,14,14,16].map(w=>({wch:w}));ws['!autofilter']={ref:'A1:R'+aoa.length};
+      ws['!cols']=[12,30,12,48,9,28,14,24,16,8].map(w=>({wch:w}));ws['!autofilter']={ref:'A1:J'+aoa.length};
       const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'PA');XLSX.writeFile(wb,'PA_BOs_validados.xlsx',{compression:true});
-      showToast('PA gerada com os mesmos campos da aba PA, incluindo descrição, HL e valor.');
+      showToast('PA gerada somente com os campos de entrada manual da planilha.');
     }catch(e){showToast(e.message,true);}
   }
 
