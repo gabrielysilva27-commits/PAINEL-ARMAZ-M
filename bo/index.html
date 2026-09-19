@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f47a20" />
+  <meta name="description" content="B.O. Digital de Movimentações de Estoque — Armazém Império." />
+  <title>B.O. Digital | Armazém Império</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=20260919-1" />
+</head>
+<body>
+  <main class="bo-app">
+    <header class="bo-brand">
+      <img src="../assets/logo-imperio.png" alt="Império" />
+      <div><span>ARMAZÉM</span><strong>B.O. DIGITAL</strong></div>
+    </header>
+
+    <section id="loginView" class="bo-card">
+      <p class="eyebrow">IDENTIFICAÇÃO DO CONFERENTE</p>
+      <h1>Movimentações de Estoque</h1>
+      <p class="muted">Selecione seu nome e informe seu PIN pessoal.</p>
+      <form id="pinForm" class="stack">
+        <label>Conferente<select id="conferencerSelect" required><option value="">Carregando...</option></select></label>
+        <label>PIN<input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="one-time-code" placeholder="4 dígitos" required /></label>
+        <p id="loginError" class="error"></p>
+        <button class="primary" type="submit" id="pinButton">Entrar</button>
+      </form>
+    </section>
+
+    <section id="formView" class="hidden">
+      <div class="bo-toolbar">
+        <div><p class="eyebrow">NOVO B.O.</p><h1>Registrar ocorrência</h1><p class="muted" id="loggedName"></p></div>
+        <div class="toolbar-actions"><button class="secondary" id="historyButton" type="button">Meus B.O.s</button><button class="ghost" id="logoutButton" type="button">Sair</button></div>
+      </div>
+
+      <form id="boForm" class="bo-card stack">
+        <section class="form-section">
+          <h2>1. Dados da ocorrência</h2>
+          <div class="grid grid-2">
+            <label>Data<input id="occurrenceDate" type="date" required /></label>
+            <label>Hora<input id="occurrenceTime" type="time" required /></label>
+          </div>
+          <div>
+            <span class="field-title">Turno</span>
+            <div class="segmented" id="shiftOptions"><button type="button" data-value="A">A</button><button type="button" data-value="B">B</button><button type="button" data-value="C">C</button></div>
+          </div>
+          <div>
+            <span class="field-title">Tipo</span>
+            <div class="segmented" id="movementOptions"><button type="button" data-value="Entrada">Entrada</button><button type="button" data-value="Saída">Saída</button></div>
+          </div>
+          <label>Local<select id="locationSelect" required></select></label>
+        </section>
+
+        <section class="form-section">
+          <h2>2. Funcionário e motivo</h2>
+          <label>Funcionário envolvido<div class="search-box"><input id="employeeInput" autocomplete="off" placeholder="Digite pelo menos 2 letras" required /><div id="employeeResults" class="search-results hidden"></div></div></label>
+          <label>Função<input id="employeeFunction" readonly required /></label>
+          <label>Motivo<select id="reasonSelect" required></select></label>
+          <label>Responsável<select id="responsibilitySelect" required></select></label>
+          <label id="interviewWrap" class="hidden">Entrevista / relato obrigatório<textarea id="interviewReport" rows="4" placeholder="Registre a entrevista realizada com o funcionário..."></textarea></label>
+        </section>
+
+        <section class="form-section">
+          <div class="section-heading"><div><h2>3. Produtos do B.O.</h2><p class="muted">Adicione todos os produtos desta ocorrência.</p></div><button class="secondary" id="addProductButton" type="button">+ Adicionar produto</button></div>
+          <div id="itemsList" class="items-list"></div>
+        </section>
+
+        <section class="form-section">
+          <h2>4. Comentários</h2>
+          <label>Observações<textarea id="comments" rows="4" placeholder="Descreva detalhes relevantes da ocorrência..."></textarea></label>
+        </section>
+
+        <p id="formError" class="error"></p>
+        <button class="primary large" type="submit" id="submitButton">Enviar B.O.</button>
+      </form>
+    </section>
+
+    <section id="successView" class="bo-card hidden success-card">
+      <div class="success-icon">✓</div>
+      <p class="eyebrow">REGISTRO CONCLUÍDO</p>
+      <h1 id="successNumber">B.O. enviado</h1>
+      <p>O registro foi enviado para validação do Controle.</p>
+      <button class="primary" id="newBoButton" type="button">Registrar outro B.O.</button>
+      <button class="secondary" id="successHistoryButton" type="button">Ver meus B.O.s</button>
+    </section>
+
+    <section id="historyView" class="hidden">
+      <div class="bo-toolbar">
+        <div><p class="eyebrow">HISTÓRICO</p><h1>Meus B.O.s</h1></div>
+        <button class="secondary" id="backToFormButton" type="button">+ Novo B.O.</button>
+      </div>
+      <div id="historyList" class="history-list"></div>
+    </section>
+  </main>
+
+  <template id="itemTemplate">
+    <article class="item-card">
+      <div class="item-heading"><strong class="item-title">Produto</strong><button class="remove-item" type="button" aria-label="Remover produto">×</button></div>
+      <label>Código<div class="search-box"><input class="sku-input" inputmode="numeric" autocomplete="off" placeholder="Ex.: 9084" required /><div class="sku-results search-results hidden"></div></div></label>
+      <label>Descrição<input class="sku-name" readonly placeholder="Preenchida automaticamente pelo 01.11" /></label>
+      <div class="grid grid-3">
+        <label>Total<input class="qty-total" type="number" min="0.001" step="0.001" required /></label>
+        <label>TT Reembalado<input class="qty-repacked" type="number" min="0" step="0.001" value="0" /></label>
+        <label>TT Descarte<input class="qty-discarded" type="number" min="0" step="0.001" value="0" /></label>
+      </div>
+      <details>
+        <summary>Dados opcionais para NF / rastreio</summary>
+        <div class="grid grid-3 optional-grid">
+          <label>NF<input class="invoice-number" /></label>
+          <label>Lote<input class="lot-number" /></label>
+          <label>Validade<input class="expiry-date" type="date" /></label>
+        </div>
+      </details>
+    </article>
+  </template>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js?v=20260919-1"></script>
+</body>
+</html>
