@@ -5,8 +5,8 @@
     if(window.__boControl)return Promise.resolve(window.__boControl);
     if(loading)return loading;
     loading=new Promise((resolve,reject)=>{
-      if(!$('boControlCss')){const l=document.createElement('link');l.id='boControlCss';l.rel='stylesheet';l.href='bo-control.css?v=20260919-2';document.head.appendChild(l);}
-      const s=document.createElement('script');s.src='bo-control.js?v=20260919-2';s.async=true;s.onload=()=>resolve(window.__boControl);s.onerror=()=>reject(new Error('Falha ao carregar Controle de B.O.'));document.body.appendChild(s);
+      if(!$('boControlCss')){const l=document.createElement('link');l.id='boControlCss';l.rel='stylesheet';l.href='bo-control.css?v=20260919-3';document.head.appendChild(l);}
+      const s=document.createElement('script');s.src='bo-control.js?v=20260919-3';s.async=true;s.onload=()=>resolve(window.__boControl);s.onerror=()=>reject(new Error('Falha ao carregar Controle de B.O.'));document.body.appendChild(s);
     });return loading;
   }
 
@@ -27,9 +27,9 @@
     if(!anchor||!main)return setTimeout(mount,160);
 
     const group=document.createElement('div');group.className='control-nav-group open';
-    const parent=document.createElement('button');parent.type='button';parent.className='control-nav-parent';parent.innerHTML='<span>▣</span><span>Controle</span><span class="control-chevron">›</span>';
+    const parent=document.createElement('button');parent.type='button';parent.className='nav-link control-nav-parent';parent.innerHTML='<span>▣</span> Controle <span class="control-chevron">⌄</span>';
     const submenu=document.createElement('div');submenu.className='control-submenu';
-    const bo=document.createElement('button');bo.className='nav-link';bo.dataset.view='bo-control';bo.innerHTML='<span>☑</span> B.O.';bo.onclick=open;
+    const bo=document.createElement('button');bo.className='nav-link control-sub-link';bo.dataset.view='bo-control';bo.innerHTML='<span>☑</span> B.O.';bo.onclick=open;
     submenu.appendChild(bo);group.appendChild(parent);group.appendChild(submenu);anchor.insertAdjacentElement('afterend',group);
     parent.onclick=()=>group.classList.toggle('open');
 
