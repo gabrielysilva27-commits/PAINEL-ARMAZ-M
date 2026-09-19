@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260919-1" />
+  <link rel="stylesheet" href="styles.css?v=20260919-2" />
 </head>
 <body>
   <main class="bo-app">
@@ -55,9 +55,17 @@
         </section>
 
         <section class="form-section">
-          <h2>2. Funcionário e motivo</h2>
-          <label>Funcionário envolvido<div class="search-box"><input id="employeeInput" autocomplete="off" placeholder="Digite pelo menos 2 letras" required /><div id="employeeResults" class="search-results hidden"></div></div></label>
-          <label>Função<input id="employeeFunction" readonly required /></label>
+          <h2>2. Origem e motivo</h2>
+          <div>
+            <span class="field-title">Ocorrência atribuída a</span>
+            <div class="segmented segmented-3" id="subjectOptions"><button type="button" data-value="Funcionário">Funcionário</button><button type="button" data-value="Armazém">Armazém</button><button type="button" data-value="Fábrica">Fábrica</button></div>
+          </div>
+          <div id="employeeFields">
+            <label>Funcionário envolvido<div class="search-box"><input id="employeeInput" autocomplete="off" placeholder="Digite pelo menos 2 letras" /><div id="employeeResults" class="search-results hidden"></div></div></label>
+            <label style="margin-top:12px">Função<input id="employeeFunction" readonly /></label>
+          </div>
+          <label id="factoryWrap" class="hidden">Fábrica<input id="factoryInput" autocomplete="off" placeholder="Informe a fábrica responsável" /></label>
+          <div id="warehouseHint" class="origin-hint hidden">A ocorrência será registrada como responsabilidade do <strong>Armazém</strong>.</div>
           <label>Motivo<select id="reasonSelect" required></select></label>
           <label>Responsável<select id="responsibilitySelect" required></select></label>
           <label id="interviewWrap" class="hidden">Entrevista / relato obrigatório<textarea id="interviewReport" rows="4" placeholder="Registre a entrevista realizada com o funcionário..."></textarea></label>
@@ -118,6 +126,6 @@
   </template>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="app.js?v=20260919-1"></script>
+  <script src="app.js?v=20260919-2"></script>
 </body>
 </html>
