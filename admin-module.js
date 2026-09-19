@@ -41,9 +41,9 @@
       '<div class="admin-module-grid">'+
         accessCard('B.O. DIGITAL','B.O. dos conferentes','Acesso permanente para registro de B.O.',''+BO_URL,QR_DATA,'adminBo')+
         accessCard('RECEBIMENTO / NRI','Conferência cega','QR dos conferentes para recebimento físico e geração das NRIs.',''+RECEBIMENTO_URL,RECEBIMENTO_QR,'adminNri')+
-        accessCard('PORTARIA','Entrada de carreta','Acesso único da Portaria para abrir a carreta antes da conferência.',''+PORTARIA_URL,PORTARIA_QR,'adminGate')+
+        accessCard('PORTARIA','Entrada de carreta','QR da Portaria. Cada pessoa entra com seu nome e PIN individual.',''+PORTARIA_URL,PORTARIA_QR,'adminGate')+
         '<section class="admin-card"><p class="eyebrow">SEGURANÇA</p><h2>PINs dos conferentes</h2><p>Os mesmos PINs identificam o conferente no B.O. e na conferência de recebimento.</p><div class="admin-actions"><button class="primary" id="adminGeneratePins">Gerar PINs faltantes</button></div><div id="adminIssued"></div><div id="adminPinList" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div></section>'+
-        '<section class="admin-card"><p class="eyebrow">PORTARIA</p><h2>PIN único da Portaria</h2><p>Um único login operacional. O PIN pode ser gerado ou resetado pela Administração.</p><div id="adminGateStatus" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div><div id="adminGateIssued"></div><div class="admin-actions"><button class="primary" id="adminGatePinButton">Gerar PIN</button></div></section>'+
+        '<section class="admin-card"><p class="eyebrow">PORTARIA</p><h2>PINs da Portaria</h2><p>Daniel, Rodrigo, Yuri e Lucas possuem identificação individual. Cada abertura de carreta fica vinculada ao usuário que entrou com o PIN.</p><div id="adminGateIssued"></div><div id="adminGateStatus" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div></section>'+
       '</div></div>';
   }
 
@@ -77,18 +77,17 @@
   function downloadAccessQr(qr,filename){const a=document.createElement('a');a.href=qr;a.download=filename;a.click();}
   async function loadGatePin(){
     try{
-      const d=await nriCall('gate_pin_status'),g=d.gate;
-      $('adminGateStatus').innerHTML='<div class="admin-pin-item"><div><strong>Portaria</strong><small>'+(g.pin_ready?'PIN configurado':'PIN pendente')+'</small></div></div>';
-      $('adminGatePinButton').textContent=g.pin_ready?'Resetar PIN':'Gerar PIN';
-      $('adminGatePinButton').onclick=()=>setGatePin(g.pin_ready);
+      const d=await nriCall('gate_pin_status'),users=d.users||[];
+      $('adminGateStatus').innerHTML=users.map(x=>'<div class="admin-pin-item"><div><strong>'+esc(x.display_name)+'</strong><small>'+(x.pin_ready?'PIN configurado':'PIN pendente')+'</small></div><button data-gate-pin="'+esc(x.id)+'" data-ready="'+(x.pin_ready?'1':'0')+'">'+(x.pin_ready?'Resetar':'Gerar')+'</button></div>').join('');
+      $('adminGateStatus').querySelectorAll('[data-gate-pin]').forEach(b=>b.onclick=()=>setGatePin(b.dataset.gatePin,b.dataset.ready==='1'));
     }catch(e){$('adminGateStatus').innerHTML='<p class="form-error">'+esc(e.message)+'</p>';}
   }
-  async function setGatePin(reset){
+  async function setGatePin(id,reset){
     try{
-      const d=await nriCall(reset?'gate_reset_pin':'gate_generate_pin');
-      if(!d.issued){showToast('O PIN da Portaria já está configurado.');return loadGatePin();}
-      $('adminGateIssued').innerHTML='<div class="admin-issued"><strong>Copie agora. Este PIN não será exibido novamente.</strong><div class="admin-issued-row"><span>Portaria</span><code>'+esc(d.issued.pin)+'</code><button id="adminCopyGatePin">Copiar</button></div></div>';
-      $('adminCopyGatePin').onclick=async()=>{await navigator.clipboard?.writeText(d.issued.pin);showToast('PIN da Portaria copiado.');};
+      const d=await nriCall(reset?'gate_reset_pin':'gate_generate_pin',{id});
+      if(!d.issued){showToast('Este PIN já está configurado.');return loadGatePin();}
+      $('adminGateIssued').innerHTML='<div class="admin-issued"><strong>Copie agora. Este PIN não será exibido novamente.</strong><div class="admin-issued-row"><span>'+esc(d.issued.display_name)+'</span><code>'+esc(d.issued.pin)+'</code><button id="adminCopyGatePin">Copiar</button></div></div>';
+      $('adminCopyGatePin').onclick=async()=>{await navigator.clipboard?.writeText(d.issued.pin);showToast('PIN copiado.');};
       await loadGatePin();
     }catch(e){showToast(e.message,true);}
   }
