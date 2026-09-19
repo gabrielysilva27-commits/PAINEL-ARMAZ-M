@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260919-2" />
+  <link rel="stylesheet" href="styles.css?v=20260919-3" />
 </head>
 <body>
   <main class="bo-app">
@@ -36,6 +36,7 @@
         <div class="toolbar-actions"><button class="secondary" id="historyButton" type="button">Meus B.O.s</button><button class="ghost" id="logoutButton" type="button">Sair</button></div>
       </div>
 
+      <div id="editingBanner" class="editing-banner hidden"><div><strong id="editingTitle">Editando B.O.</strong><span id="editingSubtitle"></span></div><button id="cancelEditButton" class="secondary" type="button">Cancelar edição</button></div>
       <form id="boForm" class="bo-card stack">
         <section class="form-section">
           <h2>1. Dados da ocorrência</h2>
@@ -90,7 +91,7 @@
       <div class="success-icon">✓</div>
       <p class="eyebrow">REGISTRO CONCLUÍDO</p>
       <h1 id="successNumber">B.O. enviado</h1>
-      <p>O registro foi enviado para validação do Controle.</p>
+      <p id="successMessage">O registro foi enviado para validação do Controle.</p>
       <button class="primary" id="newBoButton" type="button">Registrar outro B.O.</button>
       <button class="secondary" id="successHistoryButton" type="button">Ver meus B.O.s</button>
     </section>
@@ -126,6 +127,6 @@
   </template>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="app.js?v=20260919-2"></script>
+  <script src="app.js?v=20260919-3"></script>
 </body>
 </html>
