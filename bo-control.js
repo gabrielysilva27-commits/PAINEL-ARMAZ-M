@@ -41,11 +41,11 @@
       '<section class="bo-control-panel"><div class="bo-control-toolbar">'+
       '<label>Buscar<input id="boSearch" placeholder="B.O., funcionário, fábrica, código ou produto" /></label>'+
       '<label>Status<select id="boStatus"><option value="pending">Pendentes</option><option value="validated">Validados</option><option value="returned">Devolvidos</option><option value="cancelled">Excluídos</option><option value="all">Todos</option></select></label>'+
-      '<div class="bo-control-actions"><button class="bo-btn-secondary" id="boRefresh">Atualizar</button><button class="bo-btn-secondary" id="boExportPa">PA (.xlsx)</button><button class="bo-btn-secondary" id="boPreviewDaily">Visualizar Informativo</button><button class="bo-btn-secondary" id="boExportDaily">Informativo (.xlsx)</button></div>'+
+      '<div class="bo-control-actions"><button class="bo-btn-secondary" id="boRefresh">Atualizar</button><button class="bo-btn-secondary" id="boExportPa">PA (.xlsx)</button><button class="bo-btn-secondary" id="boPreviewDaily">Visualizar Informativo</button></div>'+
       '</div><div style="display:flex;justify-content:flex-end;margin-top:10px"><label style="display:grid;gap:5px;font-size:12px;font-weight:700">Data do Informativo<input id="boDailyDate" type="date" value="'+today()+'" style="border:1px solid #d7d8dd;border-radius:9px;padding:9px 10px"></label></div>'+
       '<div class="bo-table-wrap"><table class="bo-table"><thead><tr><th>B.O.</th><th>Data/Hora</th><th>Conferente</th><th>Origem</th><th>Turno</th><th>Motivo</th><th>Local</th><th>Status</th><th>Ação</th></tr></thead><tbody id="boTableBody"></tbody></table></div><div class="bo-empty hidden" id="boEmpty">Nenhum B.O. encontrado.</div><p class="bo-export-note">A PA e o Informativo são derivados automaticamente dos B.O.s validados. Não há nova digitação.</p></section>'+
       '</div>'+
-      '<dialog id="boReviewDialog" class="bo-review-dialog"><div class="bo-review-inner"><div class="bo-review-header"><div><p class="eyebrow">VALIDAÇÃO DO CONTROLE</p><h2 id="boDialogTitle"></h2></div><button id="boDialogClose" aria-label="Fechar">×</button></div><div id="boDialogBody"></div></div></dialog>'+
+      '<dialog id="boReviewDialog" class="bo-review-dialog"><div class="bo-review-inner"><div class="bo-review-header"><div><p class="eyebrow">B.O. · MOVIMENTAÇÕES DE ESTOQUE</p><h2 id="boDialogTitle"></h2></div><button id="boDialogClose" aria-label="Fechar">×</button></div><div class="bo-dialog-tools"><button class="bo-btn-secondary" id="boPrint">Imprimir / PDF</button></div><div id="boDialogBody"></div></div></dialog>'+
       '<dialog id="boInformativoDialog" class="bo-informativo-dialog"><div class="bo-review-inner"><div class="bo-review-header"><div><p class="eyebrow">INFORMATIVO DE QUEBRA DIÁRIA</p><h2 id="boInfDialogTitle"></h2></div><button id="boInfClose" aria-label="Fechar">×</button></div><div class="bo-dialog-tools"><button class="bo-btn-secondary" id="boInfPrint">Imprimir / PDF</button><button class="bo-btn-primary" id="boInfDownload">Baixar XLSX</button></div><div id="boInfBody"></div></div></dialog>';
   }
 
@@ -54,8 +54,8 @@
     $('boStatus').value=activeStatus;
     $('boStatus').onchange=()=>{activeStatus=$('boStatus').value;load();};
     let t;$('boSearch').oninput=()=>{clearTimeout(t);t=setTimeout(load,250);};
-    $('boRefresh').onclick=load;$('boExportPa').onclick=exportPaXlsx;$('boPreviewDaily').onclick=previewDaily;$('boExportDaily').onclick=exportDailyXlsx;
-    $('boDialogClose').onclick=()=>$('boReviewDialog').close();$('boInfClose').onclick=()=>$('boInformativoDialog').close();
+    $('boRefresh').onclick=load;$('boExportPa').onclick=exportPaXlsx;$('boPreviewDaily').onclick=previewDaily;
+    $('boDialogClose').onclick=()=>$('boReviewDialog').close();$('boPrint').onclick=printBo;$('boInfClose').onclick=()=>$('boInformativoDialog').close();
     $('boInfPrint').onclick=printInformativo;$('boInfDownload').onclick=exportDailyXlsx;
   }
 
@@ -63,7 +63,7 @@
     try{
       const d=await call('dashboard',{status:activeStatus,search:$('boSearch')?$('boSearch').value:''});rows=d.occurrences||[];
       $('boCountPending').textContent=d.counts.pending||0;$('boCountValidated').textContent=d.counts.validated||0;$('boCountReturned').textContent=d.counts.returned||0;
-      const body=$('boTableBody');body.innerHTML=rows.map(r=>'<tr><td><strong>'+esc(r.bo_number)+'</strong></td><td>'+fmtDate(r.occurrence_date)+'<br><small>'+esc(String(r.occurrence_time||'').slice(0,5))+'</small></td><td>'+esc(r.conferencer&&r.conferencer.display_name||'—')+'</td><td>'+esc(r.employee_name)+'</td><td>'+esc(r.shift)+'</td><td>'+esc(r.reason)+'</td><td>'+esc(r.location)+'</td><td><span class="bo-badge '+r.status+'">'+statusLabel(r.status)+'</span></td><td><button class="bo-btn-secondary" data-open="'+r.id+'">Visualizar</button></td></tr>').join('');
+      const body=$('boTableBody');body.innerHTML=rows.map(r=>'<tr><td><strong>'+esc(r.bo_number)+'</strong></td><td>'+fmtDate(r.occurrence_date)+'<br><small>'+esc(String(r.occurrence_time||'').slice(0,5))+'</small></td><td>'+esc(r.conferencer&&r.conferencer.display_name||'—')+'</td><td>'+esc(subjectName(r))+'<br><small>'+esc(r.subject_type||'Funcionário')+'</small></td><td>'+esc(r.shift)+'</td><td>'+esc(r.reason)+'</td><td>'+esc(r.location)+'</td><td><span class="bo-badge '+r.status+'">'+statusLabel(r.status)+'</span></td><td><button class="bo-btn-secondary" data-open="'+r.id+'">Visualizar B.O.</button></td></tr>').join('');
       $('boEmpty').classList.toggle('hidden',rows.length>0);body.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openRow(Number(b.dataset.open)));
     }catch(e){showToast(e.message,true);}
   }
@@ -149,10 +149,33 @@
     }catch(e){showToast(e.message,true);}
   }
 
+  function printSheet(title,content,landscape=false){
+    if(!content)return;
+    const iframe=document.createElement('iframe');
+    iframe.setAttribute('aria-hidden','true');
+    iframe.style.position='fixed';iframe.style.right='0';iframe.style.bottom='0';
+    iframe.style.width='1px';iframe.style.height='1px';iframe.style.border='0';iframe.style.opacity='0';
+    document.body.appendChild(iframe);
+    const css='@page{size:A4 '+(landscape?'landscape':'portrait')+';margin:10mm}*{box-sizing:border-box}body{margin:0;color:#111;background:#fff;font-family:Arial,sans-serif}'+
+      '.bo-paper{background:#fff;border:2px solid #171717;color:#171717}.bo-paper-title{text-align:center;font-weight:900;font-size:20px;padding:12px 10px 5px}.bo-paper-subtitle{text-align:center;font-weight:900;font-size:18px;padding-bottom:10px}.bo-paper-top{display:grid;grid-template-columns:1fr 1fr;border-top:2px solid #171717;border-bottom:2px solid #171717}.bo-paper-box{padding:10px 12px;min-height:88px}.bo-paper-box+.bo-paper-box{border-left:2px solid #171717}.bo-paper-line{display:flex;align-items:center;gap:7px;margin:4px 0;flex-wrap:wrap}.bo-paper-check{display:inline-flex;align-items:center;gap:5px;margin-right:8px}.bo-paper-check i{width:14px;height:14px;border:2px solid #111;display:inline-block}.bo-paper-check.active i{background:#111;box-shadow:inset 0 0 0 3px #fff}.bo-paper-band{background:#111!important;color:#fff!important;text-align:center;font-weight:800;padding:5px 8px;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-paper-local{display:grid;grid-template-columns:1fr 1fr}.bo-paper-local>div{padding:8px 12px}.bo-paper-local>div+div{border-left:1px solid #111}.bo-paper-local h4{text-align:center;margin:0 0 6px;font-size:10px}.bo-paper-table{width:100%;border-collapse:collapse}.bo-paper-table th,.bo-paper-table td{border:1px solid #111;padding:4px 5px;font-size:9px}.bo-paper-table th{background:#111!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-paper-comments{min-height:48px;border-top:1px solid #111;padding:7px 9px;font-size:10px}.bo-paper-meta-row{display:grid;grid-template-columns:110px 1fr;border-top:1px solid #111}.bo-paper-meta-row strong{background:#111!important;color:#fff!important;padding:5px 7px;font-size:9px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-paper-meta-row span{padding:5px 7px;font-size:10px}.bo-paper-reasons{display:grid;grid-template-columns:repeat(4,1fr);gap:3px 8px;padding:8px 12px;font-size:9px}.bo-paper-footer{display:grid;grid-template-columns:1fr 1fr;border-top:2px solid #111}.bo-paper-footer>div{padding:8px 12px;font-size:10px}.bo-paper-footer>div+div{border-left:1px solid #111}.bo-paper-note{border-top:1px solid #111;background:#efefef!important;padding:4px 7px;font-size:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
+      '.bo-informativo-sheet{background:#fff;border:1px solid #222;padding:14px}.bo-inf-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-end}.bo-inf-title{font-weight:800;font-size:14px;margin:9px 0}.bo-inf-section{background:#111!important;color:#fff!important;text-align:center;font-weight:800;padding:6px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-inf-table{width:100%;border-collapse:collapse}.bo-inf-table th,.bo-inf-table td{border:1px solid #333;padding:4px;font-size:9px}.bo-inf-table th{background:#111!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-inf-legend{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:8px;font-size:9px}';
+    const doc=iframe.contentDocument||iframe.contentWindow.document;
+    doc.open();doc.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'+css+'</style></head><body>'+content+'</body></html>');doc.close();
+    const cleanup=()=>setTimeout(()=>{if(iframe.parentNode)iframe.remove();},500);
+    try{iframe.contentWindow.onafterprint=cleanup;}catch(e){}
+    setTimeout(()=>{try{iframe.contentWindow.focus();iframe.contentWindow.print();}catch(e){showToast('Não foi possível abrir a impressão.',true);cleanup();}},250);
+  }
+
+  function printBo(){
+    const paper=$('boDialogBody')&&$('boDialogBody').querySelector('.bo-paper');
+    if(!paper)return showToast('Abra um B.O. antes de imprimir.',true);
+    printSheet(selected&&selected.bo_number?selected.bo_number:'B.O.',paper.outerHTML,false);
+  }
+
   function printInformativo(){
-    const content=$('boInfBody')&&$('boInfBody').innerHTML;if(!content)return;
-    const w=window.open('','_blank','noopener,noreferrer');if(!w)return showToast('O navegador bloqueou a janela de impressão.',true);
-    w.document.write('<!doctype html><html><head><title>Informativo de Quebra Diária</title><style>body{font-family:Arial,sans-serif;color:#111;padding:20px}.bo-informativo-sheet{border:1px solid #222;padding:18px}.bo-inf-head{display:flex;justify-content:space-between}.bo-inf-section{background:#111;color:#fff;text-align:center;font-weight:bold;padding:6px;margin-top:10px}.bo-inf-table{width:100%;border-collapse:collapse}.bo-inf-table th,.bo-inf-table td{border:1px solid #333;padding:5px;font-size:10px}.bo-inf-table th{background:#222;color:#fff}.bo-inf-legend{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:10px;font-size:10px}</style></head><body>'+content+'<script>window.onload=()=>window.print()<\/script></body></html>');w.document.close();
+    const content=$('boInfBody')&&$('boInfBody').innerHTML;
+    if(!content)return showToast('Visualize o Informativo antes de imprimir.',true);
+    printSheet('Informativo de Quebra Diária',content,true);
   }
 
   async function loadPins(){try{const d=await call('pin_status');$('boPinList').innerHTML=d.conferencers.map(x=>'<div class="bo-pin-item"><div><strong>'+esc(x.display_name)+'</strong><small style="display:block;color:#777">'+(x.pin_ready?'PIN configurado':'PIN pendente')+'</small></div><button class="bo-btn-secondary" data-reset="'+x.id+'">'+(x.pin_ready?'Resetar PIN':'Gerar PIN')+'</button></div>').join('');$('boPinList').querySelectorAll('[data-reset]').forEach(b=>b.onclick=()=>resetPin(b.dataset.reset));}catch(e){showToast(e.message,true);}}
