@@ -18,7 +18,6 @@
   function num(v){return new Intl.NumberFormat('pt-BR',{maximumFractionDigits:3}).format(Number(v||0));}
   function statusLabel(s){return({pending:'Pendente',validated:'Validado',returned:'Devolvido'})[s]||s;}
   function today(){return new Date().toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'});}
-  function initials(name){return String(name||'').trim().split(/\s+/).map(x=>x[0]||'').join('').slice(0,3).toUpperCase();}
   function subjectName(row){const type=row?.subject_type||'Funcionário';if(type==='Fábrica')return row.factory_name||'Fábrica';if(type==='Armazém')return 'Armazém';return row.employee_name||'—';}
   function subjectFunction(row){return (row?.subject_type||'Funcionário')==='Funcionário'?(row.employee_function||'—'):'';}
   function checkbox(label,active){return '<span class="bo-paper-check '+(active?'active':'')+'"><i></i>'+esc(label)+'</span>';}
@@ -74,14 +73,13 @@
     $('boDialogTitle').textContent=selected.bo_number;
     const items=(selected.items||[]).slice().sort((a,b)=>a.line_no-b.line_no);
     const conf=selected.conferencer&&selected.conferencer.display_name||'';
-    const rubrica=initials(conf);
     let paper='<div class="bo-paper">'+
       '<div class="bo-paper-title">Movimentações de Estoque</div><div class="bo-paper-subtitle">B.O.</div>'+
       '<div class="bo-paper-top"><div class="bo-paper-box"><div><strong>Data:</strong> '+fmtDate(selected.occurrence_date)+' &nbsp;&nbsp; <strong>Hora:</strong> '+esc(String(selected.occurrence_time||'').slice(0,5))+'</div><div class="bo-paper-line"><strong>Emitido por:</strong> '+esc(conf)+'</div><div class="bo-paper-line">'+['A','B','C'].map(x=>checkbox('Turno '+x,selected.shift===x)).join('')+'</div></div>'+
       '<div class="bo-paper-box"><div style="text-align:center;font-weight:800;margin-bottom:10px">Tipo</div><div class="bo-paper-line" style="justify-content:center">'+['Entrada','Saída'].map(x=>checkbox(x,selected.movement_type===x)).join('')+'</div></div></div>'+
       '<div class="bo-paper-band">Local</div><div class="bo-paper-local"><div><h4>CHEIO</h4>'+FULL_LOCATIONS.map(x=>checkbox(x,selected.location===x)).join('')+'</div><div><h4>VAZIO</h4>'+EMPTY_LOCATIONS.map(x=>checkbox(x,selected.location===x)).join('')+'</div></div>'+
-      '<table class="bo-paper-table"><thead><tr><th>Código</th><th>DESCRIÇÃO</th><th>TOTAL</th><th>TT REEMBALADO</th><th>TT DESCARTE</th><th>RUBRICA</th></tr></thead><tbody>'+
-      items.map(x=>'<tr><td>'+esc(x.sku_code)+'</td><td>'+esc(x.sku_name)+'</td><td>'+num(x.total_qty)+'</td><td>'+num(x.repacked_qty)+'</td><td>'+num(x.discarded_qty)+'</td><td>'+esc(rubrica)+'</td></tr>').join('')+
+      '<table class="bo-paper-table"><thead><tr><th>Código</th><th>DESCRIÇÃO</th><th>TOTAL</th><th>TT REEMBALADO</th><th>TT DESCARTE</th></tr></thead><tbody>'+
+      items.map(x=>'<tr><td>'+esc(x.sku_code)+'</td><td>'+esc(x.sku_name)+'</td><td>'+num(x.total_qty)+'</td><td>'+num(x.repacked_qty)+'</td><td>'+num(x.discarded_qty)+'</td></tr>').join('')+
       '</tbody></table>'+
       '<div class="bo-paper-comments"><strong>Comentários:</strong> '+esc(selected.comments||'')+'</div>'+
       '<div class="bo-paper-meta-row"><strong>'+(selected.subject_type==='Funcionário'||!selected.subject_type?'Funcionário:':selected.subject_type==='Fábrica'?'Fábrica:':'Origem:')+'</strong><span>'+esc(subjectName(selected))+'</span></div>'+((selected.subject_type==='Funcionário'||!selected.subject_type)?'<div class="bo-paper-meta-row"><strong>Função:</strong><span>'+esc(subjectFunction(selected))+'</span></div>':'')+
