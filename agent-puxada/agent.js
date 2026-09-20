@@ -80,27 +80,41 @@ async function main() {
         continue;
       }
 
-      log("Sincronizacao " + job.request_id + ": 020501 de " + job.date_from + " a " + job.date_to + ".");
-      const csvPath = await promax.export020501(job, config, ROOT);
-      log("CSV exportado: " + csvPath);
+      log("Sincronizacao " + job.request_id + ": 020501 de " + job.date_from + " a " + job.date_to +
+        (job.worker ? " · executando por " + job.worker.display_name + "." : "."));
 
-      const parsed = parse020501(csvPath);
-      log("CSV processado: " + parsed.raw_rows + " linhas, " + parsed.aggregated_rows + " combinacoes NF/produto.");
+      let heartbeatTimer = null;
+      const heartbeatPayload = { request_id: job.request_id, run_id: job.run_id };
+      heartbeatTimer = setInterval(function () {
+        api.heartbeat(heartbeatPayload).catch(function (hbErr) {
+          log("Heartbeat da sincronizacao falhou: " + (hbErr && hbErr.message ? hbErr.message : String(hbErr)), true);
+        });
+      }, 60000);
 
-      const done = await api.complete({
-        request_id: job.request_id,
-        run_id: job.run_id,
-        date_from: job.date_from,
-        date_to: job.date_to,
-        source_file: path.basename(csvPath),
-        raw_rows: parsed.raw_rows,
-        rows: parsed.rows
-      });
+      try {
+        const csvPath = await promax.export020501(job, config, ROOT);
+        log("CSV exportado: " + csvPath);
 
-      log("Sincronizacao concluida. " +
-        done.result.documents + " NF(s), " +
-        done.result.aggregated_rows + " combinacoes NF/produto e " +
-        done.result.compared_receipts + " recebimento(s) cruzado(s).");
+        const parsed = parse020501(csvPath);
+        log("CSV processado: " + parsed.raw_rows + " linhas, " + parsed.aggregated_rows + " combinacoes NF/produto.");
+
+        const done = await api.complete({
+          request_id: job.request_id,
+          run_id: job.run_id,
+          date_from: job.date_from,
+          date_to: job.date_to,
+          source_file: path.basename(csvPath),
+          raw_rows: parsed.raw_rows,
+          rows: parsed.rows
+        });
+
+        log("Sincronizacao concluida. " +
+          done.result.documents + " NF(s), " +
+          done.result.aggregated_rows + " combinacoes NF/produto e " +
+          done.result.compared_receipts + " recebimento(s) cruzado(s).");
+      } finally {
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+      }
     } catch (err) {
       const message = err && err.message ? err.message : String(err);
       log(message, true);
