@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { chromium } = require("playwright");
+const { chromium } = require("playwright-core");
 
 function abs(root, value) {
   return path.isAbsolute(value) ? value : path.resolve(root, value);
