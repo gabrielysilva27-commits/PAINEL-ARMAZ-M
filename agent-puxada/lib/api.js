@@ -30,6 +30,10 @@ class AgentApi {
     return this.call("agent_poll", info);
   }
 
+  heartbeat(payload) {
+    return this.call("agent_heartbeat", payload);
+  }
+
   complete(payload) {
     return this.call("agent_complete", payload);
   }
