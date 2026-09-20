@@ -39,7 +39,7 @@
         '<button class="rxp-btn" id="rxpOpenConf">Abrir tela do conferente</button><button class="rxp-btn" id="rxpRefresh">Atualizar</button><button class="rxp-btn primary" id="rxpNew">+ Nova carreta</button>'+
       '</div>'+
       '<div class="rxp-note"><strong>Fila de impressão:</strong> após o conferente finalizar no celular, as NRIs ficam aqui aguardando impressão no computador da sala. A impressão exige novamente o PIN do conferente responsável.</div>'+
-      '<div class="rxp-table-wrap"><table class="rxp-table"><thead><tr><th>Recebimento</th><th>Chegada</th><th>Placa</th><th>NF / Pedido</th><th>Status</th><th>Portaria</th><th>Conferente</th><th>NRIs</th><th>Ações</th></tr></thead><tbody id="rxpBody"></tbody></table></div><div class="rxp-empty hidden" id="rxpEmpty">Nenhum recebimento encontrado.</div></section></div>';
+      '<div class="rxp-table-wrap"><table class="rxp-table"><thead><tr><th>Recebimento</th><th>Chegada</th><th>Placa</th><th>NF / Pedido</th><th>Status</th><th>Portaria</th><th>Conferente</th><th>Folhas NRI</th><th>Ações</th></tr></thead><tbody id="rxpBody"></tbody></table></div><div class="rxp-empty hidden" id="rxpEmpty">Nenhum recebimento encontrado.</div></section></div>';
     return '<div class="rxp-shell"><section class="rxp-kpis"><article class="rxp-kpi"><span>Aguardando Puxada</span><strong id="pullPending">—</strong></article><article class="rxp-kpi"><span>Sem divergência</span><strong id="pullMatched">—</strong></article><article class="rxp-kpi"><span>Com divergência</span><strong id="pullDivergent">—</strong></article></section><section class="rxp-panel"><div class="rxp-note"><strong>Conferência cega preservada:</strong> a Puxada só recebe o físico depois que o conferente finaliza a carreta.</div><div class="rxp-toolbar"><label class="grow">Buscar<input id="pullSearch" placeholder="Carreta, fábrica, carreteiro, código ou produto"></label><label>Status<select id="pullStatus"><option value="all">Todos</option><option value="pending">Aguardando</option><option value="in_progress">Em cruzamento</option><option value="matched">Sem divergência</option><option value="divergent">Com divergência</option></select></label><button class="rxp-btn" id="pullRefresh">Atualizar</button></div><div class="rxp-table-wrap"><table class="rxp-table"><thead><tr><th>Recebimento</th><th>Conferido em</th><th>Conferente</th><th>Itens</th><th>Status Puxada</th><th>Ação</th></tr></thead><tbody id="pullBody"></tbody></table></div><div class="rxp-empty hidden" id="pullEmpty">Nenhuma conferência concluída.</div></section></div>';
   }
   async function open(which='nri'){
@@ -72,7 +72,7 @@
           '<td><span class="rxp-status '+r.status+'">'+receiptStatus(r.status)+'</span><br><small class="'+printClass+'">'+printLabel+'</small></td>'+
           '<td>'+esc(r.gate_creator?.display_name||'—')+'</td>'+
           '<td>'+esc(r.conferencer?.display_name||'—')+'</td>'+
-          '<td><strong>'+n(r.nri_count||0)+'</strong><br><small>'+((r.items||[]).length)+' produto(s)</small></td>'+
+          '<td><strong>'+n(r.nri_count||0)+'</strong><br><small>1 folha por palete</small></td>'+
           '<td><button class="rxp-btn" data-detail="'+r.id+'">Visualizar</button> '+action+'</td></tr>';
       }).join('');
       $('rxpEmpty').classList.toggle('hidden',visible.length>0);
