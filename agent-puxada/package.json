@@ -10,6 +10,6 @@
     "check": "node agent.js --check"
   },
   "dependencies": {
-    "playwright": "^1.55.0"
+    "playwright-core": "^1.55.0"
   }
 }
