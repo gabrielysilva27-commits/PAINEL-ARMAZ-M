@@ -3,7 +3,7 @@
   const BO_API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/bo-api';
   const CONF_URL='https://painel-armaz-m.gabrielysilva27.workers.dev/recebimento/';
   const $=id=>document.getElementById(id);
-  let mode='nri',receipts=[],selected=null;
+  let mode='nri',receipts=[],selected=null,xlsxPromise=null;
 
   async function call(action,payload={}){const token=window.state?.token||localStorage.getItem('pa_session')||'';const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-session-token':token},body:JSON.stringify({action,...payload})});const d=await r.json().catch(()=>({error:'Resposta inválida'}));if(!r.ok)throw new Error(d.error||'Erro no Recebimento / NRI');return d}
   async function boCall(action,payload={},token=''){const headers={'Content-Type':'application/json'};if(token)headers['x-bo-token']=token;const r=await fetch(BO_API,{method:'POST',headers,body:JSON.stringify({action,...payload})});const d=await r.json().catch(()=>({error:'Resposta inválida'}));if(!r.ok)throw new Error(d.error||'Erro de autenticação');return d}
@@ -14,6 +14,45 @@
   const ft=v=>{if(!v)return'—';const s=String(v);if(/^\\d{2}:\\d{2}/.test(s))return s.slice(0,5);const d=new Date(s);return Number.isNaN(d.getTime())?'—':d.toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'});};
   const receiptStatus=s=>({awaiting_conference:'Aguardando conferência',in_conference:'Em conferência',conference_completed:'Conferência concluída',cancelled:'Cancelado'}[s]||s);
   const pullStatus=s=>({pending:'Aguardando Puxada',in_progress:'Em cruzamento',matched:'Sem divergência',divergent:'Com divergência'}[s]||s);
+  async function ensureXlsx(){
+    if(window.XLSX)return window.XLSX;if(xlsxPromise)return xlsxPromise;
+    xlsxPromise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';s.async=true;s.onload=()=>resolve(window.XLSX);s.onerror=()=>{xlsxPromise=null;reject(new Error('Não foi possível carregar o leitor de Excel.'));};document.head.appendChild(s)});return xlsxPromise
+  }
+  function normHeader(v){return String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase()}
+  function normDocClient(v){return String(v??'').replace(/\D/g,'').replace(/^0+/,'')||'0'}
+  function qty020501(v){
+    if(typeof v==='number')return v;let s=String(v??'').trim().replace(/\s/g,'');if(!s)return 0;
+    if(s.includes('/')){const p=s.split('/');const a=Number(String(p[0]).replace(/\./g,'').replace(',','.'))||0,b=Number(String(p[1]).replace(/\D/g,''))||0;return a+b/Math.pow(10,String(p[1]).replace(/\D/g,'').length||2)}
+    s=s.replace(/\./g,'').replace(',','.');const n=Number(s);return Number.isFinite(n)?n:0
+  }
+  function excelDate020501(v,XLSX){
+    if(typeof v==='number'){const p=XLSX.SSF.parse_date_code(v);if(p)return String(p.y).padStart(4,'0')+'-'+String(p.m).padStart(2,'0')+'-'+String(p.d).padStart(2,'0')}
+    const s=String(v??'').trim();if(/^\d{2}\/\d{2}\/\d{4}$/.test(s)){const [d,m,y]=s.split('/');return y+'-'+m+'-'+d}if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);return null
+  }
+  async function import020501File(file){
+    const XLSX=await ensureXlsx(),buf=await file.arrayBuffer(),book=XLSX.read(buf,{type:'array',cellDates:false}),ws=book.Sheets[book.SheetNames[0]];
+    const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:null,raw:true});if(data.length<2)throw new Error('O relatório está vazio.');
+    const heads=(data[0]||[]).map(normHeader),idx={};heads.forEach((h,i)=>idx[h]=i);
+    const required=['FORNEC','DOCUM','ITEM','DESCRICAO','UNIDADE','CODIGO OPERACAO','QTDE ENTRADA'];
+    for(const h of required)if(idx[h]==null)throw new Error('Coluna "'+h+'" não encontrada no 02.05.01.');
+    const agg=new Map(),rawRows=data.length-1;
+    for(let r=1;r<data.length;r++){
+      const row=data[r];if(!row||row.every(x=>x==null||x===''))continue;
+      const supplier=normDocClient(row[idx['FORNEC']]),invoice=normDocClient(row[idx['DOCUM']]),sku=normDocClient(row[idx['ITEM']]);if(!supplier||supplier==='0'||!invoice||invoice==='0'||!sku||sku==='0')continue;
+      const key=supplier+'|'+invoice+'|'+sku,old=agg.get(key)||{supplier_code:supplier,invoice_number:invoice,sku_code:sku,sku_name:String(row[idx['DESCRICAO']]||'').trim(),report_unit:String(row[idx['UNIDADE']]||'').trim(),system_qty:0,ops:new Set(),report_date:null};
+      old.system_qty+=qty020501(row[idx['QTDE ENTRADA']]);const op=row[idx['CODIGO OPERACAO']];if(op!=null&&op!=='')old.ops.add(String(op).trim());
+      if(idx['DATA']!=null&&!old.report_date)old.report_date=excelDate020501(row[idx['DATA']],XLSX);agg.set(key,old)
+    }
+    const rows=[...agg.values()].map(x=>({supplier_code:x.supplier_code,invoice_number:x.invoice_number,sku_code:x.sku_code,sku_name:x.sku_name,report_unit:x.report_unit,system_qty:Math.round(x.system_qty*1000)/1000,operation_codes:[...x.ops].sort().join('+'),report_date:x.report_date}));
+    if(!rows.length)throw new Error('Nenhuma linha válida encontrada no 02.05.01.');
+    const res=await call('system_020501_import',{source_file:file.name,raw_rows:rawRows,rows});return res.import
+  }
+  async function load020501Status(){
+    try{const d=await call('system_020501_status'),s=d.status,last=s.last_import;if(!$('pullImportStatus'))return;
+      $('pullImportStatus').innerHTML=last?'<strong>Base 02.05.01 carregada</strong><span>'+esc(last.source_file)+' · '+last.documents+' NF(s) · '+last.aggregated_rows+' combinações NF/produto · '+fd(last.imported_at)+'</span>':'<strong>Base 02.05.01 ainda não importada</strong><span>Importe o relatório para liberar o cruzamento automático.</span>';
+    }catch(e){if($('pullImportStatus'))$('pullImportStatus').innerHTML='<strong>Falha ao consultar a base</strong><span>'+esc(e.message)+'</span>'}
+  }
+
   function ensureDialogs(root){
     root.insertAdjacentHTML('beforeend',
       '<dialog id="rxpReceiptDialog" class="rxp-dialog"><div class="rxp-dialog-inner"><div class="rxp-dialog-head"><div><p class="eyebrow">PORTARIA / RECEBIMENTO</p><h2 id="rxpReceiptDialogTitle"></h2></div><button class="rxp-close" id="rxpReceiptClose">×</button></div><div id="rxpReceiptDialogBody"></div></div></dialog>'+
@@ -40,14 +79,14 @@
       '</div>'+
       '<div class="rxp-note"><strong>Fila de impressão:</strong> após o conferente finalizar no celular, as NRIs ficam aqui aguardando impressão no computador da sala. A impressão exige novamente o PIN do conferente responsável.</div>'+
       '<div class="rxp-table-wrap"><table class="rxp-table"><thead><tr><th>Recebimento</th><th>Chegada</th><th>Placa</th><th>NF / Pedido</th><th>Status</th><th>Portaria</th><th>Conferente</th><th>Folhas NRI</th><th>Ações</th></tr></thead><tbody id="rxpBody"></tbody></table></div><div class="rxp-empty hidden" id="rxpEmpty">Nenhum recebimento encontrado.</div></section></div>';
-    return '<div class="rxp-shell"><section class="rxp-kpis"><article class="rxp-kpi"><span>Aguardando Puxada</span><strong id="pullPending">—</strong></article><article class="rxp-kpi"><span>Sem divergência</span><strong id="pullMatched">—</strong></article><article class="rxp-kpi"><span>Com divergência</span><strong id="pullDivergent">—</strong></article></section><section class="rxp-panel"><div class="rxp-note"><strong>Conferência cega preservada:</strong> a Puxada só recebe o físico depois que o conferente finaliza a carreta.</div><div class="rxp-toolbar"><label class="grow">Buscar<input id="pullSearch" placeholder="Carreta, fábrica, carreteiro, código ou produto"></label><label>Status<select id="pullStatus"><option value="all">Todos</option><option value="pending">Aguardando</option><option value="in_progress">Em cruzamento</option><option value="matched">Sem divergência</option><option value="divergent">Com divergência</option></select></label><button class="rxp-btn" id="pullRefresh">Atualizar</button></div><div class="rxp-table-wrap"><table class="rxp-table"><thead><tr><th>Recebimento</th><th>Conferido em</th><th>Conferente</th><th>Itens</th><th>Status Puxada</th><th>Ação</th></tr></thead><tbody id="pullBody"></tbody></table></div><div class="rxp-empty hidden" id="pullEmpty">Nenhuma conferência concluída.</div></section></div>';
+    return '<div class="rxp-shell"><section class="rxp-kpis"><article class="rxp-kpi"><span>Aguardando Puxada</span><strong id="pullPending">—</strong></article><article class="rxp-kpi"><span>Sem divergência</span><strong id="pullMatched">—</strong></article><article class="rxp-kpi"><span>Com divergência</span><strong id="pullDivergent">—</strong></article></section><section class="rxp-panel"><div class="rxp-import-card"><div id="pullImportStatus"><strong>Base 02.05.01</strong><span>Consultando...</span></div><div><input id="pullImportFile" type="file" accept=".xlsx,.xls" class="hidden"><button class="rxp-btn primary" id="pullImportButton">Importar 02.05.01</button></div></div><div class="rxp-note"><strong>Cruzamento automático:</strong> o sistema localiza a NF pela fábrica + nota, soma compra e bonificação do mesmo produto e converte a quantidade do 02.05.01 em paletes usando o cadastro 01.11. Para fábricas sem código conhecido, a busca é somente pela NF.</div><div class="rxp-toolbar"><label class="grow">Buscar<input id="pullSearch" placeholder="Carreta, fábrica, carreteiro, código ou produto"></label><label>Status<select id="pullStatus"><option value="all">Todos</option><option value="pending">Aguardando</option><option value="in_progress">Em cruzamento</option><option value="matched">Sem divergência</option><option value="divergent">Com divergência</option></select></label><button class="rxp-btn" id="pullRefresh">Atualizar</button></div><div class="rxp-table-wrap"><table class="rxp-table"><thead><tr><th>Recebimento</th><th>Conferido em</th><th>Conferente</th><th>Itens</th><th>Status Puxada</th><th>Ação</th></tr></thead><tbody id="pullBody"></tbody></table></div><div class="rxp-empty hidden" id="pullEmpty">Nenhuma conferência concluída.</div></section></div>';
   }
   async function open(which='nri'){
     mode=which;const root=$(which==='nri'?'receivingNriView':'pullCompareView');document.querySelectorAll('main > .view').forEach(v=>v.classList.add('hidden'));document.querySelectorAll('.nav-link').forEach(n=>n.classList.remove('active'));root.classList.remove('hidden');document.querySelector('[data-view="'+(which==='nri'?'receiving-nri':'pull-compare')+'"]')?.classList.add('active');document.querySelector(which==='nri'?'.receiving-nav-group':'.pull-nav-group')?.classList.add('open');$('sidebar')?.classList.remove('open');
     $('pageTitle').textContent=which==='nri'?'Recebimento / NRI':'Puxada · Físico × Sistema';$('pageSubtitle').textContent=which==='nri'?'Da entrada da carreta à identificação dos paletes.':'Cruzamento do físico conferido às cegas com a quantidade do sistema.';
     root.innerHTML=shell(which);ensureDialogs(root);
     if(which==='nri'){let t;$('rxpSearch').oninput=()=>{clearTimeout(t);t=setTimeout(loadNri,250)};$('rxpStatus').onchange=loadNri;$('rxpPrintFilter').onchange=loadNri;$('rxpRefresh').onclick=loadNri;$('rxpNew').onclick=()=>openReceiptForm();$('rxpOpenConf').onclick=()=>window.open(CONF_URL,'_blank','noopener,noreferrer');$('rxpPrintPendingCard').onclick=()=>{$('rxpStatus').value='conference_completed';$('rxpPrintFilter').value='pending_print';loadNri()};await loadNri()}
-    else{let t;$('pullSearch').oninput=()=>{clearTimeout(t);t=setTimeout(loadPull,250)};$('pullStatus').onchange=loadPull;$('pullRefresh').onclick=loadPull;await loadPull()}
+    else{let t;$('pullSearch').oninput=()=>{clearTimeout(t);t=setTimeout(loadPull,250)};$('pullStatus').onchange=loadPull;$('pullRefresh').onclick=async()=>{await load020501Status();await loadPull()};$('pullImportButton').onclick=()=>$('pullImportFile').click();$('pullImportFile').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;const b=$('pullImportButton');try{b.disabled=true;b.textContent='Importando...';const x=await import020501File(file);showToast('02.05.01 importado: '+x.documents+' NF(s), '+x.aggregated_rows+' produtos consolidados.');await load020501Status();await loadPull()}catch(err){showToast(err.message,true)}finally{b.disabled=false;b.textContent='Importar 02.05.01';e.target.value=''}};await load020501Status();await loadPull()}
   }
   async function loadNri(){
     try{
@@ -81,7 +120,7 @@
     }catch(e){showToast(e.message,true)}
   }
   async function loadPull(){
-    try{const d=await call('list_receipts',{status:'conference_completed',pull_status:$('pullStatus').value,search:$('pullSearch').value});receipts=d.receipts||[];$('pullPending').textContent=d.counts.pull_pending||0;$('pullMatched').textContent=d.counts.pull_matched||0;$('pullDivergent').textContent=d.counts.pull_divergent||0;$('pullBody').innerHTML=receipts.map(r=>'<tr><td><strong>'+esc(r.display_name)+'</strong><br><small>'+esc(r.receipt_code)+'</small></td><td>'+fd(r.conference_completed_at)+'<br><small>'+esc(String(r.conference_completed_at||'').slice(11,16))+'</small></td><td>'+esc(r.conferencer?.display_name||'—')+'</td><td>'+((r.items||[]).length)+'</td><td><span class="rxp-status '+r.pull_status+'">'+pullStatus(r.pull_status)+'</span></td><td><button class="rxp-btn primary" data-pull="'+r.id+'">Cruzar dados</button></td></tr>').join('');$('pullEmpty').classList.toggle('hidden',receipts.length>0);$('pullBody').querySelectorAll('[data-pull]').forEach(b=>b.onclick=()=>openPull(Number(b.dataset.pull)))}catch(e){showToast(e.message,true)}
+    try{const d=await call('list_receipts',{status:'conference_completed',pull_status:$('pullStatus').value,search:$('pullSearch').value});receipts=d.receipts||[];$('pullPending').textContent=d.counts.pull_pending||0;$('pullMatched').textContent=d.counts.pull_matched||0;$('pullDivergent').textContent=d.counts.pull_divergent||0;$('pullBody').innerHTML=receipts.map(r=>'<tr><td><strong>'+esc(r.display_name)+'</strong><br><small>'+esc(r.receipt_code)+'</small></td><td>'+fd(r.conference_completed_at)+'<br><small>'+esc(String(r.conference_completed_at||'').slice(11,16))+'</small></td><td>'+esc(r.conferencer?.display_name||'—')+'</td><td>'+((r.items||[]).length)+'</td><td><span class="rxp-status '+r.pull_status+'">'+pullStatus(r.pull_status)+'</span></td><td><button class="rxp-btn primary" data-pull="'+r.id+'">Ver cruzamento</button></td></tr>').join('');$('pullEmpty').classList.toggle('hidden',receipts.length>0);$('pullBody').querySelectorAll('[data-pull]').forEach(b=>b.onclick=()=>openPull(Number(b.dataset.pull)))}catch(e){showToast(e.message,true)}
   }
   function nowDate(){return new Date().toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'})}function nowTime(){return new Date().toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'})}
   function openReceiptForm(r=null){
@@ -183,8 +222,20 @@
     const doc=iframe.contentDocument||iframe.contentWindow.document;doc.open();doc.write('<!doctype html><html><head><meta charset="utf-8"><title></title><style>'+printCss+'</style></head><body>'+pages.join('')+'</body></html>');doc.close();
     iframe.contentWindow.onafterprint=()=>setTimeout(()=>{iframe.remove();loadNri()},400);setTimeout(()=>{iframe.contentWindow.focus();iframe.contentWindow.print()},250)
   }
-  async function openPull(id){try{const d=await call('receipt_detail',{id});selected=d.receipt;$('rxpPullTitle').textContent=selected.display_name;const items=(selected.items||[]).sort((a,b)=>a.line_no-b.line_no);$('rxpPullBody').innerHTML='<div class="rxp-note">Físico congelado por <strong>'+esc(selected.conferencer?.display_name||'—')+'</strong> em '+fd(selected.conference_completed_at)+'. Informe abaixo somente o que consta no sistema.</div><table class="rxp-items-table"><thead><tr><th>Código</th><th>Produto</th><th>Unidade</th><th>Físico</th><th>Sistema</th><th>Diferença</th><th>Status</th></tr></thead><tbody>'+items.map(x=>'<tr><td>'+esc(x.sku_code)+'</td><td>'+esc(x.sku_name)+'</td><td>'+esc(x.unit_text||'P')+'</td><td><strong>'+n(x.physical_qty)+'</strong></td><td><input class="rxp-pull-input" data-system="'+x.id+'" type="number" min="0" step="0.001" value="'+esc(x.system_qty??'')+'"></td><td class="rxp-diff" data-diff="'+x.id+'">'+(x.system_qty==null?'—':n(x.comparison_diff))+'</td><td data-comp="'+x.id+'">'+(x.system_qty==null?'Pendente':x.comparison_status==='matched'?'OK':'Divergente')+'</td></tr>').join('')+'</tbody></table><div class="rxp-dialog-actions"><button class="rxp-btn primary" id="rxpPullSave">Salvar cruzamento</button></div>';$('rxpPullBody').querySelectorAll('[data-system]').forEach(inp=>inp.oninput=()=>calcPull(inp,items));$('rxpPullSave').onclick=()=>savePull(items);$('rxpPullDialog').showModal()}catch(e){showToast(e.message,true)}}
-  function calcPull(inp,items){const id=Number(inp.dataset.system),item=items.find(x=>Number(x.id)===id),cell=$('rxpPullBody').querySelector('[data-diff="'+id+'"]'),st=$('rxpPullBody').querySelector('[data-comp="'+id+'"]');if(inp.value===''){cell.textContent='—';cell.className='rxp-diff';st.textContent='Pendente';return}const diff=Number(item.physical_qty)-Number(inp.value);cell.textContent=n(diff);cell.className='rxp-diff '+(Math.abs(diff)<.0001?'good':'bad');st.textContent=Math.abs(diff)<.0001?'OK':'Divergente'}
+  async function openPull(id){try{
+    $('rxpPullBody').innerHTML='<div class="rxp-empty">Cruzando físico × sistema...</div>';$('rxpPullTitle').textContent='Processando...';$('rxpPullDialog').showModal();
+    const d=await call('pull_auto_compare',{id}),x=d.comparison;selected=x.receipt;$('rxpPullTitle').textContent=selected.display_name;
+    if(x.match_status!=='matched_invoice'){
+      $('rxpPullBody').innerHTML='<div class="rxp-note warning"><strong>Cruzamento não concluído.</strong><br>'+esc(x.message||'Não foi possível localizar a NF no 02.05.01.')+(x.invoice_number?'<br><small>NF procurada: '+esc(x.invoice_number)+(x.supplier_code?' · Fornecedor '+esc(x.supplier_code):'')+'</small>':'')+'</div>';await loadPull();return
+    }
+    const labels={matched:'OK',divergent:'Divergente',physical_only:'Só no físico',system_only:'Só no sistema',no_capacity:'Sem fator 01.11'};
+    const rows=x.rows||[];
+    $('rxpPullBody').innerHTML='<div class="rxp-note"><strong>NF '+esc(x.invoice_number)+'</strong> · fornecedor '+esc(x.supplier_code||'por NF')+' · Compra e bonificação já somadas por produto. A comparação abaixo é feita em paletes equivalentes.</div>'+
+      '<table class="rxp-items-table"><thead><tr><th>Código</th><th>Produto</th><th>Físico</th><th>Sistema 02.05.01</th><th>Paletes sistema</th><th>Diferença</th><th>Status</th></tr></thead><tbody>'+
+      rows.map(r=>'<tr><td>'+esc(r.sku_code)+'</td><td>'+esc(r.sku_name)+'</td><td><strong>'+esc(r.physical_text)+'</strong><br><small>'+(r.physical_pallet_eq==null?'—':n(r.physical_pallet_eq)+' P eq.')+'</small></td><td>'+(r.system_raw_qty==null?'—':n(r.system_raw_qty)+' '+esc(r.system_unit||''))+(r.operation_codes?'<br><small>Operações '+esc(r.operation_codes)+'</small>':'')+'</td><td><strong>'+(r.system_pallet_eq==null?'—':n(r.system_pallet_eq)+' P')+'</strong><br><small>'+(r.boxes_per_pallet?('01.11: '+n(r.boxes_per_pallet)+' '+esc(r.system_unit||'')+'/P'):'Sem fator')+'</small></td><td class="'+(r.difference_pallet_eq==null?'':Math.abs(Number(r.difference_pallet_eq))<.0001?'rxp-ok':'rxp-nok')+'">'+(r.difference_pallet_eq==null?'—':n(r.difference_pallet_eq)+' P')+'</td><td class="'+(r.status==='matched'?'rxp-ok':r.status==='no_capacity'?'':'rxp-nok')+'">'+esc(labels[r.status]||r.status)+'</td></tr>').join('')+
+      '</tbody></table>';
+    await loadPull();
+  }catch(e){$('rxpPullBody').innerHTML='<div class="rxp-empty error">'+esc(e.message)+'</div>';showToast(e.message,true)}}
   async function savePull(items){const payload=items.map(x=>({id:x.id,system_qty:$('rxpPullBody').querySelector('[data-system="'+x.id+'"]').value}));try{await call('pull_save',{id:selected.id,items:payload});$('rxpPullDialog').close();showToast('Cruzamento salvo.');await loadPull()}catch(e){showToast(e.message,true)}}
   window.__receivingNri={openNri:()=>open('nri'),openPull:()=>open('pull')};
 })();
