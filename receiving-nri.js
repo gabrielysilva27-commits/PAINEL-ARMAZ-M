@@ -86,7 +86,8 @@
   function shell(which){
     if(which==='nri')return '<div class="rxp-shell">'+
       '<section class="rxp-kpis">'+
-        '<article class="rxp-kpi"><span>Aguardando conferência</span><strong id="rxpAwait">—</strong></article>'+
+        '<article class="rxp-kpi"><span>Aguardando empilhador</span><strong id="rxpUnloadWait">—</strong></article>'+
+        '<article class="rxp-kpi"><span>Descarga iniciada</span><strong id="rxpUnload">—</strong></article>'+
         '<article class="rxp-kpi"><span>Em conferência</span><strong id="rxpIn">—</strong></article>'+
         '<article class="rxp-kpi print-queue" id="rxpPrintPendingCard"><span>Aguardando impressão</span><strong id="rxpPrintPending">—</strong></article>'+
         '<article class="rxp-kpi"><span>Conferências concluídas</span><strong id="rxpDone">—</strong></article>'+
@@ -112,7 +113,8 @@
     try{
       const d=await call('list_receipts',{status:$('rxpStatus').value,search:$('rxpSearch').value});
       receipts=d.receipts||[];
-      $('rxpAwait').textContent=d.counts.awaiting_conference||0;
+      $('rxpUnloadWait').textContent=d.counts.awaiting_unload||0;
+      $('rxpUnload').textContent=d.counts.unloading||0;
       $('rxpIn').textContent=d.counts.in_conference||0;
       $('rxpPrintPending').textContent=d.counts.print_pending||0;
       $('rxpDone').textContent=d.counts.conference_completed||0;
@@ -128,7 +130,7 @@
           '<td>'+fd(r.arrival_date)+'<br><small>'+esc(String(r.arrival_time||'').slice(0,5))+'</small></td>'+
           '<td>'+esc(r.plate||'—')+'</td>'+
           '<td>'+esc(r.nf_imperio||r.nf_ambev||'—')+'<br><small>Pedido '+esc(r.order_number||'—')+'</small></td>'+
-          '<td><span class="rxp-status '+r.status+'">'+receiptStatus(r.status)+'</span><br><small class="'+printClass+'">'+printLabel+'</small></td>'+
+          '<td>'+(()=>{let txt=receiptStatus(r.status),cls=r.status;if(r.status==='awaiting_conference'){if(r.unload_status==='pending'){txt='Aguardando empilhador';cls='pending'}else if(r.unload_status==='in_progress'){txt='Descarga iniciada';cls='in_progress'}else{txt='Liberada à conferência';cls='matched'}}return '<span class="rxp-status '+cls+'">'+txt+'</span><br><small>'+(r.unload_operator?.display_name?'Empilhador '+esc(r.unload_operator.display_name):'')+'</small><br><small class="'+printClass+'">'+printLabel+'</small>'})()+'</td>'+
           '<td>'+esc(r.gate_creator?.display_name||'—')+'</td>'+
           '<td>'+esc(r.conferencer?.display_name||'—')+'</td>'+
           '<td><strong>'+n(r.nri_count||0)+'</strong><br><small>P: 1 folha/palete · CX: 1 folha/código</small></td>'+
