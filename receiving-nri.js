@@ -14,6 +14,7 @@
   const ft=v=>{if(!v)return'—';const s=String(v);if(/^\\d{2}:\\d{2}/.test(s))return s.slice(0,5);const d=new Date(s);return Number.isNaN(d.getTime())?'—':d.toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'});};
   const receiptStatus=s=>({awaiting_conference:'Aguardando conferência',in_conference:'Em conferência',conference_completed:'Conferência concluída',cancelled:'Cancelado'}[s]||s);
   const pullStatus=s=>({pending:'Aguardando Puxada',in_progress:'Em cruzamento',matched:'Sem divergência',divergent:'Com divergência'}[s]||s);
+  const isAdmin=()=>window.state?.user?.role==='admin';
   async function ensureXlsx(){
     if(window.XLSX)return window.XLSX;if(xlsxPromise)return xlsxPromise;
     xlsxPromise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';s.async=true;s.onload=()=>resolve(window.XLSX);s.onerror=()=>{xlsxPromise=null;reject(new Error('Não foi possível carregar o leitor de Excel.'));};document.head.appendChild(s)});return xlsxPromise
@@ -131,13 +132,20 @@
           '<td>'+esc(r.gate_creator?.display_name||'—')+'</td>'+
           '<td>'+esc(r.conferencer?.display_name||'—')+'</td>'+
           '<td><strong>'+n(r.nri_count||0)+'</strong><br><small>P: 1 folha/palete · CX: 1 folha/código</small></td>'+
-          '<td><button class="rxp-btn" data-detail="'+r.id+'">Visualizar</button> '+action+'</td></tr>';
+          '<td><div class="rxp-row-actions"><button class="rxp-btn" data-detail="'+r.id+'">Visualizar</button> '+action+(isAdmin()?'<button class="rxp-btn trash" data-delete-receipt="'+r.id+'" title="Excluir recebimento" aria-label="Excluir recebimento">🗑</button>':'')+'</div></td></tr>';
       }).join('');
       $('rxpEmpty').classList.toggle('hidden',visible.length>0);
       $('rxpBody').querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>detail(Number(b.dataset.detail)));
       $('rxpBody').querySelectorAll('[data-print]').forEach(b=>b.onclick=()=>previewNri(Number(b.dataset.print)));
+      $('rxpBody').querySelectorAll('[data-delete-receipt]').forEach(b=>b.onclick=()=>deleteReceiptAdmin(Number(b.dataset.deleteReceipt)));
     }catch(e){showToast(e.message,true)}
   }
+  async function deleteReceiptAdmin(id){
+    const r=receipts.find(x=>Number(x.id)===Number(id));if(!r)return;
+    if(!confirm('Excluir definitivamente '+(r.display_name||r.receipt_code)+'?\n\nIsso removerá o registro da Portaria, a conferência/NRI, impressões e o vínculo da Puxada. Use somente para apagar testes.'))return;
+    try{await call('admin_delete_receipt',{id});showToast('Recebimento de teste excluído.');await loadNri();}catch(e){showToast(e.message,true)}
+  }
+
   async function loadPull(){
     try{const d=await call('list_receipts',{status:'conference_completed',pull_status:$('pullStatus').value,search:$('pullSearch').value});receipts=d.receipts||[];$('pullPending').textContent=d.counts.pull_pending||0;$('pullMatched').textContent=d.counts.pull_matched||0;$('pullDivergent').textContent=d.counts.pull_divergent||0;$('pullBody').innerHTML=receipts.map(r=>'<tr><td><strong>'+esc(r.display_name)+'</strong><br><small>'+esc(r.receipt_code)+'</small></td><td>'+fd(r.conference_completed_at)+'<br><small>'+esc(String(r.conference_completed_at||'').slice(11,16))+'</small></td><td>'+esc(r.conferencer?.display_name||'—')+'</td><td>'+((r.items||[]).length)+'</td><td><span class="rxp-status '+r.pull_status+'">'+pullStatus(r.pull_status)+'</span></td><td><button class="rxp-btn primary" data-pull="'+r.id+'">Ver cruzamento</button></td></tr>').join('');$('pullEmpty').classList.toggle('hidden',receipts.length>0);$('pullBody').querySelectorAll('[data-pull]').forEach(b=>b.onclick=()=>openPull(Number(b.dataset.pull)))}catch(e){showToast(e.message,true)}
   }
