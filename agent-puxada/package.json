@@ -1,0 +1,15 @@
+{
+  "name": "agente-puxada-promax",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Agente local do Painel Armazem para sincronizar o relatorio 02.05.01 do Promax.",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js",
+    "calibrate": "node agent.js --calibrate",
+    "check": "node agent.js --check"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0"
+  }
+}
