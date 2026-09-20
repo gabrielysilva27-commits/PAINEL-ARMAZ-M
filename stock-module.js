@@ -40,21 +40,22 @@
    const mapped=new Set(anchors.map(a=>S.area+':'+core.normalizeAddress(a.address)));
    const minC=Math.min(...anchors.map(a=>a.col)),minR=Math.min(...anchors.map(a=>a.row));
    const maxC=Math.max(...anchors.map(a=>a.col+(a.width||1)-1)),maxR=Math.max(...anchors.map(a=>a.row+(a.height||1)-1));
-   const unit=S.area==='Regulador'?46:68,rh=S.area==='Regulador'?42:52,compact=S.area==='Regulador';
+   const unit=S.area==='Regulador'?34:68,rh=S.area==='Regulador'?28:52,compact=S.area==='Regulador';
    const compactAxis=(start,size,minimum,maximum)=>{
     if(!compact)return {at:value=>value-minimum,span:(_value,length)=>length,extent:maximum-minimum+2};
     const used=new Set();
     anchors.forEach(anchor=>{const first=anchor[start],length=anchor[size]||1;for(let i=0;i<length;i++)used.add(first+i);});
     const values=[...used].sort((a,b)=>a-b),positions=new Map();let position=0;
-    values.forEach((value,index)=>{if(index)position+=value-values[index-1]===1?1:1.28;positions.set(value,position);});
+    values.forEach((value,index)=>{if(index)position+=value-values[index-1]===1?1:1.08;positions.set(value,position);});
     return {at:value=>positions.get(value)||0,span:(value,length)=>(positions.get(value+length-1)-positions.get(value))+1,extent:position+2};
    };
    const cols=compactAxis('col','width',minC,maxC),rows=compactAxis('row','height',minR,maxR);
    const mapWidth=cols.extent*unit,mapHeight=rows.extent*rh;
    const cells=anchors.map(a=>locationButton(byKey.get(S.area+':'+core.normalizeAddress(a.address)),a.address,`left:${cols.at(a.col)*unit}px;top:${rows.at(a.row)*rh}px;width:${cols.span(a.col,a.width||1)*unit-3}px;height:${rows.span(a.row,a.height||1)*rh-4}px`)).join('');
-   root.innerHTML=`<div class="stock-map-header"><div><strong>Visão compacta da área</strong><span>Ruas aproximadas e mapa ajustado automaticamente à tela</span></div><div class="stock-map-zoom" role="group" aria-label="Ampliação do mapa"><button class="active" data-map-zoom="fit">Ver tudo</button><button data-map-zoom="0.5">50%</button><button data-map-zoom="0.75">75%</button><button data-map-zoom="1">100%</button></div></div>${S.area==='Regulador'?'<div class="stock-flow-direction"><span>ESTANTES DO REGULADOR</span><i></i><strong>REDZONE&nbsp;&nbsp;•&nbsp;&nbsp;PICKING →</strong></div>':''}<div class="stock-map-scroll fit"><div class="stock-map-stage"><div class="stock-map" style="width:${mapWidth}px;height:${mapHeight}px">${cells}</div></div></div>`;
+   const zoomControls=compact?'':`<div class="stock-map-zoom" role="group" aria-label="Ampliação do mapa"><button class="active" data-map-zoom="fit">Ver tudo</button><button data-map-zoom="0.5">50%</button><button data-map-zoom="0.75">75%</button><button data-map-zoom="1">100%</button></div>`;
+   root.innerHTML=`<div class="stock-map-header"><div><strong>${compact?'Croqui do Regulador':'Visão da área'}</strong><span>${compact?'Visão simples e completa':'Mapa ajustado automaticamente à tela'}</span></div>${zoomControls}</div>${compact?'<div class="stock-flow-direction"><span>REGULADOR</span><i></i><strong>REDZONE • PICKING →</strong></div>':''}<div class="stock-map-scroll fit ${compact?'mini':''}"><div class="stock-map-stage"><div class="stock-map" style="width:${mapWidth}px;height:${mapHeight}px">${cells}</div></div></div>`;
    const scroll=root.querySelector('.stock-map-scroll'),stage=root.querySelector('.stock-map-stage'),map=root.querySelector('.stock-map');let zoomMode='fit';
-   const applyZoom=()=>{const fit=Math.min(1,Math.max(.04,(scroll.clientWidth-24)/mapWidth)),scale=zoomMode==='fit'?fit:Number(zoomMode);map.style.transform=`scale(${scale})`;stage.style.width=`${mapWidth*scale}px`;stage.style.height=`${mapHeight*scale}px`;scroll.classList.toggle('fit',zoomMode==='fit');root.querySelectorAll('[data-map-zoom]').forEach(b=>b.classList.toggle('active',b.dataset.mapZoom===zoomMode));};
+   const applyZoom=()=>{const widthFit=(scroll.clientWidth-20)/mapWidth,heightFit=compact?250/mapHeight:1,fit=Math.min(1,Math.max(.04,widthFit),heightFit),scale=zoomMode==='fit'?fit:Number(zoomMode);map.style.transform=`scale(${scale})`;stage.style.width=`${mapWidth*scale}px`;stage.style.height=`${mapHeight*scale}px`;scroll.classList.toggle('fit',zoomMode==='fit');root.querySelectorAll('[data-map-zoom]').forEach(b=>b.classList.toggle('active',b.dataset.mapZoom===zoomMode));};
    root.querySelectorAll('[data-map-zoom]').forEach(b=>b.onclick=()=>{zoomMode=b.dataset.mapZoom;applyZoom();});
    requestAnimationFrame(applyZoom);
    if(window.ResizeObserver)new ResizeObserver(()=>zoomMode==='fit'&&applyZoom()).observe(scroll);

@@ -70,6 +70,10 @@
 .stock-map-scroll.fit { overflow: hidden; max-height: none; }
 .stock-map-stage { position: relative; margin: 0 auto; }
 .stock-map { transform-origin: top left; transition: transform .18s ease; }
+.stock-map-scroll.mini { min-height: 0; padding: 8px; background: #f5f7f9; }
+.stock-map-scroll.mini .stock-cell { border-radius: 3px; box-shadow: none; }
+.stock-map-scroll.mini .stock-cell strong { font-size: 7px; line-height: 1.05; }
+.stock-map-scroll.mini .stock-cell span { font-size: 6px; line-height: 1.05; }
 
 @media (max-width: 900px) {
   .stock-map-header { align-items: flex-start; flex-direction: column; }
