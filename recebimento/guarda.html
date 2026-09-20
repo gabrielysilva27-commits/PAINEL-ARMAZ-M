@@ -4,56 +4,58 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#f47a20" />
-  <meta name="description" content="Guia digital da Ordem de Guarda — Armazém Império." />
-  <title>Ordem de Guarda | Armazém Império</title>
+  <meta name="description" content="Tela operacional de descarga e guarda dos empilhadores — Armazém Império." />
+  <title>Empilhador · Descarga e Guarda | Armazém Império</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="guarda.css?v=20260921-1" />
+  <link rel="stylesheet" href="guarda.css?v=20260921-2" />
 </head>
 <body>
   <main class="app">
     <header class="brand">
       <img src="../assets/logo-imperio.png" alt="Império" />
-      <div><span>ARMAZÉM</span><strong>ORDEM DE GUARDA</strong></div>
+      <div><span>ARMAZÉM</span><strong>EMPILHADOR · DESCARGA E GUARDA</strong></div>
     </header>
 
-    <section id="loadingView" class="card center">
-      <div class="spinner"></div>
-      <p>Carregando a Ordem de Guarda...</p>
+    <section id="loginView" class="card">
+      <p class="eyebrow">IDENTIFICAÇÃO DO EMPILHADOR</p>
+      <h1>Entrar na operação</h1>
+      <p class="muted">Use seu nome e PIN. A partir daqui ficam registrados início da descarga, carretas atendidas, paletes e confirmações de guarda.</p>
+      <form id="loginForm" class="stack">
+        <label>Empilhador<select id="operatorSelect" required><option value="">Carregando...</option></select></label>
+        <label>PIN<input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="4 dígitos" required /></label>
+        <p id="loginError" class="error"></p>
+        <button class="primary" id="loginButton" type="submit">Entrar</button>
+      </form>
     </section>
 
-    <section id="errorView" class="card hidden">
-      <p class="eyebrow">ORDEM DE GUARDA</p>
-      <h1>Não foi possível abrir</h1>
-      <p id="errorText" class="error"></p>
+    <section id="homeView" class="hidden">
+      <div class="toolbar">
+        <div><p class="eyebrow">OPERAÇÃO DO EMPILHADOR</p><h1>Descargas disponíveis</h1><p class="muted" id="loggedName"></p></div>
+        <div class="toolbar-actions"><button class="secondary" id="refreshButton">Atualizar</button><button class="ghost" id="logoutButton">Sair</button></div>
+      </div>
+      <div class="flow-note"><strong>Fluxo obrigatório:</strong> a Portaria registra a carreta → você toca em <b>Iniciar descarga</b> → a carreta é liberada para o conferente. Ao terminar fisicamente, toque em <b>Finalizar descarga</b>.</div>
+      <section id="queueSummary" class="summary"></section>
+      <div id="unloadList" class="task-list"></div>
+
+      <div class="section-head">
+        <div><p class="eyebrow">APÓS A CONFERÊNCIA</p><h2>Ordens de Guarda</h2><p class="muted">Quando a conferência terminar, as posições sugeridas aparecem aqui.</p></div>
+      </div>
+      <div id="orderList" class="task-list"></div>
     </section>
 
     <section id="orderView" class="hidden">
       <div class="toolbar">
-        <div>
-          <p class="eyebrow">GUIA DO EMPILHADOR</p>
-          <h1 id="orderCode">Ordem de Guarda</h1>
-          <p id="orderMeta" class="muted"></p>
-        </div>
-        <button id="refreshButton" class="secondary" type="button">Atualizar</button>
+        <div><p class="eyebrow">ORDEM DE GUARDA</p><h1 id="orderCode">Ordem de Guarda</h1><p id="orderMeta" class="muted"></p></div>
+        <div class="toolbar-actions"><button class="secondary" id="backHomeButton">Voltar</button><button class="ghost" id="orderLogoutButton">Sair</button></div>
       </div>
-
-      <div class="notice">
-        <strong>A NRI não é alterada.</strong> Este guia é separado. Confirme o endereço onde cada palete foi realmente guardado. O Estoque x Estoque só será atualizado depois da validação do conferente.
-      </div>
-
-      <section class="card worker-card">
-        <label>Empilhador
-          <input id="workerName" autocomplete="name" placeholder="Digite seu nome" />
-        </label>
-      </section>
-
-      <section id="summary" class="summary"></section>
+      <div class="notice"><strong>A NRI não é alterada.</strong> Confirme o endereço onde cada palete foi realmente guardado. O Estoque x Estoque só será atualizado depois da validação do conferente.</div>
+      <section id="orderSummary" class="summary"></section>
       <section id="taskList" class="task-list"></section>
     </section>
   </main>
   <div id="toast" class="toast hidden"></div>
-  <script src="guarda.js?v=20260921-1"></script>
+  <script src="guarda.js?v=20260921-2"></script>
 </body>
 </html>
