@@ -53,7 +53,7 @@
           '<div id="adminPinSummary" class="admin-pin-summary"><span>Carregando credenciais...</span></div>'+
           '<div class="admin-pin-validator"><label>Equipe<select id="adminPinGroup"><option value="conferencers">Conferentes</option><option value="gate">Portaria</option><option value="forklift">Empilhadores</option></select></label><label>Pessoa<select id="adminPinPerson"></select></label></div>'+
           '<div id="adminPinSelected" class="admin-pin-selected"></div>'+
-          '<div class="admin-actions"><button class="primary" id="adminPinAction">Gerar / redefinir PIN</button><button id="adminPinMissing">Gerar pendentes do grupo</button></div>'+
+          '<div class="admin-actions"><button class="primary" id="adminPinAction">Gerar / redefinir PIN</button><button id="adminPinMissing">Gerar pendentes do grupo</button><button id="adminPinOpenForklift">Abrir tela dos empilhadores</button></div>'+
           '<div id="adminPinUnifiedIssued"></div>'+
         '</section>'+'<section class="admin-card"><p class="eyebrow">PUXADA · PROMAX</p><h2>Agente Puxada</h2><p>Um único agente lógico pode rodar em dois computadores. O primeiro PC que pegar uma sincronização bloqueia a tarefa para o outro, evitando duplicidade.</p><div id="adminAgentStatus" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div><div id="adminAgentNodes" class="admin-pin-list"></div><div id="adminAgentIssued"></div><label style="display:grid;gap:6px;margin-top:12px;font-size:11px;font-weight:700">Intervalo automático<select id="adminAgentInterval"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select></label><div class="admin-actions"><button id="adminAgentSaveInterval">Salvar intervalo</button></div><p style="font-size:10px;color:var(--muted)">Instale a mesma pasta <strong>agent-puxada</strong> nos dois PCs, mas use o token específico de cada computador.</p></section>'+
       '</div></div>';
@@ -241,7 +241,7 @@
     bindAccess('adminBo',BO_URL,QR_DATA,'B.O. Digital — Conferentes','QR_BO_Digital_Conferentes.png');
     bindAccess('adminNri',RECEBIMENTO_URL,RECEBIMENTO_QR,'Recebimento / NRI — Conferentes','QR_Recebimento_NRI_Conferentes.png');
     bindAccess('adminGate',PORTARIA_URL,PORTARIA_QR,'Portaria — Entrada de Carreta','QR_Portaria_Recebimento.png');
-    $('adminPinGroup').onchange=renderPinPeople;$('adminPinPerson').onchange=renderPinSelected;$('adminPinAction').onclick=issueSelectedPin;$('adminPinMissing').onclick=issueMissingForGroup;$('adminAgentSaveInterval').onclick=saveAgentInterval;
+    $('adminPinGroup').onchange=renderPinPeople;$('adminPinPerson').onchange=renderPinSelected;$('adminPinAction').onclick=issueSelectedPin;$('adminPinMissing').onclick=issueMissingForGroup;$('adminPinOpenForklift').onclick=()=>window.open(RECEBIMENTO_URL+'guarda.html','_blank','noopener,noreferrer');$('adminAgentSaveInterval').onclick=saveAgentInterval;
     await Promise.all([loadUnifiedPins(),loadAgentAdmin()]);
   }
   function bind(){
