@@ -1,6 +1,6 @@
 (() => {
   let loading=null;const $=id=>document.getElementById(id);
-  function assets(){if(window.__receivingNri)return Promise.resolve(window.__receivingNri);if(loading)return loading;loading=new Promise((resolve,reject)=>{if(!$('receivingNriCss')){const l=document.createElement('link');l.id='receivingNriCss';l.rel='stylesheet';l.href='receiving-nri.css?v=20260920-6';document.head.appendChild(l)}const s=document.createElement('script');s.src='receiving-nri.js?v=20260920-6';s.async=true;s.onload=()=>resolve(window.__receivingNri);s.onerror=()=>reject(new Error('Falha ao carregar Recebimento / NRI'));document.body.appendChild(s)});return loading}
+  function assets(){if(window.__receivingNri)return Promise.resolve(window.__receivingNri);if(loading)return loading;loading=new Promise((resolve,reject)=>{if(!$('receivingNriCss')){const l=document.createElement('link');l.id='receivingNriCss';l.rel='stylesheet';l.href='receiving-nri.css?v=20260920-7';document.head.appendChild(l)}const s=document.createElement('script');s.src='receiving-nri.js?v=20260920-7';s.async=true;s.onload=()=>resolve(window.__receivingNri);s.onerror=()=>reject(new Error('Falha ao carregar Recebimento / NRI'));document.body.appendChild(s)});return loading}
   async function openNri(){try{const m=await assets();await m.openNri()}catch(e){showToast(String(e.message||e),true)}}
   async function openPull(){try{const m=await assets();await m.openPull()}catch(e){showToast(String(e.message||e),true)}}
   function mount(){
