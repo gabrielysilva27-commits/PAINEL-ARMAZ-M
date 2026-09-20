@@ -41,14 +41,28 @@
  }
  function locationButton(loc,label,style=''){const codes=[...new Set((loc?.rows||[]).filter(r=>r.sku_code).map(r=>r.sku_code))];return `<button class="stock-cell ${loc?.occupied?'occupied':''} ${['A','B','C'].includes(loc?.curve)?loc.curve.toLowerCase():'unknown'} ${S.query&&(!loc||!loc.rows.some(matches))?'muted':''}" style="${style}" data-location="${esc(loc?.key||'')}" title="${esc(label+' · '+codes.join(', '))}"><strong>${esc(label)}</strong><span>${codes.length>1?codes.length+' SKUs':codes[0]||(loc?'Vazio':'Sem base')}</span></button>`;}
  function renderMapContent(){
-  const root=$('stockMapContent'),d=S.data,locs=d.locations.filter(l=>l.area===S.area),byKey=new Map(locs.map(l=>[l.key,l]));
+  const root=$('stockMapContent'),d=S.data,locs=d.locations.filter(l=>l.area===S.area);
+  const compactAddress=value=>core.normalizeAddress(value).replace(/[^A-Z0-9]/g,'');
+  const byAddress=new Map(locs.map(l=>[compactAddress(l.address),l]));
+  const locFor=address=>byAddress.get(compactAddress(address));
   if(S.mode==='list'){
    const rows=d.rows.filter(r=>r.area===S.area&&matches(r));
    root.innerHTML=table(['Endereço','Código / produto','Curva','Recebimento','Validade','Paletes','Situação',''],rows.map(r=>`<tr><td><button class="stock-link" data-location="${esc(core.keyOf(r))}">${esc(r.address)}</button></td><td><strong>${esc(r.sku_code||'Vazio')}</strong><small>${esc(r.sku_name)}</small></td><td>${badge(r.curve)}</td><td>${dt(r.received_on)}</td><td>${dt(r.expires_on)}</td><td>${r.pallets==null?'—':nf.format(r.pallets)}</td><td>${esc(r.fefo_status)}</td><td>${canEdit()?`<button class="stock-link" data-edit="${esc(r.id)}">Editar</button>`:''}</td></tr>`));
   }else{
-   const anchors=d.snapshot.payload.maps[S.area]?.anchors||[];
+   let anchors=[...(d.snapshot.payload.maps[S.area]?.anchors||[])];
    if(!anchors.length){root.innerHTML='<p class="stock-empty">Sem mapa cadastrado para esta área.</p>';return;}
-   const mapped=new Set(anchors.map(a=>S.area+':'+core.normalizeAddress(a.address)));
+   if(S.area==='Regulador'){
+    const supplemental=[
+     {address:'A37-A',col:93,row:61,width:2,height:1},
+     {address:'A37-B',col:93,row:62,width:2,height:1},
+     {address:'B36-A',col:96,row:61,width:2,height:1},
+     {address:'B36-B',col:96,row:62,width:2,height:1},
+     {address:'E64',col:12,row:45,width:2,height:2}
+    ];
+    const anchored=new Set(anchors.map(a=>compactAddress(a.address)));
+    supplemental.forEach(a=>{if(locFor(a.address)&&!anchored.has(compactAddress(a.address))){anchors.push(a);anchored.add(compactAddress(a.address));}});
+   }
+   const mapped=new Set(anchors.map(a=>compactAddress(a.address)));
    const minC=Math.min(...anchors.map(a=>a.col)),minR=Math.min(...anchors.map(a=>a.row));
    const maxC=Math.max(...anchors.map(a=>a.col+(a.width||1)-1)),maxR=Math.max(...anchors.map(a=>a.row+(a.height||1)-1));
    const unit=S.area==='Regulador'?58:68,rh=S.area==='Regulador'?32:52,compact=S.area==='Regulador';
@@ -62,7 +76,40 @@
    };
    const cols=compactAxis('col','width',minC,maxC),rows=compactAxis('row','height',minR,maxR);
    const mapWidth=cols.extent*unit,mapHeight=rows.extent*rh;
-   const cells=anchors.map(a=>locationButton(byKey.get(S.area+':'+core.normalizeAddress(a.address)),a.address,`left:${cols.at(a.col)*unit}px;top:${rows.at(a.row)*rh}px;width:${cols.span(a.col,a.width||1)*unit-3}px;height:${rows.span(a.row,a.height||1)*rh-4}px`)).join('');
+   let cells;
+   if(S.area==='Marketplace'){
+    const rackPrefix=address=>String(address||'').match(/^(M\d+)-/i)?.[1]?.toUpperCase()||null;
+    const marketLocs=new Map(),marketAnchors=new Map();
+    locs.forEach(l=>{const p=rackPrefix(l.address);if(!p)return;if(!marketLocs.has(p))marketLocs.set(p,[]);marketLocs.get(p).push(l);});
+    marketLocs.forEach(list=>list.sort((a,b)=>a.address.localeCompare(b.address,'pt-BR',{numeric:true})));
+    anchors.forEach(a=>{const p=rackPrefix(a.address);if(!p)return;if(!marketAnchors.has(p))marketAnchors.set(p,[]);marketAnchors.get(p).push(a);});
+    const rendered=new Set(),parts=[];
+    anchors.forEach(a=>{
+     const p=rackPrefix(a.address);
+     if(!p){
+      const loc=locFor(a.address);
+      parts.push(locationButton(loc,loc?.address||a.address,`left:${cols.at(a.col)*unit}px;top:${rows.at(a.row)*rh}px;width:${cols.span(a.col,a.width||1)*unit-3}px;height:${rows.span(a.row,a.height||1)*rh-4}px`));
+      return;
+     }
+     if(rendered.has(p))return;
+     rendered.add(p);
+     const rackA=marketAnchors.get(p)||[a],rackL=marketLocs.get(p)||[];
+     const left=Math.min(...rackA.map(x=>x.col)),top=Math.min(...rackA.map(x=>x.row));
+     const right=Math.max(...rackA.map(x=>x.col+(x.width||1))),bottom=Math.max(...rackA.map(x=>x.row+(x.height||1)));
+     const gridCols=Math.max(1,new Set(rackA.map(x=>x.col)).size);
+     const gridRows=Math.max(1,Math.ceil(Math.max(rackL.length,rackA.length)/gridCols));
+     const rackW=(right-left)*unit,rackH=(bottom-top)*rh,cellW=rackW/gridCols,cellH=rackH/gridRows;
+     const source=rackL.length?rackL:rackA.map(x=>locFor(x.address)).filter(Boolean);
+     source.forEach((loc,idx)=>{
+      mapped.add(compactAddress(loc.address));
+      const c=idx%gridCols,r=Math.floor(idx/gridCols);
+      parts.push(locationButton(loc,loc.address,`left:${(left-minC)*unit+c*cellW}px;top:${(top-minR)*rh+r*cellH}px;width:${Math.max(18,cellW-3)}px;height:${Math.max(16,cellH-3)}px`));
+     });
+    });
+    cells=parts.join('');
+   }else{
+    cells=anchors.map(a=>{const loc=locFor(a.address);return locationButton(loc,loc?.address||a.address,`left:${cols.at(a.col)*unit}px;top:${rows.at(a.row)*rh}px;width:${cols.span(a.col,a.width||1)*unit-3}px;height:${rows.span(a.row,a.height||1)*rh-4}px`);}).join('');
+   }
    const zoomControls=compact?'':`<div class="stock-map-zoom" role="group" aria-label="Ampliação do mapa"><button class="active" data-map-zoom="fit">Ver tudo</button><button data-map-zoom="0.5">50%</button><button data-map-zoom="0.75">75%</button><button data-map-zoom="1">100%</button></div>`;
    root.innerHTML=`<div class="stock-map-header"><div><strong>${compact?'Croqui do Regulador':'Visão da área'}</strong><span>${compact?'Visão simples e completa':'Mapa ajustado automaticamente à tela'}</span></div>${zoomControls}</div>${compact?'<div class="stock-flow-direction"><span>REGULADOR</span><i></i><strong>REDZONE • PICKING →</strong></div>':''}<div class="stock-map-scroll fit ${compact?'mini':''}"><div class="stock-map-stage"><div class="stock-map" style="width:${mapWidth}px;height:${mapHeight}px">${cells}</div></div></div>`;
    const scroll=root.querySelector('.stock-map-scroll'),stage=root.querySelector('.stock-map-stage'),map=root.querySelector('.stock-map');let zoomMode='fit';
@@ -70,7 +117,7 @@
    root.querySelectorAll('[data-map-zoom]').forEach(b=>b.onclick=()=>{zoomMode=b.dataset.mapZoom;applyZoom();});
    applyZoom();
    if(window.ResizeObserver)new ResizeObserver(()=>zoomMode==='fit'&&applyZoom()).observe(scroll);
-   const extras=locs.filter(l=>!mapped.has(l.key));
+   const extras=locs.filter(l=>!mapped.has(compactAddress(l.address)));
    if(extras.length)root.insertAdjacentHTML('beforeend',`<details class="stock-unmapped"><summary>${extras.length} endereços fora do desenho</summary><div class="stock-extra-grid">${extras.map(l=>locationButton(l,l.address)).join('')}</div></details>`);
   }
   root.querySelectorAll('[data-location]').forEach(b=>b.onclick=()=>showLocation(b.dataset.location));
