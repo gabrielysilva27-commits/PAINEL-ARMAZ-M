@@ -38,3 +38,5 @@ de abrir. Nesse caso nao existe uma forma correta de contornar a politica: o arq
 precisara ser liberado/allowlisted pela TI da empresa.
 
 O agente nao tenta desativar, contornar ou modificar as protecoes corporativas.
+
+Versao portatil preparada para Windows x64.
