@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f47a20" />
+  <meta name="description" content="Guia digital da Ordem de Guarda — Armazém Império." />
+  <title>Ordem de Guarda | Armazém Império</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="guarda.css?v=20260921-1" />
+</head>
+<body>
+  <main class="app">
+    <header class="brand">
+      <img src="../assets/logo-imperio.png" alt="Império" />
+      <div><span>ARMAZÉM</span><strong>ORDEM DE GUARDA</strong></div>
+    </header>
+
+    <section id="loadingView" class="card center">
+      <div class="spinner"></div>
+      <p>Carregando a Ordem de Guarda...</p>
+    </section>
+
+    <section id="errorView" class="card hidden">
+      <p class="eyebrow">ORDEM DE GUARDA</p>
+      <h1>Não foi possível abrir</h1>
+      <p id="errorText" class="error"></p>
+    </section>
+
+    <section id="orderView" class="hidden">
+      <div class="toolbar">
+        <div>
+          <p class="eyebrow">GUIA DO EMPILHADOR</p>
+          <h1 id="orderCode">Ordem de Guarda</h1>
+          <p id="orderMeta" class="muted"></p>
+        </div>
+        <button id="refreshButton" class="secondary" type="button">Atualizar</button>
+      </div>
+
+      <div class="notice">
+        <strong>A NRI não é alterada.</strong> Este guia é separado. Confirme o endereço onde cada palete foi realmente guardado. O Estoque x Estoque só será atualizado depois da validação do conferente.
+      </div>
+
+      <section class="card worker-card">
+        <label>Empilhador
+          <input id="workerName" autocomplete="name" placeholder="Digite seu nome" />
+        </label>
+      </section>
+
+      <section id="summary" class="summary"></section>
+      <section id="taskList" class="task-list"></section>
+    </section>
+  </main>
+  <div id="toast" class="toast hidden"></div>
+  <script src="guarda.js?v=20260921-1"></script>
+</body>
+</html>
