@@ -63,9 +63,15 @@
     try{
       const d=await call('dashboard',{status:activeStatus,search:$('boSearch')?$('boSearch').value:''});rows=d.occurrences||[];
       $('boCountPending').textContent=d.counts.pending||0;$('boCountValidated').textContent=d.counts.validated||0;$('boCountReturned').textContent=d.counts.returned||0;
-      const body=$('boTableBody');body.innerHTML=rows.map(r=>'<tr><td><strong>'+esc(r.bo_number)+'</strong></td><td>'+fmtDate(r.occurrence_date)+'<br><small>'+esc(String(r.occurrence_time||'').slice(0,5))+'</small></td><td>'+esc(r.conferencer&&r.conferencer.display_name||'—')+'</td><td>'+esc(subjectName(r))+'<br><small>'+esc(r.subject_type||'Funcionário')+'</small></td><td>'+esc(r.shift)+'</td><td>'+esc(r.reason)+'</td><td>'+esc(r.location)+'</td><td><span class="bo-badge '+r.status+'">'+statusLabel(r.status)+'</span></td><td><button class="bo-btn-secondary" data-open="'+r.id+'">Visualizar B.O.</button></td></tr>').join('');
-      $('boEmpty').classList.toggle('hidden',rows.length>0);body.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openRow(Number(b.dataset.open)));
+      const body=$('boTableBody');body.innerHTML=rows.map(r=>'<tr><td><strong>'+esc(r.bo_number)+'</strong></td><td>'+fmtDate(r.occurrence_date)+'<br><small>'+esc(String(r.occurrence_time||'').slice(0,5))+'</small></td><td>'+esc(r.conferencer&&r.conferencer.display_name||'—')+'</td><td>'+esc(subjectName(r))+'<br><small>'+esc(r.subject_type||'Funcionário')+'</small></td><td>'+esc(r.shift)+'</td><td>'+esc(r.reason)+'</td><td>'+esc(r.location)+'</td><td><span class="bo-badge '+r.status+'">'+statusLabel(r.status)+'</span></td><td><div class="bo-row-actions"><button class="bo-btn-secondary" data-open="'+r.id+'">Visualizar B.O.</button>'+(permissions&&permissions.can_delete?'<button class="bo-trash-btn" data-delete="'+r.id+'" title="Excluir B.O." aria-label="Excluir B.O.">🗑</button>':'')+'</div></td></tr>').join('');
+      $('boEmpty').classList.toggle('hidden',rows.length>0);body.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openRow(Number(b.dataset.open)));body.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>deleteBo(Number(b.dataset.delete)));
     }catch(e){showToast(e.message,true);}
+  }
+
+  async function deleteBo(id){
+    const row=rows.find(r=>Number(r.id)===Number(id));if(!row)return;
+    if(!confirm('Excluir definitivamente '+row.bo_number+'?\n\nEsta ação é exclusiva do ADM e removerá este B.O. dos testes, incluindo os produtos vinculados.'))return;
+    try{await call('admin_delete_occurrence',{id});showToast('B.O. excluído.');if(selected&&Number(selected.id)===Number(id)&&$('boReviewDialog')?.open)$('boReviewDialog').close();await load();}catch(e){showToast(e.message,true);}
   }
 
   function openRow(id){
