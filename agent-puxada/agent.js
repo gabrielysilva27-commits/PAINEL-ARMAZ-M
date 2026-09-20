@@ -54,15 +54,12 @@ async function main() {
   }
 
   if (process.argv.indexOf("--check") >= 0) {
-    const response = await api.poll(info());
+    const response = await api.ping(info());
     log("Conexao com o Painel Armazem OK.");
     if (!promax.isConfigured(config)) {
       log("Promax aguardando calibracao: " + promax.missingSelectors(config.promax).join(", "));
     } else {
       log("Configuracao Promax pronta.");
-    }
-    if (response.job) {
-      log("Existe sincronizacao pendente de " + response.job.date_from + " a " + response.job.date_to + ".");
     }
     return;
   }
