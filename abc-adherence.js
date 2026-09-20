@@ -3,7 +3,8 @@
 
   const STOCK_API = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/stock-api';
   const LAYOUT_API = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/layout-api';
-  const A = { mode: 'curve', stockCache: new Map(), pickingCache: new Map(), request: 0 };
+  const ADHERENCE_API = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/abc-adherence-api';
+  const A = { mode: 'curve', stockCache: new Map(), pickingCache: new Map(), historyCache: new Map(), request: 0 };
 
   const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const pct = value => Number.isFinite(value) ? new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1}).format(value) + '%' : '—';
@@ -39,6 +40,80 @@
     const data = await post(LAYOUT_API,'get',{month:month});
     A.pickingCache.set(month,data);
     return data;
+  }
+
+  async function historyData(area, force=false) {
+    if (!force && A.historyCache.has(area)) return A.historyCache.get(area);
+    const data = await post(ADHERENCE_API,'history',{area:area});
+    const items = data.items || [];
+    A.historyCache.set(area,items);
+    return items;
+  }
+
+  async function captureDaily(month, area, stock) {
+    if (!stock?.snapshot?.as_of || String(stock.snapshot.as_of).slice(0,7) !== month) return null;
+    const data = await post(ADHERENCE_API,'capture',{month:month,area:area});
+    A.historyCache.delete(area);
+    return data.item || null;
+  }
+
+  const monthLabel = value => {
+    const key = String(value || '').slice(0,7);
+    const labels = { '01':'Jan','02':'Fev','03':'Mar','04':'Abr','05':'Mai','06':'Jun','07':'Jul','08':'Ago','09':'Set','10':'Out','11':'Nov','12':'Dez' };
+    return (labels[key.slice(5,7)] || key.slice(5,7)) + '/' + key.slice(0,4);
+  };
+
+  function historyPanelHtml(area, items) {
+    const byMonth = new Map();
+    items.forEach(item => {
+      const key = String(item.reference_month || '').slice(0,7);
+      if (!key) return;
+      if (!byMonth.has(key)) byMonth.set(key,[]);
+      byMonth.get(key).push(item);
+    });
+
+    const knownMonths = [...new Set([
+      ...((state.months || []).map(x=>String(x.reference_month || '').slice(0,7)).filter(Boolean)),
+      ...byMonth.keys()
+    ])].sort();
+
+    const rows = knownMonths.map(month => {
+      const list = byMonth.get(month) || [];
+      const daily = list.filter(x=>x.method==='daily_physical' && x.rate!=null);
+      const legacy = list.find(x=>x.method==='legacy_curve_only' && x.rate!=null);
+
+      if (daily.length) {
+        const values = daily.map(x=>Number(x.rate)).filter(Number.isFinite);
+        const avg = values.reduce((sum,x)=>sum+x,0)/values.length;
+        const latest = [...daily].sort((a,b)=>String(a.observed_date||'').localeCompare(String(b.observed_date||''))).at(-1);
+        return '<tr class="'+(month===state.currentMonth?'current':'')+'"><td><strong>'+esc(monthLabel(month))+'</strong></td><td><span class="abc-history-method physical">Físico diário</span></td><td><strong>'+pct(avg)+'</strong></td><td>'+pct(Number(latest?.rate))+'</td><td>'+values.length+' dia(s)</td><td>'+pct(Math.min(...values))+' → '+pct(Math.max(...values))+'</td></tr>';
+      }
+
+      if (legacy) {
+        return '<tr class="'+(month===state.currentMonth?'current':'')+'"><td><strong>'+esc(monthLabel(month))+'</strong></td><td><span class="abc-history-method legacy">Legado</span></td><td><strong>'+pct(Number(legacy.rate))+'</strong></td><td>—</td><td>mensal</td><td><span class="abc-history-note">metodologia anterior</span></td></tr>';
+      }
+
+      const pickingPlan = area==='Picking' ? '<span class="abc-history-method planned">Planejamento</span>' : '<span class="abc-history-method none">Sem medição</span>';
+      return '<tr class="'+(month===state.currentMonth?'current':'')+'"><td><strong>'+esc(monthLabel(month))+'</strong></td><td>'+pickingPlan+'</td><td>—</td><td>—</td><td>—</td><td><span class="abc-history-note">'+(area==='Picking'?'curva disponível, sem conferência física histórica':'sem fotografia física histórica')+'</span></td></tr>';
+    }).join('');
+
+    return '<section class="panel abc-history-panel">' +
+      '<div class="panel-heading"><div><h2>Histórico mensal de aderência</h2><small>Daqui para frente: média das medições físicas diárias. Meses anteriores: histórico legado identificado separadamente.</small></div></div>' +
+      '<div class="abc-history-disclaimer"><strong>Leitura correta do histórico:</strong> “Legado” preserva o indicador mensal que já existia, mas não representa as movimentações físicas ocorridas durante aquele mês. A série “Físico diário” passa a registrar a posição real capturada na Base Ruas.</div>' +
+      '<div class="stock-table-wrap"><table><thead><tr><th>Mês</th><th>Metodologia</th><th>Média mensal</th><th>Última medição</th><th>Amostras</th><th>Faixa / observação</th></tr></thead><tbody>'+rows+'</tbody></table></div>' +
+    '</section>';
+  }
+
+  async function renderHistory(area) {
+    const host = document.getElementById('abcHistoryPanel');
+    if (!host) return;
+    host.innerHTML = '<div class="abc-history-loading">Carregando histórico…</div>';
+    try {
+      const items = await historyData(area);
+      host.innerHTML = historyPanelHtml(area,items);
+    } catch (e) {
+      host.innerHTML = '<div class="abc-history-loading error">'+esc(e.message)+'</div>';
+    }
   }
 
   function addCandidate(map, address, x, y, source) {
@@ -397,6 +472,7 @@
       '<div class="abc-adherence-intro"><div><p class="eyebrow">ADERÊNCIA AO LAYOUT</p><h2>' + esc(areaLabel(area)) + '</h2><p>Curva ABC de ' + esc(month.split('-').reverse().join('/')) + ' × estoque físico de ' + esc(asOf) + '.</p></div><span class="abc-area-rule">Curva usada: <strong>' + esc(areaLabel(area)) + '</strong></span></div>' +
       cards +
       evidenceHtml(area,matrix,month) +
+      '<div id="abcHistoryPanel"></div>' +
       matrixHtml(area,matrix) +
       actionsHtml(matrix) +
     '</div>';
@@ -444,6 +520,7 @@
         '<article><b>4</b><div><strong>Adesão do plano</strong><span>' + (total?'100% do plano gerado':'Sem plano no mês') + '</span></div></article>' +
         '<article><b>5</b><div><strong>Plano de ação</strong><span>' + overflow + ' SKU(s) exigem revisão de capacidade/família</span></div></article>' +
       '</section>' +
+      '<div id="abcHistoryPanel"></div>' +
       '<section class="panel abc-matrix-panel"><div class="panel-heading"><div><h2>Matriz do Picking</h2><small>Distribuição real do plano calculado pela curva da própria área</small></div></div>' +
         '<div class="abc-zone-grid">' + classOrder.map(c=>'<article class="abc-zone-card zone-'+c.toLowerCase()+'"><div><span>Curva '+c+'</span><strong>'+counts[c]+' vagas</strong></div><small>'+pct(total?counts[c]/total*100:0)+' do plano</small><p>'+curveCounts[c]+' SKUs classificados como '+c+'.</p></article>').join('') + '</div>' +
         '<p class="abc-method-note"><strong>Importante:</strong> 100% aqui significa aderência do layout planejado à Curva ABC, não confirmação física em campo. Para transformar o Picking em uma aderência física, precisamos registrar a posição real conferida de cada SKU.</p>' +
@@ -475,7 +552,10 @@
         const stock = await stockData(month);
         if (request !== A.request) return;
         root.innerHTML = physicalHtml(area,month,stock,curveItems);
+        try { await captureDaily(month,area,stock); } catch (e) { console.warn('Falha ao registrar aderência diária',e); }
       }
+      if (request !== A.request) return;
+      renderHistory(area);
     } catch (e) {
       if (request !== A.request) return;
       root.innerHTML = '<div class="abc-adherence-empty error">' + esc(e.message) + '</div>';
@@ -503,6 +583,7 @@
   function invalidate() {
     A.stockCache.clear();
     A.pickingCache.clear();
+    A.historyCache.clear();
     if (A.mode === 'adherence') render();
   }
 
@@ -541,6 +622,7 @@
     }
 
     document.querySelector('[data-view="abc"]')?.addEventListener('click',()=>setTimeout(()=>setMode(A.mode),0));
+    window.addEventListener('stock-snapshot-updated',()=>{ A.stockCache.clear(); A.historyCache.clear(); if(A.mode==='adherence') render(); });
     window.__abcAdherenceModule = {render:render,setMode:setMode,invalidate:invalidate};
   }
 
