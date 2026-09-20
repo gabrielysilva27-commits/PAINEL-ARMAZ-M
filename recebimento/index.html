@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260919-2" />
+  <link rel="stylesheet" href="styles.css?v=20260920-1" />
 </head>
 <body>
   <main class="app">
@@ -80,8 +80,14 @@
       <label>Código<div class="search-box"><input class="sku-input" inputmode="numeric" autocomplete="off" placeholder="Digite o código" required /><div class="search-results hidden sku-results"></div></div></label>
       <label>Descrição<input class="sku-name" readonly /></label>
       <div class="grid-2">
-        <label>Quantidade física<input class="physical-qty" type="number" min="0" step="0.001" required /></label>
-        <label>Quantidade de paletes<input class="pallet-count" type="number" min="1" step="1" required /></label>
+        <label>Unidade
+          <select class="unit-text" required>
+            <option value="">Selecione...</option>
+            <option value="P">P - Palete</option>
+            <option value="CX">CX - Caixa</option>
+          </select>
+        </label>
+        <label>Quantidade<input class="quantity" type="number" min="1" step="1" required /></label>
       </div>
       <div class="grid-3">
         <label>Validade<input class="expiry-date" type="date" required /></label>
@@ -106,6 +112,6 @@
   </dialog>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="app.js?v=20260919-2"></script>
+  <script src="app.js?v=20260920-1"></script>
 </body>
 </html>
