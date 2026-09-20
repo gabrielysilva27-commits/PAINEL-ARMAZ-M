@@ -134,18 +134,26 @@
 
   function rankCandidates(stock, area, candidates) {
     const refs = priorityPoints(stock,area,candidates);
+    const target = stock.snapshot && stock.snapshot.payload && stock.snapshot.payload.targets
+      ? stock.snapshot.payload.targets[area]
+      : null;
+    const priorityKeys = new Set((target && target.monitored ? target.monitored : []).map(x=>compact(x.address)));
     const withScore = candidates.map((c,index) => {
       let score;
-      if (refs.length && Number.isFinite(c.x) && Number.isFinite(c.y) && area !== 'Câmara Fria') {
-        score = Math.min(...refs.map(p => Math.hypot(c.x-p.x,c.y-p.y)));
+      const isPriority = priorityKeys.has(c.key);
+      if (area === 'Marketplace' && Number.isFinite(c.y)) {
+        const distance = refs.length && Number.isFinite(c.x) ? Math.min(...refs.map(p => Math.hypot(c.x-p.x,c.y-p.y))) : 99;
+        score = (isPriority ? 0 : 1000) + distance*10 - c.y;
+      } else if (refs.length && Number.isFinite(c.x) && Number.isFinite(c.y) && area !== 'Câmara Fria') {
+        score = (isPriority ? 0 : 1000) + Math.min(...refs.map(p => Math.hypot(c.x-p.x,c.y-p.y)));
       } else if (Number.isFinite(c.x) && Number.isFinite(c.y)) {
         score = c.y + c.x/1000;
       } else {
         score = 100000 + index;
       }
-      return Object.assign({},c,{score:score});
+      return Object.assign({},c,{score:score,isPriority:isPriority});
     });
-    withScore.sort((a,b) => a.score-b.score || (a.y||9999)-(b.y||9999) || (a.x||9999)-(b.x||9999) || a.address.localeCompare(b.address,'pt-BR',{numeric:true}));
+    withScore.sort((a,b) => a.score-b.score || (a.x||9999)-(b.x||9999) || a.address.localeCompare(b.address,'pt-BR',{numeric:true}));
     return {
       items: withScore,
       basis: area === 'Câmara Fria' ? 'ordem física do croqui' : 'proximidade à faixa prioritária já cadastrada no layout'
