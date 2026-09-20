@@ -38,7 +38,7 @@
       :t.status==='stored_pending_validation'
         ?'<div class="task-state">Guardado em <strong>'+esc(t.actual_address||'—')+'</strong> por '+esc(t.worker_name||'empilhador')+'. Aguardando validação do conferente.</div>'
         :t.status==='rejected'
-          ?'<div class="task-state bad">A confirmação anterior foi rejeitada. Informe o endereço correto e confirme novamente.</div>'
+          ?'<div class="task-state bad">A confirmação anterior foi rejeitada. '+esc(t.validation_note||'Informe o endereço correto e confirme novamente.')+'</div>'
           :'';
     return '<article class="task-card"><div class="task-head"><div><div class="task-title">'+esc(t.sku_code)+' · '+esc(t.sku_name)+'</div><div class="task-meta"><span>Palete '+t.pallet_seq+'</span><span>'+esc(area(t.area))+'</span><span>Curva '+esc(t.curve_class||'—')+'</span><span>Validade '+fd(t.expiry_date)+'</span></div></div><span class="badge '+esc(t.status)+'">'+esc(label(t.status))+'</span></div>'+
       '<div class="destination"><article><span>Destino sugerido</span><strong>'+esc(t.suggested_address||'Definir')+'</strong><small>Zona '+esc(t.suggested_zone||'—')+' · '+esc(t.suggestion_reason||'')+'</small></article><article><span>Área</span><strong>'+esc(area(t.area))+'</strong><small>'+esc(t.area_source||'')+'</small></article></div>'+
