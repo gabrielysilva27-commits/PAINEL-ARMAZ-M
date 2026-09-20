@@ -40,7 +40,7 @@
    const mapped=new Set(anchors.map(a=>S.area+':'+core.normalizeAddress(a.address)));
    const minC=Math.min(...anchors.map(a=>a.col)),minR=Math.min(...anchors.map(a=>a.row));
    const maxC=Math.max(...anchors.map(a=>a.col+(a.width||1)-1)),maxR=Math.max(...anchors.map(a=>a.row+(a.height||1)-1));
-   const unit=S.area==='Regulador'?34:68,rh=S.area==='Regulador'?28:52,compact=S.area==='Regulador';
+   const unit=S.area==='Regulador'?58:68,rh=S.area==='Regulador'?32:52,compact=S.area==='Regulador';
    const compactAxis=(start,size,minimum,maximum)=>{
     if(!compact)return {at:value=>value-minimum,span:(_value,length)=>length,extent:maximum-minimum+2};
     const used=new Set();
@@ -55,7 +55,7 @@
    const zoomControls=compact?'':`<div class="stock-map-zoom" role="group" aria-label="Ampliação do mapa"><button class="active" data-map-zoom="fit">Ver tudo</button><button data-map-zoom="0.5">50%</button><button data-map-zoom="0.75">75%</button><button data-map-zoom="1">100%</button></div>`;
    root.innerHTML=`<div class="stock-map-header"><div><strong>${compact?'Croqui do Regulador':'Visão da área'}</strong><span>${compact?'Visão simples e completa':'Mapa ajustado automaticamente à tela'}</span></div>${zoomControls}</div>${compact?'<div class="stock-flow-direction"><span>REGULADOR</span><i></i><strong>REDZONE • PICKING →</strong></div>':''}<div class="stock-map-scroll fit ${compact?'mini':''}"><div class="stock-map-stage"><div class="stock-map" style="width:${mapWidth}px;height:${mapHeight}px">${cells}</div></div></div>`;
    const scroll=root.querySelector('.stock-map-scroll'),stage=root.querySelector('.stock-map-stage'),map=root.querySelector('.stock-map');let zoomMode='fit';
-   const applyZoom=()=>{const widthFit=(scroll.clientWidth-20)/mapWidth,heightFit=compact?250/mapHeight:1,fit=Math.min(1,Math.max(.04,widthFit),heightFit),scale=zoomMode==='fit'?fit:Number(zoomMode);map.style.transform=`scale(${scale})`;stage.style.width=`${mapWidth*scale}px`;stage.style.height=`${mapHeight*scale}px`;scroll.classList.toggle('fit',zoomMode==='fit');root.querySelectorAll('[data-map-zoom]').forEach(b=>b.classList.toggle('active',b.dataset.mapZoom===zoomMode));};
+   const applyZoom=()=>{const widthFit=(scroll.clientWidth-20)/mapWidth,fit=compact?Math.min(1.35,Math.max(.2,widthFit)):Math.min(1,Math.max(.04,widthFit)),scale=zoomMode==='fit'?fit:Number(zoomMode);map.style.transform=`scale(${scale})`;stage.style.width=`${mapWidth*scale}px`;stage.style.height=`${mapHeight*scale}px`;scroll.classList.toggle('fit',zoomMode==='fit');root.querySelectorAll('[data-map-zoom]').forEach(b=>b.classList.toggle('active',b.dataset.mapZoom===zoomMode));};
    root.querySelectorAll('[data-map-zoom]').forEach(b=>b.onclick=()=>{zoomMode=b.dataset.mapZoom;applyZoom();});
    requestAnimationFrame(applyZoom);
    if(window.ResizeObserver)new ResizeObserver(()=>zoomMode==='fit'&&applyZoom()).observe(scroll);
