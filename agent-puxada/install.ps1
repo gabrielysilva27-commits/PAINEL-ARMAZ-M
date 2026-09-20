@@ -36,7 +36,7 @@ npm install --omit=dev
 
 $taskName = "Agente Puxada Promax"
 $cmd = Join-Path $root "run-agent.cmd"
-$action = New-ScheduledTaskAction -Execute $cmd -WorkingDirectory $root
+$action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\cmd.exe" -Argument ("/c `"" + $cmd + "`"") -WorkingDirectory $root
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 
