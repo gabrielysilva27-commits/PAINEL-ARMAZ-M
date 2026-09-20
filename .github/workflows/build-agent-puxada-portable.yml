@@ -1,0 +1,82 @@
+name: Build Agente Puxada Portatil
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "agent-puxada/**"
+      - ".github/workflows/build-agent-puxada-portable.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install agent dependencies
+        shell: pwsh
+        run: |
+          Set-Location agent-puxada
+          npm install --omit=dev
+
+      - name: Publish portable launcher
+        shell: pwsh
+        run: |
+          dotnet publish agent-puxada/portable/Launcher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -o "$env:RUNNER_TEMP\launcher"
+
+      - name: Assemble portable package
+        shell: pwsh
+        run: |
+          $dist = Join-Path $PWD "dist\AgentePuxada"
+          New-Item -ItemType Directory -Force -Path $dist | Out-Null
+          New-Item -ItemType Directory -Force -Path "$dist\runtime" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$dist\app" | Out-Null
+          Copy-Item "$env:RUNNER_TEMP\launcher\AgentePuxada.exe" "$dist\AgentePuxada.exe"
+          Copy-Item (Get-Command node).Source "$dist\runtime\node.exe"
+          Copy-Item "agent-puxada\agent.js" "$dist\app\agent.js"
+          Copy-Item "agent-puxada\config.example.json" "$dist\app\config.example.json"
+          Copy-Item "agent-puxada\package.json" "$dist\app\package.json"
+          Copy-Item "agent-puxada\lib" "$dist\app\lib" -Recurse
+          Copy-Item "agent-puxada\node_modules" "$dist\app\node_modules" -Recurse
+          Copy-Item "agent-puxada\portable\README-PORTATIL.txt" "$dist\LEIA-ME.txt"
+          New-Item -ItemType Directory -Force -Path "$dist\data" | Out-Null
+
+      - name: Verify package
+        shell: pwsh
+        run: |
+          $base = Join-Path $PWD "dist\AgentePuxada"
+          $required = @(
+            "$base\AgentePuxada.exe",
+            "$base\runtime\node.exe",
+            "$base\app\agent.js",
+            "$base\app\lib\promax.js",
+            "$base\app\lib\csv020501.js",
+            "$base\app\node_modules\playwright-core\package.json"
+          )
+          foreach ($p in $required) {
+            if (-not (Test-Path $p)) { throw "Arquivo ausente: $p" }
+          }
+
+      - name: Create ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist\AgentePuxada\*" -DestinationPath "AgentePuxada-Portatil-Windows-x64.zip" -CompressionLevel Optimal
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AgentePuxada-Portatil-Windows-x64
+          path: AgentePuxada-Portatil-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
