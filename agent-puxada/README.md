@@ -1,6 +1,6 @@
 # Agente Puxada - Promax
 
-Este servico roda localmente no computador da empresa que possui acesso ao Promax.
+Este servico representa um unico **Agente Puxada**, mas pode ser instalado simultaneamente em dois computadores autorizados: o PC oficial da Puxada e o PC ADM.
 
 Fluxo:
 
@@ -25,14 +25,27 @@ Fornecedor + NF + Codigo do produto
 
 Assim compra, bonificacao e outras repeticoes do mesmo produto na mesma NF sao somadas antes do cruzamento.
 
+## Um agente em dois computadores
+
+Os dois computadores executam o mesmo codigo, mas cada instalacao usa seu proprio token.
+
+- Computador oficial da Puxada
+- Computador ADM
+
+Existe uma unica fila de sincronizacao no Painel. Quando surge uma tarefa, o primeiro computador disponivel faz um **claim atomico** e recebe um lease. Enquanto ele executa, o outro fica em espera e nao pode baixar o mesmo relatorio.
+
+Se o computador que assumiu a tarefa perder contato, o lease expira e a mesma solicitacao volta para a fila para o outro computador assumir. Em falhas normais, o computador com erro entra em cooldown por alguns minutos e a tarefa e liberada imediatamente ao outro.
+
 ## Instalacao
 
-1. No Painel Armazem, abra ADM e gere o token do Agente Puxada.
-2. Copie a pasta agent-puxada para o computador da empresa.
+1. No Painel Armazem, abra ADM -> Agente Puxada.
+2. Gere o token especifico do computador que esta sendo instalado.
+3. Copie a pasta agent-puxada para esse computador.
 3. Instale Node.js LTS se ainda nao estiver instalado.
 4. Abra PowerShell na pasta e execute .\install.ps1
-5. Cole o token quando solicitado.
+5. Cole o token correspondente àquele PC quando solicitado.
 6. Execute .\calibrar.ps1
+7. Repita o processo no segundo computador usando o outro token.
 
 O token e salvo com DPAPI do Windows e nao fica em texto puro.
 
