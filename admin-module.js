@@ -49,10 +49,12 @@
     const u=window.state?.user||{};
     return '<div class="admin-module">'+
       '<section class="admin-card"><div class="admin-profile-line"><div class="admin-avatar">'+esc(userInitials())+'</div><div><strong>'+esc(u.display_name||u.username||'Administrador')+'</strong><small>ADMINISTRAÇÃO</small></div></div><p>Configurações administrativas e acessos operacionais do Painel Armazém.</p></section>'+
-      '<div class="admin-module-grid">'+
+      '<div class="admin-role-access-grid">'+
         accessCard('CONFERENTES','Portal do conferente','Um único QR para B.O. Digital e Conferência cega / NRI.',''+CONFERENTE_URL,CONFERENTE_QR,'adminConf')+
         accessCard('PORTARIA','Entrada de carreta','Entrada e acompanhamento da carreta com nome e PIN individual.',''+PORTARIA_URL,PORTARIA_QR,'adminGate')+
         accessCard('EMPILHADORES','Descarga e Guarda','Um único QR para iniciar/finalizar descarga e executar as Ordens de Guarda.',''+EMPILHADOR_URL,EMPILHADOR_QR,'adminFork')+
+      '</div>'+
+      '<div class="admin-module-grid">'+
         '<section class="admin-card admin-pin-console"><p class="eyebrow">SEGURANÇA OPERACIONAL</p><h2>Credenciais e PINs</h2><p>Conferentes, Portaria e Empilhadores ficam no mesmo controle. Selecione o grupo e a pessoa; não é necessário manter uma lista aberta nome a nome.</p>'+
           '<div id="adminPinSummary" class="admin-pin-summary"><span>Carregando credenciais...</span></div>'+
           '<div class="admin-pin-validator"><label>Equipe<select id="adminPinGroup"><option value="conferencers">Conferentes</option><option value="gate">Portaria</option><option value="forklift">Empilhadores</option></select></label><label>Pessoa<select id="adminPinPerson"></select></label></div>'+
