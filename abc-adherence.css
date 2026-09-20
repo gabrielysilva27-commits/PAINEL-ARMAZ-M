@@ -43,3 +43,14 @@
 .abc-adherence-empty.error{color:#a34448;background:#fff8f8}
 @media(max-width:1100px){.abc-audit-evidence{grid-template-columns:repeat(2,1fr)}.abc-adherence-kpis{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){.abc-subview-nav{width:100%;box-sizing:border-box}.abc-subview-nav button{flex:1}.abc-adherence-intro{align-items:flex-start;flex-direction:column}.abc-area-rule{white-space:normal}.abc-adherence-kpis,.abc-zone-grid,.abc-audit-evidence{grid-template-columns:1fr}}
+.abc-history-panel{padding:13px}
+.abc-history-disclaimer{margin:9px 0;padding:10px 12px;border:1px solid #e6dfcf;border-radius:9px;background:#fffaf0;color:#75633a;font-size:8.5px;line-height:1.45}
+.abc-history-method{display:inline-block;padding:3px 6px;border-radius:999px;font-size:8px;font-weight:800;white-space:nowrap}
+.abc-history-method.physical{background:#e7f5ee;color:#246d51}
+.abc-history-method.legacy{background:#fff2df;color:#9b5e19}
+.abc-history-method.planned{background:#eaf0fb;color:#47679c}
+.abc-history-method.none{background:#f0f2f4;color:#858c95}
+.abc-history-note{font-size:8px;color:#858c95}
+.abc-history-panel tr.current td{background:#fffaf6}
+.abc-history-loading{padding:14px;border:1px dashed #d9dde3;border-radius:9px;background:#fff;color:#858c95;font-size:9px;text-align:center}
+.abc-history-loading.error{color:#a34448;background:#fff8f8}
