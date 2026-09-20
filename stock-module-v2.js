@@ -179,14 +179,35 @@
 
   function renderMapContent() {
     const root = $('stockMapContent'), d = S.data;
-    const locs = d.locations.filter(l => l.area === S.area), byKey = new Map(locs.map(l => [l.key, l]));
+    const locs = d.locations.filter(l => l.area === S.area);
+    const compactAddress = value => core.normalizeAddress(value).replace(/[^A-Z0-9]/g, '');
+    const byAddress = new Map(locs.map(l => [compactAddress(l.address), l]));
+    const locFor = address => byAddress.get(compactAddress(address));
     if (S.mode === 'list') {
       const rows = d.rows.filter(r => r.area === S.area && matches(r));
       root.innerHTML = table(['Endereço','Código / produto','Curva','Recebimento','Validade','Paletes','Situação',''], rows.map(r => `<tr><td><button class="stock-link" data-location="${esc(core.keyOf(r))}">${esc(r.address)}</button></td><td><strong>${esc(r.sku_code || 'Vazio')}</strong><small>${esc(r.sku_name)}</small></td><td>${badge(r.curve)}</td><td>${dt(r.received_on)}</td><td>${dt(r.expires_on)}</td><td>${r.pallets == null ? '—' : nf.format(r.pallets)}</td><td>${esc(stockStatus(r))}</td><td>${canEdit() ? `<button class="stock-link" data-edit="${esc(r.id)}">Editar</button>` : ''}</td></tr>`));
     } else {
-      const anchors = d.snapshot.payload.maps[S.area]?.anchors || [];
+      let anchors = [...(d.snapshot.payload.maps[S.area]?.anchors || [])];
       if (!anchors.length) { root.innerHTML = '<p class="stock-empty">Sem mapa cadastrado para esta área.</p>'; return; }
-      const mapped = new Set(anchors.map(a => S.area + ':' + core.normalizeAddress(a.address)));
+
+      if (S.area === 'Regulador') {
+        const supplemental = [
+          { address: 'A37-A', col: 93, row: 61, width: 2, height: 1 },
+          { address: 'A37-B', col: 93, row: 62, width: 2, height: 1 },
+          { address: 'B36-A', col: 96, row: 61, width: 2, height: 1 },
+          { address: 'B36-B', col: 96, row: 62, width: 2, height: 1 },
+          { address: 'E64', col: 12, row: 45, width: 2, height: 2 }
+        ];
+        const anchored = new Set(anchors.map(a => compactAddress(a.address)));
+        for (const a of supplemental) {
+          if (locFor(a.address) && !anchored.has(compactAddress(a.address))) {
+            anchors.push(a);
+            anchored.add(compactAddress(a.address));
+          }
+        }
+      }
+
+      const mapped = new Set(anchors.map(a => compactAddress(a.address)));
       const minC = Math.min(...anchors.map(a => a.col)), minR = Math.min(...anchors.map(a => a.row));
       const maxC = Math.max(...anchors.map(a => a.col + (a.width || 1) - 1)), maxR = Math.max(...anchors.map(a => a.row + (a.height || 1) - 1));
       const unit = S.area === 'Regulador' ? 46 : 68, rh = S.area === 'Regulador' ? 42 : 52;
@@ -217,7 +238,7 @@
         for (const a of anchors) {
           const prefix = rackPrefix(a.address);
           if (!prefix) {
-            cells.push(locationButton(byKey.get(S.area + ':' + core.normalizeAddress(a.address)), a.address, `left:${(a.col-minC)*unit}px;top:${(a.row-minR)*rh}px;width:${unit*(a.width||1)-3}px;height:${rh*(a.height||1)-4}px`));
+            cells.push(locationButton(locFor(a.address), a.address, `left:${(a.col-minC)*unit}px;top:${(a.row-minR)*rh}px;width:${unit*(a.width||1)-3}px;height:${rh*(a.height||1)-4}px`));
             continue;
           }
           if (renderedPrefixes.has(prefix)) continue;
@@ -238,20 +259,23 @@
 
           const source = rackLocations.length
             ? rackLocations
-            : rackAnchors.map(x => byKey.get(S.area + ':' + core.normalizeAddress(x.address))).filter(Boolean);
+            : rackAnchors.map(x => locFor(x.address)).filter(Boolean);
           source.forEach((loc, idx) => {
-            mapped.add(loc.key);
+            mapped.add(compactAddress(loc.address));
             const c = idx % cols, r = Math.floor(idx / cols);
             cells.push(locationButton(loc, loc.address, `left:${(left-minC)*unit + c*cellW}px;top:${(top-minR)*rh + r*cellH}px;width:${Math.max(18,cellW-3)}px;height:${Math.max(16,cellH-3)}px`));
           });
         }
         mapCells = cells.join('');
       } else {
-        mapCells = anchors.map(a => locationButton(byKey.get(S.area + ':' + core.normalizeAddress(a.address)), a.address, `left:${(a.col-minC)*unit}px;top:${(a.row-minR)*rh}px;width:${unit*(a.width||1)-3}px;height:${rh*(a.height||1)-4}px`)).join('');
+        mapCells = anchors.map(a => {
+          const loc = locFor(a.address);
+          return locationButton(loc, loc?.address || a.address, `left:${(a.col-minC)*unit}px;top:${(a.row-minR)*rh}px;width:${unit*(a.width||1)-3}px;height:${rh*(a.height||1)-4}px`);
+        }).join('');
       }
 
       root.innerHTML = `<div class="stock-map-controls"><div><strong>Visão geral</strong><span>Passe o mouse sobre uma posição para ampliar. Clique para abrir os detalhes.</span></div><button class="outline-button" id="stockMapFit" type="button">Ajustar à tela</button></div><div class="stock-map-scroll"><div class="stock-map-stage"><div class="stock-map ${S.area === 'Marketplace' ? 'marketplace-map' : ''}" style="width:${mapWidth}px;height:${mapHeight}px">${mapCells}</div></div></div>`;
-      const extras = locs.filter(l => !mapped.has(l.key));
+      const extras = locs.filter(l => !mapped.has(compactAddress(l.address)));
       if (extras.length) root.innerHTML += `<details class="stock-unmapped"><summary>${extras.length} endereços fora do desenho</summary><div class="stock-extra-grid">${extras.map(l => locationButton(l, l.address)).join('')}</div></details>`;
       const scroll = root.querySelector('.stock-map-scroll'), stage = root.querySelector('.stock-map-stage'), map = root.querySelector('.stock-map');
       const fitMap = () => {
