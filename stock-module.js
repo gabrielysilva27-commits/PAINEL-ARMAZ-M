@@ -1,5 +1,5 @@
 (() => {
- const STOCK_BUILD='20260920-14'; window.__stockBuild=STOCK_BUILD;
+ const STOCK_BUILD='20260920-15'; window.__stockBuild=STOCK_BUILD;
  const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/stock-api';
  const S={data:null,month:state.currentMonth,area:'Regulador',query:'',mode:'map',active:'',request:0,fefoCodes:'',origin:'Regulador',stockQuery:'',stockArea:''};
  let core;
