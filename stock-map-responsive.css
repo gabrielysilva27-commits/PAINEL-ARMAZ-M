@@ -69,7 +69,7 @@
 .stock-map-scroll { min-height: 180px; padding: 12px; scrollbar-color: #aeb5bf #e5e8ec; scrollbar-width: thin; }
 .stock-map-scroll.fit { overflow: hidden; max-height: none; }
 .stock-map-stage { position: relative; margin: 0 auto; }
-.stock-map { transform-origin: top left; transition: transform .18s ease; }
+.stock-map { transform-origin: top left; }
 .compact-layout { gap: 10px; }
 .stock-control-panel { padding: 12px 14px; border: 1px solid #e2e5e9; border-radius: 12px; background: #fff; }
 .stock-area-active .layout-tabs { display: none; }
