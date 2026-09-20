@@ -45,3 +45,4 @@
  .bo-review-dialog{width:calc(100vw - 10px)}
 }
 .bo-badge.cancelled{background:#eeeeef;color:#666}
+.bo-row-actions{display:flex;align-items:center;gap:6px}.bo-trash-btn{width:31px;height:31px;padding:0!important;border:1px solid #efc6c8!important;background:#fff7f7!important;color:#a2262d!important;border-radius:8px!important;font-size:14px!important;line-height:1;display:grid;place-items:center;cursor:pointer}.bo-trash-btn:hover{background:#ffecee!important;border-color:#e0a7aa!important}
