@@ -68,7 +68,7 @@
    const scroll=root.querySelector('.stock-map-scroll'),stage=root.querySelector('.stock-map-stage'),map=root.querySelector('.stock-map');let zoomMode='fit';
    const applyZoom=()=>{const widthFit=(scroll.clientWidth-20)/mapWidth,fit=compact?Math.min(1.35,Math.max(.2,widthFit)):Math.min(1,Math.max(.04,widthFit)),scale=zoomMode==='fit'?fit:Number(zoomMode);map.style.transform=`scale(${scale})`;stage.style.width=`${mapWidth*scale}px`;stage.style.height=`${mapHeight*scale}px`;scroll.classList.toggle('fit',zoomMode==='fit');root.querySelectorAll('[data-map-zoom]').forEach(b=>b.classList.toggle('active',b.dataset.mapZoom===zoomMode));};
    root.querySelectorAll('[data-map-zoom]').forEach(b=>b.onclick=()=>{zoomMode=b.dataset.mapZoom;applyZoom();});
-   requestAnimationFrame(applyZoom);
+   applyZoom();
    if(window.ResizeObserver)new ResizeObserver(()=>zoomMode==='fit'&&applyZoom()).observe(scroll);
    const extras=locs.filter(l=>!mapped.has(l.key));
    if(extras.length)root.insertAdjacentHTML('beforeend',`<details class="stock-unmapped"><summary>${extras.length} endereços fora do desenho</summary><div class="stock-extra-grid">${extras.map(l=>locationButton(l,l.address)).join('')}</div></details>`);
