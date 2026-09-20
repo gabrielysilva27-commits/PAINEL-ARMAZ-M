@@ -19,3 +19,17 @@
 .admin-pin-state.ready{background:#e8f6ef;color:#19704c}
 .admin-pin-state.pending{background:#fff2df;color:#a5681b}
 @media(max-width:780px){.admin-pin-summary{grid-template-columns:1fr}.admin-pin-validator{grid-template-columns:1fr}.admin-pin-selected{align-items:flex-start;flex-direction:column}}
+
+.admin-role-access-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:10px;margin-bottom:10px}
+.admin-role-access-grid .admin-card{min-width:0}
+.admin-role-access-grid .admin-access{grid-template-columns:minmax(0,1fr) 138px;gap:14px}
+.admin-role-access-grid .admin-qr{width:138px;height:138px}
+@media(max-width:760px){
+  .admin-role-access-grid{grid-template-columns:1fr}
+  .admin-role-access-grid .admin-access{grid-template-columns:1fr 118px}
+  .admin-role-access-grid .admin-qr{width:118px;height:118px}
+}
+@media(max-width:520px){
+  .admin-role-access-grid .admin-access{grid-template-columns:1fr}
+  .admin-role-access-grid .admin-qr{width:132px;height:132px;justify-self:start}
+}
