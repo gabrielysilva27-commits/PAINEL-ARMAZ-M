@@ -22,6 +22,10 @@ class AgentApi {
     return data;
   }
 
+  ping(info) {
+    return this.call("agent_ping", info);
+  }
+
   poll(info) {
     return this.call("agent_poll", info);
   }
