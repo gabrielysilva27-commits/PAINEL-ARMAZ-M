@@ -191,7 +191,66 @@
       const maxC = Math.max(...anchors.map(a => a.col + (a.width || 1) - 1)), maxR = Math.max(...anchors.map(a => a.row + (a.height || 1) - 1));
       const unit = S.area === 'Regulador' ? 46 : 68, rh = S.area === 'Regulador' ? 42 : 52;
       const mapWidth = (maxC-minC+2)*unit, mapHeight = (maxR-minR+2)*rh;
-      root.innerHTML = `<div class="stock-map-controls"><div><strong>Visão geral</strong><span>Passe o mouse sobre uma posição para ampliar. Clique para abrir os detalhes.</span></div><button class="outline-button" id="stockMapFit" type="button">Ajustar à tela</button></div><div class="stock-map-scroll"><div class="stock-map-stage"><div class="stock-map" style="width:${mapWidth}px;height:${mapHeight}px">${anchors.map(a => locationButton(byKey.get(S.area + ':' + core.normalizeAddress(a.address)), a.address, `left:${(a.col-minC)*unit}px;top:${(a.row-minR)*rh}px;width:${unit*(a.width||1)-3}px;height:${rh*(a.height||1)-4}px`)).join('')}</div></div></div>`;
+
+      let mapCells;
+      if (S.area === 'Marketplace') {
+        const rackPrefix = address => String(address || '').match(/^(M\d+)-/i)?.[1]?.toUpperCase() || null;
+        const marketLocs = new Map();
+        for (const l of locs) {
+          const prefix = rackPrefix(l.address);
+          if (!prefix) continue;
+          if (!marketLocs.has(prefix)) marketLocs.set(prefix, []);
+          marketLocs.get(prefix).push(l);
+        }
+        for (const list of marketLocs.values()) list.sort((a,b) => a.address.localeCompare(b.address, 'pt-BR', { numeric:true }));
+
+        const marketAnchors = new Map();
+        for (const a of anchors) {
+          const prefix = rackPrefix(a.address);
+          if (!prefix) continue;
+          if (!marketAnchors.has(prefix)) marketAnchors.set(prefix, []);
+          marketAnchors.get(prefix).push(a);
+        }
+
+        const renderedPrefixes = new Set();
+        const cells = [];
+        for (const a of anchors) {
+          const prefix = rackPrefix(a.address);
+          if (!prefix) {
+            cells.push(locationButton(byKey.get(S.area + ':' + core.normalizeAddress(a.address)), a.address, `left:${(a.col-minC)*unit}px;top:${(a.row-minR)*rh}px;width:${unit*(a.width||1)-3}px;height:${rh*(a.height||1)-4}px`));
+            continue;
+          }
+          if (renderedPrefixes.has(prefix)) continue;
+          renderedPrefixes.add(prefix);
+
+          const rackAnchors = marketAnchors.get(prefix) || [a];
+          const rackLocations = marketLocs.get(prefix) || [];
+          const left = Math.min(...rackAnchors.map(x => x.col));
+          const top = Math.min(...rackAnchors.map(x => x.row));
+          const right = Math.max(...rackAnchors.map(x => x.col + (x.width || 1)));
+          const bottom = Math.max(...rackAnchors.map(x => x.row + (x.height || 1)));
+          const cols = Math.max(1, new Set(rackAnchors.map(x => x.col)).size);
+          const rows = Math.max(1, Math.ceil(Math.max(rackLocations.length, rackAnchors.length) / cols));
+          const rackW = (right-left) * unit;
+          const rackH = (bottom-top) * rh;
+          const cellW = rackW / cols;
+          const cellH = rackH / rows;
+
+          const source = rackLocations.length
+            ? rackLocations
+            : rackAnchors.map(x => byKey.get(S.area + ':' + core.normalizeAddress(x.address))).filter(Boolean);
+          source.forEach((loc, idx) => {
+            mapped.add(loc.key);
+            const c = idx % cols, r = Math.floor(idx / cols);
+            cells.push(locationButton(loc, loc.address, `left:${(left-minC)*unit + c*cellW}px;top:${(top-minR)*rh + r*cellH}px;width:${Math.max(18,cellW-3)}px;height:${Math.max(16,cellH-3)}px`));
+          });
+        }
+        mapCells = cells.join('');
+      } else {
+        mapCells = anchors.map(a => locationButton(byKey.get(S.area + ':' + core.normalizeAddress(a.address)), a.address, `left:${(a.col-minC)*unit}px;top:${(a.row-minR)*rh}px;width:${unit*(a.width||1)-3}px;height:${rh*(a.height||1)-4}px`)).join('');
+      }
+
+      root.innerHTML = `<div class="stock-map-controls"><div><strong>Visão geral</strong><span>Passe o mouse sobre uma posição para ampliar. Clique para abrir os detalhes.</span></div><button class="outline-button" id="stockMapFit" type="button">Ajustar à tela</button></div><div class="stock-map-scroll"><div class="stock-map-stage"><div class="stock-map ${S.area === 'Marketplace' ? 'marketplace-map' : ''}" style="width:${mapWidth}px;height:${mapHeight}px">${mapCells}</div></div></div>`;
       const extras = locs.filter(l => !mapped.has(l.key));
       if (extras.length) root.innerHTML += `<details class="stock-unmapped"><summary>${extras.length} endereços fora do desenho</summary><div class="stock-extra-grid">${extras.map(l => locationButton(l, l.address)).join('')}</div></details>`;
       const scroll = root.querySelector('.stock-map-scroll'), stage = root.querySelector('.stock-map-stage'), map = root.querySelector('.stock-map');
