@@ -2,6 +2,7 @@
   const BO_API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/bo-api';
   const BO_URL='https://painel-armaz-m.gabrielysilva27.workers.dev/bo/';
   const NRI_API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/receiving-nri-api';
+  const PUTAWAY_API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/putaway-api';
   const PORTARIA_URL='https://painel-armaz-m.gabrielysilva27.workers.dev/portaria/';
   const RECEBIMENTO_URL='https://painel-armaz-m.gabrielysilva27.workers.dev/recebimento/';
   const PORTARIA_QR="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAZoAAAGaAQAAAAAefbjOAAADBElEQVR4nO2cS27cMAyGP1YGupRvMEexb9AjBT1SbmAfJQcIYC8D2Pi7EP2YZJVOOy9Tm9gefxgJQ5A/SSkmvj36H99nIKCAAgoooIACek7IfFRYC9DX67N6NhiXF9qbTC+g60ONJGkAGM382ZCkDrCWJEnSOXS96QV0Pajyv2MNzSuor9NkzQBinI3m7acMwCBNV59eQFeHqk/31gy1ibFG/a+pEiOI8VbTC+jmUAkTVifRvFWuKNr/8U0B3TeUVTQD5Am/AmjkoUJarh5mTQFdAPUlrwBrx5+yl8H1pLVjBTCXVONW0wvo2jriayl7Nvo6AfnDIJ+/cOdrCugSiJJVNoNLCHV5wvPQEj+SpCFJXZ48S+3ufE0BXQKtPmKqjPxeGTkJSJM1rxWQ300wmxg9D737NQX0D6C+Bumt2otKsmQtQH+asDZ/hI44ALRGjSRJU0kp1JHkdcw11+iyfETUeGZoZxFett7kQrmagDwBWQod8fzQYhGbCQxQRKUG9wylWqHBXw6LeGrIf2QtPmLzB0VRNGsmso2wiGeG3EfsQsJSs/QUtIwkz0PDIo4BqcO3QbijIGn5YGmJvww3m15AN/IRJWBA0ZO7DRFbOAll+fTQrmYJpPM8VGf5xxDK8kBQf5LULTUos5pStfK+BmnvQR5kTQFdlmssUrJ0OLIWHZG3qlX4iONAxSmQp+ItymYZjyQApSWevKj9GGsK6LJO11hD3wIwV0CC0u4aZr+COfoax4H6OsledhrzbPQnL2V7H+wx1hTQpVVsTzMG1nRzKWYC3uGI7PPpoX11em8bsDU3yrNyGxZxDGg70wXMpt8nNwtr80RRls3qLR5jTQFdHDW83VUqleshrqVSub0cPuIQ0OiHOtWN66Ge0azc9rY1PG4zvYCuBn050wUYzWtt8uyzRjBXgglruutOL6A7gEqZaq1YZ/mhjd6qyD4PAH3WEaWA3WjdmL+KidhVdwxo3/Quvc915y1sxzfSTm2GRTw1ZPGfyQIKKKCAAgoooL+E/gCIxGsJZnpOtgAAAABJRU5ErkJggg==";
@@ -22,6 +23,12 @@
     const r=await fetch(NRI_API,{method:'POST',headers:{'Content-Type':'application/json','x-session-token':token},body:JSON.stringify({action,...payload})});
     const d=await r.json().catch(()=>({error:'Resposta inválida'}));if(!r.ok)throw new Error(d.error||'Erro na Administração');return d;
   }
+  async function putawayCall(action,payload={}){
+    const token=(window.state&&window.state.token)||localStorage.getItem('pa_session')||'';
+    const r=await fetch(PUTAWAY_API,{method:'POST',headers:{'Content-Type':'application/json','x-session-token':token},body:JSON.stringify({action,...payload})});
+    const d=await r.json().catch(()=>({error:'Resposta inválida'}));if(!r.ok)throw new Error(d.error||'Erro na Administração');return d;
+  }
+  const pinDirectory={conferencers:[],gate:[],forklift:[]};
   function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function userInitials(){return (window.state?.user?.display_name||window.state?.user?.username||'ADM').split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase();}
   function ensureView(){
@@ -42,9 +49,102 @@
         accessCard('B.O. DIGITAL','B.O. dos conferentes','Acesso permanente para registro de B.O.',''+BO_URL,QR_DATA,'adminBo')+
         accessCard('RECEBIMENTO / NRI','Conferência cega','QR dos conferentes para recebimento físico e geração das NRIs.',''+RECEBIMENTO_URL,RECEBIMENTO_QR,'adminNri')+
         accessCard('PORTARIA','Entrada de carreta','QR da Portaria. Cada pessoa entra com seu nome e PIN individual.',''+PORTARIA_URL,PORTARIA_QR,'adminGate')+
-        '<section class="admin-card"><p class="eyebrow">SEGURANÇA</p><h2>PINs dos conferentes</h2><p>Os mesmos PINs identificam o conferente no B.O. e na conferência de recebimento.</p><div class="admin-actions"><button class="primary" id="adminGeneratePins">Gerar PINs faltantes</button></div><div id="adminIssued"></div><div id="adminPinList" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div></section>'+
-        '<section class="admin-card"><p class="eyebrow">PORTARIA</p><h2>PINs da Portaria</h2><p>Daniel, Rodrigo, Yuri e Lucas possuem identificação individual. Cada abertura de carreta fica vinculada ao usuário que entrou com o PIN.</p><div id="adminGateIssued"></div><div id="adminGateStatus" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div></section>'+'<section class="admin-card"><p class="eyebrow">PUXADA · PROMAX</p><h2>Agente Puxada</h2><p>Um único agente lógico pode rodar em dois computadores. O primeiro PC que pegar uma sincronização bloqueia a tarefa para o outro, evitando duplicidade.</p><div id="adminAgentStatus" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div><div id="adminAgentNodes" class="admin-pin-list"></div><div id="adminAgentIssued"></div><label style="display:grid;gap:6px;margin-top:12px;font-size:11px;font-weight:700">Intervalo automático<select id="adminAgentInterval"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select></label><div class="admin-actions"><button id="adminAgentSaveInterval">Salvar intervalo</button></div><p style="font-size:10px;color:var(--muted)">Instale a mesma pasta <strong>agent-puxada</strong> nos dois PCs, mas use o token específico de cada computador.</p></section>'+
+        '<section class="admin-card admin-pin-console"><p class="eyebrow">SEGURANÇA OPERACIONAL</p><h2>Credenciais e PINs</h2><p>Conferentes, Portaria e Empilhadores ficam no mesmo controle. Selecione o grupo e a pessoa; não é necessário manter uma lista aberta nome a nome.</p>'+
+          '<div id="adminPinSummary" class="admin-pin-summary"><span>Carregando credenciais...</span></div>'+
+          '<div class="admin-pin-validator"><label>Equipe<select id="adminPinGroup"><option value="conferencers">Conferentes</option><option value="gate">Portaria</option><option value="forklift">Empilhadores</option></select></label><label>Pessoa<select id="adminPinPerson"></select></label></div>'+
+          '<div id="adminPinSelected" class="admin-pin-selected"></div>'+
+          '<div class="admin-actions"><button class="primary" id="adminPinAction">Gerar / redefinir PIN</button><button id="adminPinMissing">Gerar pendentes do grupo</button></div>'+
+          '<div id="adminPinUnifiedIssued"></div>'+
+        '</section>'+'<section class="admin-card"><p class="eyebrow">PUXADA · PROMAX</p><h2>Agente Puxada</h2><p>Um único agente lógico pode rodar em dois computadores. O primeiro PC que pegar uma sincronização bloqueia a tarefa para o outro, evitando duplicidade.</p><div id="adminAgentStatus" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div><div id="adminAgentNodes" class="admin-pin-list"></div><div id="adminAgentIssued"></div><label style="display:grid;gap:6px;margin-top:12px;font-size:11px;font-weight:700">Intervalo automático<select id="adminAgentInterval"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select></label><div class="admin-actions"><button id="adminAgentSaveInterval">Salvar intervalo</button></div><p style="font-size:10px;color:var(--muted)">Instale a mesma pasta <strong>agent-puxada</strong> nos dois PCs, mas use o token específico de cada computador.</p></section>'+
       '</div></div>';
+  }
+
+  function groupLabel(group){
+    return group==='conferencers'?'Conferentes':group==='gate'?'Portaria':'Empilhadores';
+  }
+  function activePeople(group){
+    return (pinDirectory[group]||[]).filter(x=>x.active!==false);
+  }
+  function renderPinSummary(){
+    if(!$('adminPinSummary'))return;
+    $('adminPinSummary').innerHTML=['conferencers','gate','forklift'].map(group=>{
+      const people=activePeople(group),ready=people.filter(x=>x.pin_ready).length;
+      const cls=people.length&&ready===people.length?'good':ready?'partial':'pending';
+      return '<button type="button" class="admin-pin-summary-item '+cls+'" data-pin-group-summary="'+group+'"><span>'+groupLabel(group)+'</span><strong>'+ready+'/'+people.length+'</strong><small>'+(ready===people.length&&people.length?'Configurados':(people.length-ready)+' pendente(s)')+'</small></button>';
+    }).join('');
+    $('adminPinSummary').querySelectorAll('[data-pin-group-summary]').forEach(b=>b.onclick=()=>{$('adminPinGroup').value=b.dataset.pinGroupSummary;renderPinPeople()});
+  }
+  function renderPinPeople(){
+    const group=$('adminPinGroup').value,people=activePeople(group),select=$('adminPinPerson');
+    select.innerHTML=people.length?people.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.display_name)+'</option>').join(''):'<option value="">Nenhuma pessoa ativa</option>';
+    renderPinSelected();
+  }
+  function selectedPinPerson(){
+    const group=$('adminPinGroup')?.value,id=$('adminPinPerson')?.value;
+    return activePeople(group).find(x=>String(x.id)===String(id))||null;
+  }
+  function renderPinSelected(){
+    const group=$('adminPinGroup')?.value,person=selectedPinPerson(),box=$('adminPinSelected'),button=$('adminPinAction');
+    if(!box||!button)return;
+    if(!person){box.innerHTML='<span>Nenhuma pessoa disponível neste grupo.</span>';button.disabled=true;return}
+    button.disabled=false;
+    button.textContent=person.pin_ready?'Redefinir PIN':'Gerar PIN';
+    box.innerHTML='<div><strong>'+esc(person.display_name)+'</strong><small>'+esc(groupLabel(group))+'</small></div><span class="admin-pin-state '+(person.pin_ready?'ready':'pending')+'">'+(person.pin_ready?'PIN configurado':'PIN pendente')+'</span>';
+  }
+  function showUnifiedIssued(item){
+    const box=$('adminPinUnifiedIssued');if(!box)return;
+    if(!item){box.innerHTML='';return}
+    box.innerHTML='<div class="admin-issued"><strong>Copie agora. Este PIN não será exibido novamente.</strong><div class="admin-issued-row"><span>'+esc(item.display_name)+'</span><code>'+esc(item.pin)+'</code><button id="adminCopyUnifiedPin">Copiar</button></div></div>';
+    $('adminCopyUnifiedPin').onclick=async()=>{await navigator.clipboard?.writeText(item.pin);showToast('PIN copiado.')};
+  }
+  async function loadUnifiedPins(){
+    try{
+      const [c,g,f]=await Promise.all([boCall('pin_status'),nriCall('gate_pin_status'),putawayCall('forklift_admin_list')]);
+      pinDirectory.conferencers=(c.conferencers||[]).map(x=>({...x,group:'conferencers'}));
+      pinDirectory.gate=(g.users||[]).map(x=>({...x,group:'gate'}));
+      pinDirectory.forklift=(f.operators||[]).map(x=>({...x,group:'forklift'}));
+      renderPinSummary();renderPinPeople();
+    }catch(e){
+      if($('adminPinSummary'))$('adminPinSummary').innerHTML='<p class="form-error">'+esc(e.message)+'</p>';
+      showToast(e.message,true);
+    }
+  }
+  async function issueSelectedPin(){
+    const group=$('adminPinGroup').value,person=selectedPinPerson();if(!person)return;
+    const verb=person.pin_ready?'redefinir':'gerar';
+    if(person.pin_ready&&!confirm('Redefinir o PIN de '+person.display_name+'? O PIN atual deixará de funcionar.'))return;
+    const b=$('adminPinAction');b.disabled=true;
+    try{
+      let issued=null;
+      if(group==='conferencers'){
+        const d=await boCall('reset_pin',{id:person.id});issued=d.issued;
+      }else if(group==='gate'){
+        const d=await nriCall(person.pin_ready?'gate_reset_pin':'gate_generate_pin',{id:person.id});issued=d.issued;
+      }else{
+        const d=await putawayCall('forklift_admin_reset_pin',{id:person.id});issued=d.operator;
+      }
+      if(!issued)throw new Error('Não foi possível '+verb+' o PIN.');
+      showUnifiedIssued(issued);await loadUnifiedPins();
+    }catch(e){showToast(e.message,true)}finally{b.disabled=false;renderPinSelected()}
+  }
+  async function issueMissingForGroup(){
+    const group=$('adminPinGroup').value,missing=activePeople(group).filter(x=>!x.pin_ready);
+    if(!missing.length)return showToast('Todos os '+groupLabel(group).toLowerCase()+' já possuem PIN.');
+    if(!confirm('Gerar '+missing.length+' PIN(s) pendente(s) de '+groupLabel(group)+'?'))return;
+    const issued=[];
+    try{
+      if(group==='conferencers'){
+        const d=await boCall('generate_missing_pins');issued.push(...(d.issued||[]));
+      }else if(group==='gate'){
+        for(const person of missing){const d=await nriCall('gate_generate_pin',{id:person.id});if(d.issued)issued.push(d.issued)}
+      }else{
+        for(const person of missing){const d=await putawayCall('forklift_admin_reset_pin',{id:person.id});if(d.operator)issued.push(d.operator)}
+      }
+      const box=$('adminPinUnifiedIssued');
+      box.innerHTML=issued.length?'<div class="admin-issued"><strong>Copie agora. Estes PINs não serão exibidos novamente.</strong>'+issued.map(x=>'<div class="admin-issued-row"><span>'+esc(x.display_name)+'</span><code>'+esc(x.pin)+'</code><button data-copy-unified="'+esc(x.pin)+'">Copiar</button></div>').join('')+'</div>':'';
+      box.querySelectorAll('[data-copy-unified]').forEach(b=>b.onclick=async()=>{await navigator.clipboard?.writeText(b.dataset.copyUnified);showToast('PIN copiado.')});
+      await loadUnifiedPins();
+    }catch(e){showToast(e.message,true)}
   }
 
   async function loadPins(){
@@ -141,8 +241,8 @@
     bindAccess('adminBo',BO_URL,QR_DATA,'B.O. Digital — Conferentes','QR_BO_Digital_Conferentes.png');
     bindAccess('adminNri',RECEBIMENTO_URL,RECEBIMENTO_QR,'Recebimento / NRI — Conferentes','QR_Recebimento_NRI_Conferentes.png');
     bindAccess('adminGate',PORTARIA_URL,PORTARIA_QR,'Portaria — Entrada de Carreta','QR_Portaria_Recebimento.png');
-    $('adminGeneratePins').onclick=generateMissing;$('adminAgentSaveInterval').onclick=saveAgentInterval;
-    await Promise.all([loadPins(),loadGatePin(),loadAgentAdmin()]);
+    $('adminPinGroup').onchange=renderPinPeople;$('adminPinPerson').onchange=renderPinSelected;$('adminPinAction').onclick=issueSelectedPin;$('adminPinMissing').onclick=issueMissingForGroup;$('adminAgentSaveInterval').onclick=saveAgentInterval;
+    await Promise.all([loadUnifiedPins(),loadAgentAdmin()]);
   }
   function bind(){
     const btn=$('adminProfileButton');if(!btn)return setTimeout(bind,120);
