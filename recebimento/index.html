@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260920-2" />
+  <link rel="stylesheet" href="styles.css?v=20260921-1" />
 </head>
 <body>
   <main class="app">
@@ -63,7 +63,20 @@
       <div class="success-summary" id="successSummary"></div>
       <button class="primary" id="successQueueButton" type="button">Voltar às carretas</button>
       <button class="secondary" id="successEditButton" type="button">Corrigir conferência</button>
+      <button class="secondary" id="successPutawayButton" type="button">Ordem de Guarda</button>
       <button class="secondary" id="successHistoryButton" type="button">Meu histórico</button>
+    </section>
+
+
+    <section id="putawayView" class="hidden">
+      <div class="toolbar">
+        <div><p class="eyebrow">ORDEM DE GUARDA</p><h1 id="putawayTitle">Endereçamento</h1><p class="muted" id="putawayMeta"></p></div>
+        <div class="toolbar-actions"><button class="secondary" id="putawayGuideButton">Guia do empilhador</button><button class="secondary" id="backPutawayButton">Voltar</button></div>
+      </div>
+      <div class="notice"><strong>Validação final:</strong> o Estoque x Estoque só é atualizado quando você valida o endereço confirmado pelo empilhador.</div>
+      <div id="putawaySummary" class="putaway-summary"></div>
+      <div class="form-actions putaway-actions"><button class="primary" id="validateAllPutawayButton" type="button">Validar pendentes no estoque</button></div>
+      <div id="putawayTaskList" class="putaway-task-list"></div>
     </section>
 
     <section id="historyView" class="hidden">
