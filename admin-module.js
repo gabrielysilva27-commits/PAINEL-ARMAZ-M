@@ -43,7 +43,7 @@
         accessCard('RECEBIMENTO / NRI','Conferência cega','QR dos conferentes para recebimento físico e geração das NRIs.',''+RECEBIMENTO_URL,RECEBIMENTO_QR,'adminNri')+
         accessCard('PORTARIA','Entrada de carreta','QR da Portaria. Cada pessoa entra com seu nome e PIN individual.',''+PORTARIA_URL,PORTARIA_QR,'adminGate')+
         '<section class="admin-card"><p class="eyebrow">SEGURANÇA</p><h2>PINs dos conferentes</h2><p>Os mesmos PINs identificam o conferente no B.O. e na conferência de recebimento.</p><div class="admin-actions"><button class="primary" id="adminGeneratePins">Gerar PINs faltantes</button></div><div id="adminIssued"></div><div id="adminPinList" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div></section>'+
-        '<section class="admin-card"><p class="eyebrow">PORTARIA</p><h2>PINs da Portaria</h2><p>Daniel, Rodrigo, Yuri e Lucas possuem identificação individual. Cada abertura de carreta fica vinculada ao usuário que entrou com o PIN.</p><div id="adminGateIssued"></div><div id="adminGateStatus" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div></section>'+
+        '<section class="admin-card"><p class="eyebrow">PORTARIA</p><h2>PINs da Portaria</h2><p>Daniel, Rodrigo, Yuri e Lucas possuem identificação individual. Cada abertura de carreta fica vinculada ao usuário que entrou com o PIN.</p><div id="adminGateIssued"></div><div id="adminGateStatus" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div></section>'+'<section class="admin-card"><p class="eyebrow">PUXADA · PROMAX</p><h2>Agente local</h2><p>Sincroniza automaticamente o relatório 02.05.01 no computador da empresa.</p><div id="adminAgentStatus" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div><div id="adminAgentIssued"></div><div class="admin-actions"><button class="primary" id="adminAgentToken">Gerar token</button><button id="adminAgentReset">Resetar token</button></div><label style="display:grid;gap:6px;margin-top:12px;font-size:11px;font-weight:700">Intervalo automático<select id="adminAgentInterval"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select></label><div class="admin-actions"><button id="adminAgentSaveInterval">Salvar intervalo</button></div><p style="font-size:10px;color:var(--muted)">Instalação local: pasta <strong>agent-puxada</strong> do repositório. A calibração do Promax será concluída no PC da empresa.</p></section>'+
       '</div></div>';
   }
 
@@ -92,6 +92,33 @@
     }catch(e){showToast(e.message,true);}
   }
 
+  function adminDt(v){if(!v)return'—';const d=new Date(v);return Number.isNaN(d.getTime())?'—':d.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
+  async function loadAgentAdmin(){
+    try{
+      const d=await nriCall('agent_status'),a=d.agent||{};
+      let status='Offline';
+      if(!a.token_ready)status='Token não gerado';
+      else if(!a.calibration_ready)status='Aguardando calibração';
+      else if(a.status==='syncing')status='Sincronizando';
+      else if(a.status==='error')status='Erro';
+      else if(a.online)status='Online';
+      $('adminAgentStatus').innerHTML='<div class="admin-pin-item"><div><strong>'+esc(status)+'</strong><small>PC: '+esc(a.hostname||'—')+' · Último contato: '+esc(adminDt(a.last_seen_at))+' · Última sincronização: '+esc(adminDt(a.last_sync_completed_at))+'</small>'+(a.last_error?'<small style="color:#b43e45">'+esc(a.last_error)+'</small>':'')+'</div></div>';
+      $('adminAgentToken').disabled=!!a.token_ready;$('adminAgentReset').disabled=!a.token_ready;$('adminAgentInterval').value=String(a.sync_interval_minutes||10);
+    }catch(e){$('adminAgentStatus').innerHTML='<p class="form-error">'+esc(e.message)+'</p>'}
+  }
+  async function issueAgentToken(reset){
+    try{
+      const d=await nriCall(reset?'agent_reset_token':'agent_generate_token');
+      if(!d.issued){showToast('O token do agente já está configurado.');return loadAgentAdmin()}
+      $('adminAgentIssued').innerHTML='<div class="admin-issued"><strong>Copie agora. Este token não será exibido novamente.</strong><div class="admin-issued-row"><span>Agente Puxada</span><code style="font-size:9px;word-break:break-all">'+esc(d.issued.token)+'</code><button id="adminCopyAgentToken">Copiar</button></div></div>';
+      $('adminCopyAgentToken').onclick=async()=>{await navigator.clipboard?.writeText(d.issued.token);showToast('Token do agente copiado.')};
+      await loadAgentAdmin();
+    }catch(e){showToast(e.message,true)}
+  }
+  async function saveAgentInterval(){
+    try{await nriCall('agent_set_interval',{minutes:Number($('adminAgentInterval').value)});showToast('Intervalo do agente atualizado.');await loadAgentAdmin()}catch(e){showToast(e.message,true)}
+  }
+
   async function open(){
     if(window.state?.user?.role!=='admin')return showToast('Área restrita à administração.',true);
     ensureView();
@@ -103,8 +130,8 @@
     bindAccess('adminBo',BO_URL,QR_DATA,'B.O. Digital — Conferentes','QR_BO_Digital_Conferentes.png');
     bindAccess('adminNri',RECEBIMENTO_URL,RECEBIMENTO_QR,'Recebimento / NRI — Conferentes','QR_Recebimento_NRI_Conferentes.png');
     bindAccess('adminGate',PORTARIA_URL,PORTARIA_QR,'Portaria — Entrada de Carreta','QR_Portaria_Recebimento.png');
-    $('adminGeneratePins').onclick=generateMissing;
-    await Promise.all([loadPins(),loadGatePin()]);
+    $('adminGeneratePins').onclick=generateMissing;$('adminAgentToken').onclick=()=>issueAgentToken(false);$('adminAgentReset').onclick=()=>issueAgentToken(true);$('adminAgentSaveInterval').onclick=saveAgentInterval;
+    await Promise.all([loadPins(),loadGatePin(),loadAgentAdmin()]);
   }
   function bind(){
     const btn=$('adminProfileButton');if(!btn)return setTimeout(bind,120);
