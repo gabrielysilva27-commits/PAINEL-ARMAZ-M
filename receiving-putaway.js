@@ -38,7 +38,7 @@
       '</section>'+
       '<section class="put-panel">'+
         '<div class="put-toolbar"><div><p class="eyebrow">PRODUTIVIDADE DE DESCARGA</p><h2>Empilhadores</h2><p>Carretas e paletes equivalentes atribuídos a quem iniciou a descarga.</p></div><div class="put-filter"><label>De<input id="putProdFrom" type="date" value="'+monthStart()+'"></label><label>Até<input id="putProdTo" type="date" value="'+today()+'"></label><button class="outline-button" id="putProdRefresh">Atualizar</button></div></div>'+
-        '<div class="put-table-wrap"><table><thead><tr><th>Empilhador</th><th>Carretas</th><th>Paletes</th><th>PLT/carreta</th><th>Tempo médio</th><th>Em aberto</th></tr></thead><tbody id="putProdBody"></tbody></table></div>'+
+        '<div class="put-table-wrap"><table><thead><tr><th>Empilhador</th><th>Carretas concluídas</th><th>Paletes</th><th>PLT/carreta</th><th>Tempo médio</th><th>Em aberto</th></tr></thead><tbody id="putProdBody"></tbody></table></div>'+
         '<div id="putProdEmpty" class="put-empty hidden">Nenhuma descarga registrada no período.</div>'+
       '</section>'+
       '<section class="put-kpis">'+
