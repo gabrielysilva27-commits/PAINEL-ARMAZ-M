@@ -126,7 +126,27 @@ internal static class Program
             try
             {
                 SaveToken(token);
-                SetAutoStart(autoStart.Checked);
+                if (autoStart.Checked)
+                {
+                    try
+                    {
+                        SetAutoStart(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(
+                            "O token foi salvo, mas a política do computador não permitiu configurar a inicialização automática.\n\n" +
+                            "Você ainda pode usar o agente abrindo AgentePuxada.exe com dois cliques.\n\n" + ex.Message,
+                            "Inicialização automática bloqueada",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning
+                        );
+                    }
+                }
+                else
+                {
+                    try { SetAutoStart(false); } catch { }
+                }
                 form.DialogResult = DialogResult.OK;
             }
             catch (Exception ex)
