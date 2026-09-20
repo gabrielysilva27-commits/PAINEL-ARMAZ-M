@@ -70,6 +70,18 @@
 .stock-map-scroll.fit { overflow: hidden; max-height: none; }
 .stock-map-stage { position: relative; margin: 0 auto; }
 .stock-map { transform-origin: top left; }
+#stockLayoutPanel,
+#stockLayoutPanel .stock-module,
+#stockLayoutPanel #stockMapContent {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+#stockLayoutPanel .stock-map-scroll {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
 .compact-layout { gap: 10px; }
 .stock-control-panel { padding: 12px 14px; border: 1px solid #e2e5e9; border-radius: 12px; background: #fff; }
 .stock-area-active .layout-tabs { display: none; }
