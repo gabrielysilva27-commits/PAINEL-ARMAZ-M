@@ -57,20 +57,20 @@
   async function loadAgentStatus(){
     if(!$('pullAgentStatus'))return;
     try{
-      const d=await call('agent_status'),a=d.agent||{};
-      let title='Offline',detail='O computador do agente não está conectado.';
-      if(!a.token_ready){title='Não instalado';detail='Gere o token no ADM e instale o agente no computador da empresa.'}
-      else if(!a.calibration_ready){title='Aguardando calibração';detail=(a.hostname?('PC '+a.hostname+' · '):'')+'é necessário calibrar a tela do Promax no computador da empresa.'}
-      else if(a.status==='syncing'){title='Sincronizando Promax';detail='Período '+(a.last_sync_from||'—')+' até '+(a.last_sync_to||'—')+' · PC '+(a.hostname||'—')}
-      else if(a.status==='error'){title='Erro no agente';detail=a.last_error||'Falha não informada.'}
-      else if(a.online){title='Online';detail='PC '+(a.hostname||'—')+' · última sincronização '+dtAgent(a.last_sync_completed_at)+' · intervalo '+(a.sync_interval_minutes||10)+' min'}
+      const d=await call('agent_status'),a=d.agent||{},nodes=a.nodes||[],ready=nodes.filter(x=>x.online&&x.calibration_ready),sync=nodes.find(x=>x.status==='syncing'&&x.online);
+      let title='Offline',detail='Nenhum dos dois computadores está disponível.';
+      if(!a.token_ready){title='Não instalado';detail='Gere os dois tokens no ADM e instale o mesmo Agente Puxada nos PCs Puxada e ADM.'}
+      else if(sync){title='Sincronizando Promax';detail='Executando em '+sync.display_name+(sync.hostname?' · '+sync.hostname:'')+' · período '+(a.last_sync_from||'—')+' até '+(a.last_sync_to||'—')}
+      else if(ready.length){title='Online';detail=ready.length+' PC(s) disponível(is): '+ready.map(x=>x.display_name+(x.hostname?' ('+x.hostname+')':'')).join(' · ')+' · última sincronização '+dtAgent(a.last_sync_completed_at)}
+      else if(nodes.some(x=>x.token_ready&&!x.calibration_ready)){title='Aguardando calibração';detail=nodes.filter(x=>x.token_ready&&!x.calibration_ready).map(x=>x.display_name).join(' · ')+' ainda precisa(m) da calibração do Promax.'}
+      else if(a.status==='error'){title='Agente temporariamente indisponível';detail=a.last_error||'Os computadores tentarão novamente automaticamente.'}
       $('pullAgentStatus').innerHTML='<strong>'+esc(title)+'</strong><span>'+esc(detail)+'</span>';
       $('pullAgentStatus').className='agent-'+(a.status||'offline')+(a.online?' online':'');
       if($('pullAgentSync')){$('pullAgentSync').disabled=!a.token_ready;$('pullAgentSync').textContent=a.status==='syncing'?'Sincronizando...':'Sincronizar Promax agora'}
     }catch(e){$('pullAgentStatus').innerHTML='<strong>Falha ao consultar agente</strong><span>'+esc(e.message)+'</span>'}
   }
   async function requestAgentSync(){
-    const b=$('pullAgentSync');try{b.disabled=true;b.textContent='Solicitando...';const d=await call('agent_request_sync');showToast(d.already_pending?'Já existe uma sincronização pendente.':'Sincronização solicitada ao computador da Puxada.');await loadAgentStatus()}catch(e){showToast(e.message,true)}finally{if(b){b.disabled=false;b.textContent='Sincronizar Promax agora'}}
+    const b=$('pullAgentSync');try{b.disabled=true;b.textContent='Solicitando...';const d=await call('agent_request_sync');showToast(d.already_pending?'Já existe uma sincronização pendente.':'Sincronização solicitada ao Agente Puxada. O primeiro PC disponível assumirá a tarefa.');await loadAgentStatus()}catch(e){showToast(e.message,true)}finally{if(b){b.disabled=false;b.textContent='Sincronizar Promax agora'}}
   }
   function ensureDialogs(root){
     root.insertAdjacentHTML('beforeend',
