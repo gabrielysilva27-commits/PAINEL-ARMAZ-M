@@ -70,16 +70,9 @@ async function openCalibrationBrowser(config, rootDir) {
   if (config.promax && config.promax.url) {
     await page.goto(config.promax.url, { waitUntil: "domcontentloaded", timeout: 60000 });
   }
-  console.log("");
-  console.log("CALIBRACAO PROMAX");
-  console.log("1. Faca login no Promax neste navegador.");
-  console.log("2. Confirme que o relatorio 020501 abre manualmente.");
-  console.log("3. Mantenha este perfil do Edge como perfil dedicado do agente.");
-  console.log("4. Os seletores reais da tela serao preenchidos em config.json quando estivermos no PC da empresa.");
-  console.log("");
-  console.log("Pressione ENTER no terminal para encerrar.");
-  await new Promise(function (resolve) { process.stdin.once("data", resolve); });
-  await ctx.close();
+  console.log("CALIBRACAO PROMAX: faca login no perfil dedicado e feche a janela do Edge quando terminar.");
+  await page.waitForEvent("close").catch(function () {});
+  await ctx.close().catch(function () {});
 }
 
 async function export020501(job, config, rootDir) {
