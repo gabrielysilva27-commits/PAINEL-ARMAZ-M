@@ -190,13 +190,27 @@
       const minC = Math.min(...anchors.map(a => a.col)), minR = Math.min(...anchors.map(a => a.row));
       const maxC = Math.max(...anchors.map(a => a.col + (a.width || 1) - 1)), maxR = Math.max(...anchors.map(a => a.row + (a.height || 1) - 1));
       const unit = S.area === 'Regulador' ? 46 : 68, rh = S.area === 'Regulador' ? 42 : 52;
-      root.innerHTML = `<div class="stock-map-controls"><label>Ampliação <select id="stockZoom"><option value="0.25">25%</option><option value="0.5">50%</option><option value="0.75">75%</option><option value="1">100%</option><option value="1.5">150%</option></select></label></div><div class="stock-map-scroll"><div class="stock-map" style="width:${(maxC-minC+2)*unit}px;height:${(maxR-minR+2)*rh}px">${anchors.map(a => locationButton(byKey.get(S.area + ':' + core.normalizeAddress(a.address)), a.address, `left:${(a.col-minC)*unit}px;top:${(a.row-minR)*rh}px;width:${unit*(a.width||1)-3}px;height:${rh*(a.height||1)-4}px`)).join('')}</div></div>`;
+      const mapWidth = (maxC-minC+2)*unit, mapHeight = (maxR-minR+2)*rh;
+      root.innerHTML = `<div class="stock-map-controls"><div><strong>Visão geral</strong><span>Passe o mouse sobre uma posição para ampliar. Clique para abrir os detalhes.</span></div><button class="outline-button" id="stockMapFit" type="button">Ajustar à tela</button></div><div class="stock-map-scroll"><div class="stock-map-stage"><div class="stock-map" style="width:${mapWidth}px;height:${mapHeight}px">${anchors.map(a => locationButton(byKey.get(S.area + ':' + core.normalizeAddress(a.address)), a.address, `left:${(a.col-minC)*unit}px;top:${(a.row-minR)*rh}px;width:${unit*(a.width||1)-3}px;height:${rh*(a.height||1)-4}px`)).join('')}</div></div></div>`;
       const extras = locs.filter(l => !mapped.has(l.key));
       if (extras.length) root.innerHTML += `<details class="stock-unmapped"><summary>${extras.length} endereços fora do desenho</summary><div class="stock-extra-grid">${extras.map(l => locationButton(l, l.address)).join('')}</div></details>`;
-      const zoom = S.zoom[S.area] || (S.area === 'Regulador' ? 0.25 : S.area === 'Marketplace' ? 0.75 : 1);
-      $('stockZoom').value = String(zoom);
-      root.querySelector('.stock-map').style.zoom = zoom;
-      $('stockZoom').onchange = e => { S.zoom[S.area] = Number(e.target.value); root.querySelector('.stock-map').style.zoom = e.target.value; };
+      const scroll = root.querySelector('.stock-map-scroll'), stage = root.querySelector('.stock-map-stage'), map = root.querySelector('.stock-map');
+      const fitMap = () => {
+        const available = Math.max(280, scroll.clientWidth - 24);
+        const scale = Math.min(1, available / mapWidth);
+        map.style.transform = `scale(${scale})`;
+        map.style.transformOrigin = 'top left';
+        stage.style.width = Math.ceil(mapWidth * scale) + 'px';
+        stage.style.height = Math.ceil(mapHeight * scale) + 'px';
+        S.zoom[S.area] = scale;
+      };
+      fitMap();
+      $('stockMapFit').onclick = fitMap;
+      if (window.ResizeObserver) {
+        const ro = new ResizeObserver(fitMap);
+        ro.observe(scroll);
+        setTimeout(() => ro.disconnect(), 5000);
+      }
     }
     root.querySelectorAll('[data-location]').forEach(b => b.onclick = () => showLocation(b.dataset.location));
     root.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editRow(b.dataset.edit));
