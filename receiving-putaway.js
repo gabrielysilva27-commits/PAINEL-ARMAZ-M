@@ -53,7 +53,7 @@
         '<div class="put-table-wrap"><table><thead><tr><th>Ordem</th><th>Recebimento</th><th>Empilhador da descarga</th><th>Status</th><th>Paletes</th><th>Pendentes</th><th>Validados</th><th>Ação</th></tr></thead><tbody id="putBody"></tbody></table></div>'+
         '<div id="putEmpty" class="put-empty hidden">Nenhuma conferência concluída disponível para Ordem de Guarda.</div>'+
       '</section>'+
-      (isAdmin()?'<section class="put-panel"><div class="put-toolbar"><div><p class="eyebrow">CADASTRO OPERACIONAL</p><h2>Empilhadores</h2><p>Cada empilhador entra na tela móvel com nome + PIN. O PIN aparece somente quando é criado ou redefinido.</p></div><div class="put-add-operator"><input id="putOperatorName" placeholder="Nome do empilhador"><button class="primary-button" id="putOperatorAdd">+ Cadastrar</button></div></div><div id="putIssuedPin" class="put-pin hidden"></div><div class="put-table-wrap"><table><thead><tr><th>Nome</th><th>PIN</th><th>Status</th><th>Ações</th></tr></thead><tbody id="putOperatorsBody"></tbody></table></div></section>':'')+
+            '<section class="put-note put-centralized-admin"><strong>Cadastro de empilhadores e PINs:</strong> centralizado em Administração → Credenciais e PINs.</section>'+ 
       '<dialog id="putDialog" class="put-dialog"><div class="put-dialog-inner"><div class="put-dialog-head"><div><p class="eyebrow">ORDEM DE GUARDA</p><h2 id="putDialogTitle"></h2><p id="putDialogMeta"></p></div><button id="putClose" class="put-close">×</button></div><div class="put-dialog-actions"><button class="outline-button" id="putGuide">Abrir tela do empilhador</button><button class="outline-button" id="putRefreshPlan">Recalcular sugestões</button><button class="primary-button" id="putPrint">Imprimir Ordem de Guarda</button></div><div id="putDialogBody"></div></div></dialog>'+
     '</div>';
   }
@@ -69,11 +69,8 @@
       $('putRefresh').onclick=loadOrders;
       $('putProdRefresh').onclick=loadProductivity;
       $('putClose').onclick=()=>$('putDialog').close();
-      if(isAdmin()){
-        $('putOperatorAdd').onclick=addOperator;
-      }
     }
-    await Promise.all([loadProductivity(),loadOrders(),isAdmin()?loadOperators():Promise.resolve()]);
+    await Promise.all([loadProductivity(),loadOrders()]);
   }
 
   async function loadProductivity(){
