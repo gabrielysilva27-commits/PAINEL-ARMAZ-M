@@ -29,7 +29,7 @@ function sleep(ms) {
 function loadConfig() {
   if (!fs.existsSync(CONFIG_PATH)) {
     fs.copyFileSync(EXAMPLE_PATH, CONFIG_PATH);
-    throw new Error("config.json criado. A URL e os seletores do Promax precisam ser calibrados no computador da empresa.");
+    log("config.json criado. Promax aguardando calibracao no computador da empresa.");
   }
   return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
 }
