@@ -88,7 +88,7 @@
     const TRUCK_PLATES={'246':'LSZ-9355','271':'LMZ-4G31','229':'KYI-8259','160':'KZJ-4694','231':'LSN-7312','264':'KZM-9D84','203':'LRN-7589','225':'LSE-4160','210':'LRW-5314','289':'RIX-8E72','298':'RKK-8G53','312':'TTZ5E13','MKTP':'MKTP'};
     const truckOptions=['246','271','229','160','231','264','203','225','210','289','298','312','MKTP'].map(x=>'<option '+(String(r?.truck_number||'')===x?'selected ':'')+'value="'+x+'">'+x+'</option>').join('');
     const factoryOptions=['NOVA RIO','MACACU','PIRAI','JPA','MKP'].map(x=>'<option '+(String(r?.factory_name||'')===x?'selected ':'')+'value="'+x+'">'+x+'</option>').join('');
-    const driverOptions=['COELHO','RONALDO','MESSIAS','ANDERSON','RODRIGO','KAYQUE','DEIVID','NETO','V.HUGO'].map(x=>'<option '+(String(r?.driver_name||'')===x?'selected ':'')+'value="'+x+'">'+x+'</option>').join('');
+    const driverOptions=['COELHO','RONALDO','MESSIAS','ANDERSON','RODRIGO','KAYQUE','DEIVID','NETO','V.HUGO','MKP'].map(x=>'<option '+(String(r?.driver_name||'')===x?'selected ':'')+'value="'+x+'">'+x+'</option>').join('');
     selected=r;$('rxpReceiptDialogTitle').textContent=r?'Editar '+r.display_name:'Nova carreta';
     $('rxpReceiptDialogBody').innerHTML='<form id="rxpReceiptForm"><div class="rxp-form-grid">'+
       '<label>Número da carreta<select id="rrTruck" required><option value="">Selecione...</option>'+truckOptions+'</select></label>'+
