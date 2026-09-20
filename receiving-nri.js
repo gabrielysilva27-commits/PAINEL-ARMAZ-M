@@ -60,9 +60,9 @@
       const pf=$('rxpPrintFilter').value;
       const visible=receipts.filter(r=>pf==='all'||r.print_status===pf);
       $('rxpBody').innerHTML=visible.map(r=>{
-        const printLabel=r.print_status==='pending_print'?'Aguardando impressão':r.print_status==='printed'?'Impresso':r.print_status==='not_required'?'Sem NRI (CX)':'—';
+        const printLabel=r.print_status==='pending_print'?'Aguardando impressão':r.print_status==='printed'?'Impresso':'—';
         const printClass=r.print_status==='pending_print'?'pending':r.print_status==='printed'?'good':'';
-        const action=r.status==='conference_completed'&&r.print_status!=='not_required'
+        const action=r.status==='conference_completed'
           ?'<button class="rxp-btn primary" data-print="'+r.id+'">'+(r.print_status==='printed'?'NRIs / 2ª via':'Imprimir NRIs')+'</button>'
           :'';
         return '<tr><td><strong>'+esc(r.display_name)+'</strong><br><small>'+esc(r.receipt_code)+'</small></td>'+
@@ -72,7 +72,7 @@
           '<td><span class="rxp-status '+r.status+'">'+receiptStatus(r.status)+'</span><br><small class="'+printClass+'">'+printLabel+'</small></td>'+
           '<td>'+esc(r.gate_creator?.display_name||'—')+'</td>'+
           '<td>'+esc(r.conferencer?.display_name||'—')+'</td>'+
-          '<td><strong>'+n(r.nri_count||0)+'</strong><br><small>1 folha por palete</small></td>'+
+          '<td><strong>'+n(r.nri_count||0)+'</strong><br><small>P: 1 folha/palete · CX: 1 folha/código</small></td>'+
           '<td><button class="rxp-btn" data-detail="'+r.id+'">Visualizar</button> '+action+'</td></tr>';
       }).join('');
       $('rxpEmpty').classList.toggle('hidden',visible.length>0);
@@ -109,7 +109,7 @@
   async function saveReceipt(e){e.preventDefault();const receipt={truck_number:$('rrTruck').value,factory_name:$('rrFactory').value,driver_name:$('rrDriver').value,arrival_date:$('rrDate').value,arrival_time:$('rrTime').value,plate:$('rrPlate').value,nf_imperio:$('rrNfImp').value,nf_ambev:$('rrNfAmbev').value,map_number:$('rrMap').value,order_number:$('rrOrder').value};try{selected?await call('update_receipt',{id:selected.id,receipt}):await call('create_receipt',{receipt});$('rxpReceiptDialog').close();showToast('Recebimento salvo.');await loadNri()}catch(err){$('rrError').textContent=err.message}}
 
   async function detail(id){try{const d=await call('receipt_detail',{id});const r=d.receipt;selected=r;$('rxpDetailTitle').textContent=r.display_name;$('rxpDetailBody').innerHTML='<div class="rxp-detail-top"><div class="rxp-detail-card"><span>Recebimento</span><strong>'+esc(r.receipt_code)+'</strong></div><div class="rxp-detail-card"><span>Status</span><strong>'+receiptStatus(r.status)+'</strong></div><div class="rxp-detail-card"><span>NF / Pedido</span><strong>'+esc(r.nf_imperio||r.nf_ambev||'—')+' / '+esc(r.order_number||'—')+'</strong></div><div class="rxp-detail-card"><span>Placa</span><strong>'+esc(r.plate||'—')+'</strong></div><div class="rxp-detail-card"><span>Conferente</span><strong>'+esc(r.conferencer?.display_name||'—')+'</strong></div><div class="rxp-detail-card"><span>Puxada</span><strong>'+pullStatus(r.pull_status)+'</strong></div></div>'+((r.items||[]).length?'<table class="rxp-items-table"><thead><tr><th>NRI</th><th>Código</th><th>Produto</th><th>Unidade</th><th>Quantidade</th><th>Validade</th><th>Curva</th><th>Status</th></tr></thead><tbody>'+r.items.sort((a,b)=>a.line_no-b.line_no).map(x=>'<tr><td>'+((x.unit_text||'P')==='P'?String(x.nri_number).padStart(6,'0'):'—')+'</td><td>'+esc(x.sku_code)+'</td><td>'+esc(x.sku_name)+'</td><td>'+esc(x.unit_text||'P')+'</td><td>'+n(x.physical_qty)+'</td><td>'+fd(x.expiry_date)+'</td><td>'+esc(x.curve_class||'—')+'</td><td class="'+(x.shelf_life_status==='OK'?'rxp-ok':'rxp-nok')+'">'+esc(x.shelf_life_status||'—')+'</td></tr>').join('')+'</tbody></table>':'<div class="rxp-empty">A conferência física ainda não possui produtos.</div>')+'<div class="rxp-dialog-actions">'+(r.status!=='conference_completed'?'<button class="rxp-btn" id="rxpEditReceipt">Editar Portaria</button>':'')+(r.status==='conference_completed'?'<button class="rxp-btn primary" id="rxpDetailNri">Visualizar NRIs</button>':'')+'</div>';if($('rxpEditReceipt'))$('rxpEditReceipt').onclick=()=>{$('rxpDetailDialog').close();openReceiptForm(r)};if($('rxpDetailNri'))$('rxpDetailNri').onclick=()=>{$('rxpDetailDialog').close();previewNri(r.id)};$('rxpDetailDialog').showModal()}catch(e){showToast(e.message,true)}}
-  function isPalletItem(x){return (x?.unit_text||'P')==='P'}
+  function nriSheetCount(x){return (x?.unit_text||'P')==='P'?Number(x.physical_qty||x.pallet_count||0):1}
   function label(x,r,second=false){
     const hour=ft(r.conference_completed_at||r.arrival_time);
     return '<article class="nri-label nri-excel">'+
@@ -133,9 +133,8 @@
   function buildNriPages(second,preview=false){
     const pages=[];
     for(const item of selected.items||[]){
-      if(!isPalletItem(item))continue;
-      const qty=Number(item.pallet_count||item.physical_qty||0);
-      for(let pallet=0;pallet<qty;pallet++){
+      const sheets=nriSheetCount(item);
+      for(let sheet=0;sheet<sheets;sheet++){
         const one=label(item,selected,second);
         pages.push((preview?'<div class="nri-page-preview">':'<section class="print-page">')+
           '<div class="nri-print-slot">'+one+'</div><div class="nri-print-gap"></div>'+
@@ -149,8 +148,8 @@
   async function previewNri(id){try{
     const [d,h]=await Promise.all([call('receipt_detail',{id}),call('print_history',{id})]);selected=d.receipt;
     if(selected.status!=='conference_completed')return showToast('As NRIs só são liberadas após a conferência autenticada.',true);
-    const sheets=(selected.items||[]).reduce((s,x)=>s+(isPalletItem(x)?Number(x.pallet_count||0):0),0);
-    if(!sheets)return showToast('Este recebimento não possui paletes para gerar NRI.',true);
+    const sheets=(selected.items||[]).reduce((s,x)=>s+nriSheetCount(x),0);
+    if(!sheets)return showToast('Este recebimento não possui produtos para gerar NRI.',true);
     const hasOriginal=(h.logs||[]).some(x=>x.print_type==='original');$('rxpPrintTitle').textContent=selected.display_name;renderLabels(false);
     $('rxpPrintOriginal').disabled=hasOriginal;$('rxpPrintOriginal').textContent=hasOriginal?'Original já impresso':'Imprimir NRIs';
     $('rxpPrintSecond').disabled=!hasOriginal;$('rxpPrintSecond').title=hasOriginal?'Gerar reimpressão registrada como 2ª via':'A 2ª via é liberada após a impressão original';
@@ -158,7 +157,7 @@
   }catch(e){showToast(e.message,true)}}
   function renderLabels(second){
     const pages=buildNriPages(second,true),sheets=pages.length;
-    $('rxpPrintBody').innerHTML='<div class="rxp-note"><strong>'+sheets+' folha(s)</strong> · cada palete gera 1 folha A4 com 3 NRIs idênticas · padrão da planilha NRI (A1:I11, escala 94%).</div><div class="nri-preview-wrap">'+pages.join('')+'</div>'
+    $('rxpPrintBody').innerHTML='<div class="rxp-note"><strong>'+sheets+' folha(s)</strong> · Palete: 1 folha por palete · Caixa: 1 folha por código/produto · cada folha contém 3 NRIs idênticas · padrão da planilha NRI (A1:I11, escala 94%).</div><div class="nri-preview-wrap">'+pages.join('')+'</div>'
   }
   async function authorizePrint(){
     try{
@@ -176,8 +175,8 @@
   }
   async function printNri(second){
     const confToken=await authorizePrint();if(!confToken)return;
-    const pages=buildNriPages(second,false);if(!pages.length)return showToast('Este recebimento não possui paletes para gerar NRI.',true);
-    const printItems=(selected.items||[]).filter(isPalletItem).map(x=>({item_id:x.id,copies:Number(x.pallet_count||x.physical_qty||1)}));
+    const pages=buildNriPages(second,false);if(!pages.length)return showToast('Este recebimento não possui produtos para gerar NRI.',true);
+    const printItems=(selected.items||[]).map(x=>({item_id:x.id,copies:nriSheetCount(x)}));
     try{await confCall('conference_log_print',{id:selected.id,print_type:second?'second_copy':'original',items:printItems},confToken)}catch(e){return showToast(e.message,true)}
     const iframe=document.createElement('iframe');iframe.style.position='fixed';iframe.style.right='0';iframe.style.bottom='0';iframe.style.width='1px';iframe.style.height='1px';iframe.style.border='0';iframe.style.opacity='0';document.body.appendChild(iframe);
     const printCss='@page{size:A4 portrait;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#111;font-family:Calibri,Arial,sans-serif}.print-page{width:210mm;height:297mm;position:relative;padding-left:10.8pt;padding-top:57.6pt;page-break-after:always;overflow:hidden}.print-page:last-child{page-break-after:auto}.nri-print-slot{width:528.75pt;height:236.175pt;position:relative;overflow:visible}.nri-print-gap{height:21.15pt}.nri-label{width:562.5pt;height:251.25pt;display:grid;grid-template-columns:67.5pt 75pt repeat(7,60pt);grid-template-rows:30pt 37.5pt 3.75pt 18.75pt 82.5pt 3.75pt 30pt 3.75pt 18.75pt 18.75pt 3.75pt;transform:scale(.94);transform-origin:top left;font-family:Calibri,Arial,sans-serif;color:#000;line-height:1;position:relative;-webkit-print-color-adjust:exact;print-color-adjust:exact}.nri-x-vcode{grid-column:1;grid-row:1/12;display:flex;align-items:center;justify-content:center;font-size:72pt;font-weight:700;transform:rotate(-90deg);white-space:nowrap}.nri-x-code{grid-column:2/4;grid-row:1/3;display:flex;align-items:center;justify-content:center;font-size:48pt;font-weight:700;border-left:1pt solid #000;border-top:1pt solid #000;border-right:1pt solid #000;border-bottom:1pt solid #000}.nri-x-desc{grid-column:4/10;grid-row:1/3;display:flex;align-items:center;justify-content:center;text-align:center;font-size:22pt;font-weight:700;text-decoration:underline;padding:0 3pt;border-top:1pt solid #000;border-right:1pt solid #000;border-bottom:1pt solid #000;overflow:hidden}.nri-x-gap{grid-column:2/10;border-left:1pt solid #000;border-right:1pt solid #000}.nri-x-gap1{grid-row:3}.nri-x-gap2{grid-row:6}.nri-x-gap3{grid-row:8}.nri-x-curve-label{grid-column:2;grid-row:4;display:flex;align-items:center;justify-content:center;background:#000;color:#fff;font-size:18pt;font-weight:700;border-left:1pt solid #000;border-top:1pt solid #000;border-right:1pt solid #000}.nri-x-curve-value{grid-column:2;grid-row:5;display:flex;align-items:center;justify-content:center;background:#000;color:#fff;font-size:72pt;font-weight:700;border-left:1pt solid #000;border-right:1pt solid #000;border-bottom:1pt solid #000}.nri-x-exp-label{grid-column:3/10;grid-row:4;display:flex;align-items:center;justify-content:center;font-size:18pt;font-weight:700;border-top:1pt solid #000;border-right:1pt solid #000}.nri-x-exp-value{grid-column:3/10;grid-row:5;position:relative;display:flex;align-items:center;justify-content:center;font-size:78pt;font-weight:700;border-right:1pt solid #000;border-bottom:1pt solid #000;white-space:nowrap}.nri-x-copy{position:absolute;right:8pt;top:5pt;font-size:20pt}.nri-x-date{grid-row:7;display:flex;align-items:center;justify-content:center;gap:8pt;font-size:18pt;font-weight:700;border-top:1pt solid #000;border-bottom:1pt solid #000}.nri-x-date strong{font-size:20pt;font-weight:700;text-decoration:underline}.nri-x-date-left{grid-column:2/6;border-left:1pt solid #000;border-right:1pt solid #000}.nri-x-date-right{grid-column:6/10;border-right:1pt solid #000}.nri-x-meta-head{grid-row:9;display:flex;align-items:center;justify-content:center;text-align:center;font-size:10pt;font-weight:700}.nri-x-meta-val{grid-row:10;display:flex;align-items:center;justify-content:center;text-align:center;font-size:10pt;font-weight:400;white-space:nowrap;overflow:hidden}.nri-x-v1 strong{font-weight:700;text-decoration:underline}.nri-x-m1,.nri-x-v1{grid-column:2;border-left:1pt solid #000}.nri-x-m2,.nri-x-v2{grid-column:3}.nri-x-m3,.nri-x-v3{grid-column:4}.nri-x-m4,.nri-x-v4{grid-column:5}.nri-x-m5,.nri-x-v5{grid-column:6}.nri-x-m6,.nri-x-v6{grid-column:7}.nri-x-m7,.nri-x-v7{grid-column:8}.nri-x-m8,.nri-x-v8{grid-column:9;border-right:1pt solid #000}.nri-x-bottom{grid-column:2/10;grid-row:11;border-left:1pt solid #000;border-right:1pt solid #000;border-bottom:1pt solid #000}';
