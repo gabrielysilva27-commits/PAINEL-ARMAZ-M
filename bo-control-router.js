@@ -5,8 +5,8 @@
     if(window.__boControl)return Promise.resolve(window.__boControl);
     if(loading)return loading;
     loading=new Promise((resolve,reject)=>{
-      if(!$('boControlCss')){const l=document.createElement('link');l.id='boControlCss';l.rel='stylesheet';l.href='bo-control.css?v=20260922-1';document.head.appendChild(l);}
-      const s=document.createElement('script');s.src='bo-control.js?v=20260922-1';s.async=true;s.onload=()=>resolve(window.__boControl);s.onerror=()=>reject(new Error('Falha ao carregar Controle de B.O.'));document.body.appendChild(s);
+      if(!$('boControlCss')){const l=document.createElement('link');l.id='boControlCss';l.rel='stylesheet';l.href='bo-control-v2.css?v=20260922-2';document.head.appendChild(l);}
+      const s=document.createElement('script');s.src='bo-control-v2.js?v=20260922-2';s.async=true;s.onload=()=>resolve(window.__boControl);s.onerror=()=>reject(new Error('Falha ao carregar Controle de B.O.'));document.body.appendChild(s);
     });return loading;
   }
 
