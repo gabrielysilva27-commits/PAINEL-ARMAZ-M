@@ -46,3 +46,16 @@
 }
 .bo-badge.cancelled{background:#eeeeef;color:#666}
 .bo-row-actions{display:flex;align-items:center;gap:6px}.bo-trash-btn{width:31px;height:31px;padding:0!important;border:1px solid #efc6c8!important;background:#fff7f7!important;color:#a2262d!important;border-radius:8px!important;font-size:14px!important;line-height:1;display:grid;place-items:center;cursor:pointer}.bo-trash-btn:hover{background:#ffecee!important;border-color:#e0a7aa!important}
+
+.bo-control-actions button:disabled{opacity:.45;cursor:not-allowed}
+.bo-select-col{width:74px;white-space:nowrap}
+.bo-select-all{display:inline-flex!important;align-items:center;gap:6px;font-size:10px!important;font-weight:800!important;text-transform:none!important}
+.bo-select-all input,.bo-row-check{width:17px!important;height:17px!important;margin:0;accent-color:#f47a20;cursor:pointer}
+.bo-table td.bo-select-col{vertical-align:middle}
+.bo-badge.c-await{background:#fff4d8;color:#8c6200}
+.bo-badge.confronted{background:#eef0f4;color:#565d68}
+.bo-badge.official{background:#e7f6ed;color:#157149}
+.bo-paper-flow{text-align:center;padding:6px 8px;font-size:10px;font-weight:900;border-top:1px solid #111}
+.bo-paper-flow.source{background:#f2f3f5;color:#4e535b}
+.bo-paper-flow.official{background:#171717;color:#fff}
+.bo-confront-info{margin-top:14px;padding:11px 12px;border:1px solid #e4d5bd;background:#fff9ef;border-radius:9px;color:#6e5a3f;font-size:11px;line-height:1.45}

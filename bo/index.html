@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260919-3" />
+  <link rel="stylesheet" href="styles.css?v=20260922-1" />
 </head>
 <body>
   <main class="bo-app">
@@ -33,7 +33,7 @@
     <section id="formView" class="hidden">
       <div class="bo-toolbar">
         <div><p class="eyebrow">NOVO B.O.</p><h1>Registrar ocorrência</h1><p class="muted" id="loggedName"></p></div>
-        <div class="toolbar-actions"><button class="secondary" id="historyButton" type="button">Meus B.O.s</button><button class="ghost" id="logoutButton" type="button">Sair</button></div>
+        <div class="toolbar-actions"><button class="secondary" id="confrontButton" type="button">Confrontos Turno C</button><button class="secondary" id="historyButton" type="button">Meus B.O.s</button><button class="ghost" id="logoutButton" type="button">Sair</button></div>
       </div>
 
       <div id="editingBanner" class="editing-banner hidden"><div><strong id="editingTitle">Editando B.O.</strong><span id="editingSubtitle"></span></div><button id="cancelEditButton" class="secondary" type="button">Cancelar edição</button></div>
@@ -99,9 +99,18 @@
     <section id="historyView" class="hidden">
       <div class="bo-toolbar">
         <div><p class="eyebrow">HISTÓRICO</p><h1>Meus B.O.s</h1></div>
-        <button class="secondary" id="backToFormButton" type="button">+ Novo B.O.</button>
+        <div class="toolbar-actions"><button class="secondary" id="historyConfrontButton" type="button">Confrontos Turno C</button><button class="secondary" id="backToFormButton" type="button">+ Novo B.O.</button></div>
       </div>
       <div id="historyList" class="history-list"></div>
+    </section>
+
+    <section id="confrontView" class="hidden">
+      <div class="bo-toolbar">
+        <div><p class="eyebrow">TURNO A · REPECAGEM</p><h1>Confrontos do Turno C</h1><p class="muted">O registro do Turno C permanece visível, mas somente o confronto do Turno A será considerado resultado oficial.</p></div>
+        <button class="secondary" id="backFromConfrontButton" type="button">Voltar</button>
+      </div>
+      <div class="confront-note"><strong>Sem duplicidade:</strong> abra o B.O. do Turno C, confira a repecagem e salve o confronto. O sistema vincula os dois registros e usa apenas o Turno A nos indicadores oficiais.</div>
+      <div id="confrontList" class="history-list"></div>
     </section>
   </main>
 
@@ -127,6 +136,6 @@
   </template>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="app.js?v=20260919-3"></script>
+  <script src="app.js?v=20260922-1"></script>
 </body>
 </html>
