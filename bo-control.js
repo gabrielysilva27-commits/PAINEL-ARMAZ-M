@@ -4,7 +4,7 @@
   const REASONS=['Falha no Manuseio','Falta','Falta de fitilho','Vencido','Consumo interno','Avaria','Falha manobrista','Descarte repack','Quebra ao descarregar','Sem tampa/Liq. pela metade','Produto sem gás','Quebra ao carregar','Embalagem secundária','Corrosão','Outros'];
   const FULL_LOCATIONS=['Picking','Análise/Bloqueio','Repack','Retornável','Estacionamento - Rota','Descartável','Pulmões/Descarga'];
   const EMPTY_LOCATIONS=['Saroba','Devolução - Rota','Vasilhame','Descarga','Carregamento - Puxada'];
-  let permissions=null,activeStatus='pending',rows=[],selected=null,xlsxPromise=null;
+  let permissions=null,activeStatus='pending',rows=[],selected=null,xlsxPromise=null,selectedIds=new Set();
 
   async function call(action,payload={}){
     const token=(window.state&&window.state.token)||localStorage.getItem('pa_session')||'';
@@ -41,9 +41,9 @@
       '<section class="bo-control-panel"><div class="bo-control-toolbar">'+
       '<label>Buscar<input id="boSearch" placeholder="B.O., funcionário, fábrica, código ou produto" /></label>'+
       '<label>Status<select id="boStatus"><option value="pending">Pendentes</option><option value="validated">Validados</option><option value="returned">Devolvidos</option><option value="cancelled">Excluídos</option><option value="all">Todos</option></select></label>'+
-      '<div class="bo-control-actions"><button class="bo-btn-secondary" id="boRefresh">Atualizar</button><button class="bo-btn-secondary" id="boExportPa">PA (.xlsx)</button><button class="bo-btn-secondary" id="boPreviewDaily">Visualizar Informativo</button></div>'+
+      '<div class="bo-control-actions"><button class="bo-btn-secondary" id="boRefresh">Atualizar</button><button class="bo-btn-secondary" id="boPrintSelected" disabled>Imprimir selecionados (0)</button><button class="bo-btn-secondary" id="boExportPa">PA (.xlsx)</button><button class="bo-btn-secondary" id="boPreviewDaily">Visualizar Informativo</button></div>'+
       '</div><div style="display:flex;justify-content:flex-end;margin-top:10px"><label style="display:grid;gap:5px;font-size:12px;font-weight:700">Data do Informativo<input id="boDailyDate" type="date" value="'+today()+'" style="border:1px solid #d7d8dd;border-radius:9px;padding:9px 10px"></label></div>'+
-      '<div class="bo-table-wrap"><table class="bo-table"><thead><tr><th>B.O.</th><th>Data/Hora</th><th>Conferente</th><th>Origem</th><th>Turno</th><th>Motivo</th><th>Local</th><th>Status</th><th>Ação</th></tr></thead><tbody id="boTableBody"></tbody></table></div><div class="bo-empty hidden" id="boEmpty">Nenhum B.O. encontrado.</div><p class="bo-export-note">A PA e o Informativo são derivados automaticamente dos B.O.s validados. Não há nova digitação.</p></section>'+
+      '<div class="bo-table-wrap"><table class="bo-table"><thead><tr><th class="bo-select-col"><label class="bo-select-all" title="Selecionar todos os B.O.s visíveis"><input id="boSelectAll" type="checkbox"><span>Todos</span></label></th><th>B.O.</th><th>Data/Hora</th><th>Conferente</th><th>Origem</th><th>Turno</th><th>Motivo</th><th>Local</th><th>Status</th><th>Ação</th></tr></thead><tbody id="boTableBody"></tbody></table></div><div class="bo-empty hidden" id="boEmpty">Nenhum B.O. encontrado.</div><p class="bo-export-note">A PA e o Informativo são derivados automaticamente dos B.O.s validados. Não há nova digitação.</p></section>'+
       '</div>'+
       '<dialog id="boReviewDialog" class="bo-review-dialog"><div class="bo-review-inner"><div class="bo-review-header"><div><p class="eyebrow">B.O. · MOVIMENTAÇÕES DE ESTOQUE</p><h2 id="boDialogTitle"></h2></div><button id="boDialogClose" aria-label="Fechar">×</button></div><div class="bo-dialog-tools"><button class="bo-btn-secondary" id="boPrint">Imprimir / PDF</button></div><div id="boDialogBody"></div></div></dialog>'+
       '<dialog id="boInformativoDialog" class="bo-informativo-dialog"><div class="bo-review-inner"><div class="bo-review-header"><div><p class="eyebrow">INFORMATIVO DE QUEBRA DIÁRIA</p><h2 id="boInfDialogTitle"></h2></div><button id="boInfClose" aria-label="Fechar">×</button></div><div class="bo-dialog-tools"><button class="bo-btn-secondary" id="boInfPrint">Imprimir / PDF</button><button class="bo-btn-primary" id="boInfDownload">Baixar XLSX</button></div><div id="boInfBody"></div></div></dialog>';
@@ -54,17 +54,36 @@
     $('boStatus').value=activeStatus;
     $('boStatus').onchange=()=>{activeStatus=$('boStatus').value;load();};
     let t;$('boSearch').oninput=()=>{clearTimeout(t);t=setTimeout(load,250);};
-    $('boRefresh').onclick=load;$('boExportPa').onclick=exportPaXlsx;$('boPreviewDaily').onclick=previewDaily;
+    $('boRefresh').onclick=load;$('boPrintSelected').onclick=printSelectedBos;$('boExportPa').onclick=exportPaXlsx;$('boPreviewDaily').onclick=previewDaily;
+    $('boSelectAll').onchange=e=>{if(e.target.checked)rows.forEach(r=>selectedIds.add(Number(r.id)));else selectedIds.clear();syncSelectionUi();renderRowSelection();};
     $('boDialogClose').onclick=()=>$('boReviewDialog').close();$('boPrint').onclick=printBo;$('boInfClose').onclick=()=>$('boInformativoDialog').close();
     $('boInfPrint').onclick=printInformativo;$('boInfDownload').onclick=exportDailyXlsx;
   }
 
+  function flowStatus(row){
+    if(row.record_kind==='turn_c_origin')return row.confront_state==='completed'?{text:'Turno C · confrontado',cls:'confronted'}:{text:'Turno C · aguarda confronto',cls:'c-await'};
+    if(row.record_kind==='turn_a_confront')return {text:'Turno A · oficial',cls:'official'};
+    return {text:statusLabel(row.status),cls:row.status};
+  }
+  function syncSelectionUi(){
+    const count=selectedIds.size,btn=$('boPrintSelected'),all=$('boSelectAll');
+    if(btn){btn.disabled=count===0;btn.textContent='Imprimir selecionados ('+count+')';}
+    if(all){const visible=rows.length,selectedVisible=rows.filter(r=>selectedIds.has(Number(r.id))).length;all.checked=visible>0&&selectedVisible===visible;all.indeterminate=selectedVisible>0&&selectedVisible<visible;}
+  }
+  function renderRowSelection(){
+    const body=$('boTableBody');if(!body)return;
+    body.querySelectorAll('[data-select-bo]').forEach(input=>{input.checked=selectedIds.has(Number(input.dataset.selectBo));});
+    syncSelectionUi();
+  }
+
   async function load(){
     try{
-      const d=await call('dashboard',{status:activeStatus,search:$('boSearch')?$('boSearch').value:''});rows=d.occurrences||[];
+      const d=await call('dashboard',{status:activeStatus,search:$('boSearch')?$('boSearch').value:''});rows=d.occurrences||[];selectedIds.clear();
       $('boCountPending').textContent=d.counts.pending||0;$('boCountValidated').textContent=d.counts.validated||0;$('boCountReturned').textContent=d.counts.returned||0;
-      const body=$('boTableBody');body.innerHTML=rows.map(r=>'<tr><td><strong>'+esc(r.bo_number)+'</strong></td><td>'+fmtDate(r.occurrence_date)+'<br><small>'+esc(String(r.occurrence_time||'').slice(0,5))+'</small></td><td>'+esc(r.conferencer&&r.conferencer.display_name||'—')+'</td><td>'+esc(subjectName(r))+'<br><small>'+esc(r.subject_type||'Funcionário')+'</small></td><td>'+esc(r.shift)+'</td><td>'+esc(r.reason)+'</td><td>'+esc(r.location)+'</td><td><span class="bo-badge '+r.status+'">'+statusLabel(r.status)+'</span></td><td><div class="bo-row-actions"><button class="bo-btn-secondary" data-open="'+r.id+'">Visualizar B.O.</button>'+(permissions&&permissions.can_delete?'<button class="bo-trash-btn" data-delete="'+r.id+'" title="Excluir B.O." aria-label="Excluir B.O.">🗑</button>':'')+'</div></td></tr>').join('');
-      $('boEmpty').classList.toggle('hidden',rows.length>0);body.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openRow(Number(b.dataset.open)));body.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>deleteBo(Number(b.dataset.delete)));
+      const body=$('boTableBody');body.innerHTML=rows.map(r=>{const fs=flowStatus(r),relation=r.record_kind==='turn_a_confront'&&r.source?.bo_number?'<small>de '+esc(r.source.bo_number)+'</small>':'';return '<tr><td class="bo-select-col"><input class="bo-row-check" type="checkbox" data-select-bo="'+r.id+'" aria-label="Selecionar '+esc(r.bo_number)+'"></td><td><strong>'+esc(r.bo_number)+'</strong>'+relation+'</td><td>'+fmtDate(r.occurrence_date)+'<br><small>'+esc(String(r.occurrence_time||'').slice(0,5))+'</small></td><td>'+esc(r.conferencer&&r.conferencer.display_name||'—')+'</td><td>'+esc(subjectName(r))+'<br><small>'+esc(r.subject_type||'Funcionário')+'</small></td><td>'+esc(r.shift)+'</td><td>'+esc(r.reason)+'</td><td>'+esc(r.location)+'</td><td><span class="bo-badge '+fs.cls+'">'+esc(fs.text)+'</span></td><td><div class="bo-row-actions"><button class="bo-btn-secondary" data-open="'+r.id+'">Visualizar B.O.</button>'+(permissions&&permissions.can_delete?'<button class="bo-trash-btn" data-delete="'+r.id+'" title="Excluir B.O." aria-label="Excluir B.O.">🗑</button>':'')+'</div></td></tr>';}).join('');
+      $('boEmpty').classList.toggle('hidden',rows.length>0);
+      body.querySelectorAll('[data-select-bo]').forEach(input=>input.onchange=()=>{const id=Number(input.dataset.selectBo);if(input.checked)selectedIds.add(id);else selectedIds.delete(id);syncSelectionUi();});
+      body.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openRow(Number(b.dataset.open)));body.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>deleteBo(Number(b.dataset.delete)));syncSelectionUi();
     }catch(e){showToast(e.message,true);}
   }
 
@@ -74,28 +93,40 @@
     try{await call('admin_delete_occurrence',{id});showToast('B.O. excluído.');if(selected&&Number(selected.id)===Number(id)&&$('boReviewDialog')?.open)$('boReviewDialog').close();await load();}catch(e){showToast(e.message,true);}
   }
 
-  function openRow(id){
-    selected=rows.find(r=>Number(r.id)===id);if(!selected)return;
-    $('boDialogTitle').textContent=selected.bo_number;
-    const items=(selected.items||[]).slice().sort((a,b)=>a.line_no-b.line_no);
-    const conf=selected.conferencer&&selected.conferencer.display_name||'';
-    let paper='<div class="bo-paper">'+
-      '<div class="bo-paper-title">Movimentações de Estoque</div><div class="bo-paper-subtitle">B.O.</div>'+
-      '<div class="bo-paper-top"><div class="bo-paper-box"><div><strong>Data:</strong> '+fmtDate(selected.occurrence_date)+' &nbsp;&nbsp; <strong>Hora:</strong> '+esc(String(selected.occurrence_time||'').slice(0,5))+'</div><div class="bo-paper-line"><strong>Emitido por:</strong> '+esc(conf)+'</div><div class="bo-paper-line">'+['A','B','C'].map(x=>checkbox('Turno '+x,selected.shift===x)).join('')+'</div></div>'+
-      '<div class="bo-paper-box"><div style="text-align:center;font-weight:800;margin-bottom:10px">Tipo</div><div class="bo-paper-line" style="justify-content:center">'+['Entrada','Saída'].map(x=>checkbox(x,selected.movement_type===x)).join('')+'</div></div></div>'+
-      '<div class="bo-paper-band">Local</div><div class="bo-paper-local"><div><h4>CHEIO</h4>'+FULL_LOCATIONS.map(x=>checkbox(x,selected.location===x)).join('')+'</div><div><h4>VAZIO</h4>'+EMPTY_LOCATIONS.map(x=>checkbox(x,selected.location===x)).join('')+'</div></div>'+
+  function paperHtml(row){
+    const items=(row.items||[]).slice().sort((a,b)=>a.line_no-b.line_no);
+    const conf=row.conferencer&&row.conferencer.display_name||'';
+    const flow=row.record_kind==='turn_c_origin'
+      ?'<div class="bo-paper-flow source">REGISTRO DO TURNO C · '+(row.confront_state==='completed'?'CONFRONTADO PELO TURNO A':'AGUARDANDO CONFRONTO')+'</div>'
+      :row.record_kind==='turn_a_confront'
+        ?'<div class="bo-paper-flow official">RESULTADO OFICIAL · CONFRONTO DO TURNO A'+(row.source?.bo_number?' · ORIGEM '+esc(row.source.bo_number):'')+'</div>'
+        :'';
+    return '<div class="bo-paper">'+
+      '<div class="bo-paper-title">Movimentações de Estoque</div><div class="bo-paper-subtitle">B.O.</div>'+flow+
+      '<div class="bo-paper-top"><div class="bo-paper-box"><div><strong>B.O.:</strong> '+esc(row.bo_number)+' &nbsp;&nbsp; <strong>Data:</strong> '+fmtDate(row.occurrence_date)+' &nbsp;&nbsp; <strong>Hora:</strong> '+esc(String(row.occurrence_time||'').slice(0,5))+'</div><div class="bo-paper-line"><strong>Emitido por:</strong> '+esc(conf)+'</div><div class="bo-paper-line">'+['A','B','C'].map(x=>checkbox('Turno '+x,row.shift===x)).join('')+'</div></div>'+
+      '<div class="bo-paper-box"><div style="text-align:center;font-weight:800;margin-bottom:10px">Tipo</div><div class="bo-paper-line" style="justify-content:center">'+['Entrada','Saída'].map(x=>checkbox(x,row.movement_type===x)).join('')+'</div></div></div>'+
+      '<div class="bo-paper-band">Local</div><div class="bo-paper-local"><div><h4>CHEIO</h4>'+FULL_LOCATIONS.map(x=>checkbox(x,row.location===x)).join('')+'</div><div><h4>VAZIO</h4>'+EMPTY_LOCATIONS.map(x=>checkbox(x,row.location===x)).join('')+'</div></div>'+
       '<table class="bo-paper-table"><thead><tr><th>Código</th><th>DESCRIÇÃO</th><th>TOTAL</th><th>TT REEMBALADO</th><th>TT DESCARTE</th></tr></thead><tbody>'+
       items.map(x=>'<tr><td>'+esc(x.sku_code)+'</td><td>'+esc(x.sku_name)+'</td><td>'+num(x.total_qty)+'</td><td>'+num(x.repacked_qty)+'</td><td>'+num(x.discarded_qty)+'</td></tr>').join('')+
       '</tbody></table>'+
-      '<div class="bo-paper-comments"><strong>Comentários:</strong> '+esc(selected.comments||'')+'</div>'+
-      '<div class="bo-paper-meta-row"><strong>'+(selected.subject_type==='Funcionário'||!selected.subject_type?'Funcionário:':selected.subject_type==='Fábrica'?'Fábrica:':'Origem:')+'</strong><span>'+esc(subjectName(selected))+'</span></div>'+((selected.subject_type==='Funcionário'||!selected.subject_type)?'<div class="bo-paper-meta-row"><strong>Função:</strong><span>'+esc(subjectFunction(selected))+'</span></div>':'')+
-      '<div class="bo-paper-band">MOTIVO</div><div class="bo-paper-reasons">'+REASONS.map(x=>checkbox(x,selected.reason===x)).join('')+'</div>'+
-      '<div class="bo-paper-footer"><div><strong>Responsável</strong><div class="bo-paper-line">'+['Conferente','SVA','COA','GOD'].map(x=>checkbox(x,selected.responsibility===x)).join('')+'</div></div><div><strong>Técnico de Controle</strong><div style="margin-top:8px">'+esc(selected.validator&&selected.validator.display_name||selected.validator&&selected.validator.username||'')+'</div></div></div>'+
+      '<div class="bo-paper-comments"><strong>Comentários:</strong> '+esc(row.comments||'')+'</div>'+
+      '<div class="bo-paper-meta-row"><strong>'+(row.subject_type==='Funcionário'||!row.subject_type?'Funcionário:':row.subject_type==='Fábrica'?'Fábrica:':'Origem:')+'</strong><span>'+esc(subjectName(row))+'</span></div>'+((row.subject_type==='Funcionário'||!row.subject_type)?'<div class="bo-paper-meta-row"><strong>Função:</strong><span>'+esc(subjectFunction(row))+'</span></div>':'')+
+      '<div class="bo-paper-band">MOTIVO</div><div class="bo-paper-reasons">'+REASONS.map(x=>checkbox(x,row.reason===x)).join('')+'</div>'+
+      '<div class="bo-paper-footer"><div><strong>Responsável</strong><div class="bo-paper-line">'+['Conferente','SVA','COA','GOD'].map(x=>checkbox(x,row.responsibility===x)).join('')+'</div></div><div><strong>Técnico de Controle</strong><div style="margin-top:8px">'+esc(row.validator&&row.validator.display_name||row.validator&&row.validator.username||'')+'</div></div></div>'+
       '<div class="bo-paper-note">Ao término do turno entregar ao Técnico de Controle para que seja feito a validação.</div><div class="bo-paper-note">Deverá ser feito um formulário para cada ocorrência, exceto se for do mesmo produto.</div><div class="bo-paper-note">Para anomalia de quebra, será obrigatório a realização de entrevista com o funcionário que veio a quebrar. Anexar junto com BO.</div>'+
       '</div>';
+  }
+
+  function openRow(id){
+    selected=rows.find(r=>Number(r.id)===id);if(!selected)return;
+    $('boDialogTitle').textContent=selected.bo_number;
+    let paper=paperHtml(selected);
     if(selected.interview_report)paper+='<p><strong>Entrevista registrada:</strong> '+esc(selected.interview_report)+'</p>';
     if(selected.validation_comment)paper+='<p><strong>Comentário do Controle:</strong> '+esc(selected.validation_comment)+'</p>';
-    if(selected.status==='pending'&&permissions&&permissions.can_validate)paper+='<label style="display:grid;gap:6px;margin-top:16px;font-weight:700;font-size:12px">Comentário do Controle<textarea id="boReviewComment" rows="3" placeholder="Obrigatório somente para devolver ao conferente"></textarea></label><div class="bo-review-actions"><button class="bo-btn-danger" id="boReturnButton">Devolver para correção</button><button class="bo-btn-primary" id="boValidateButton">Validar B.O.</button></div>';
+    if(selected.record_kind==='turn_c_origin'){
+      paper+='<div class="bo-confront-info"><strong>Registro de origem do Turno C.</strong> '+(selected.confront_state==='completed'?'O confronto do Turno A já foi registrado e é o resultado oficial.':'Aguardando o Turno A realizar a repecagem e registrar o confronto. Este registro não entra na PA nem no Informativo.')+'</div>';
+    }
+    if(selected.status==='pending'&&selected.record_kind!=='turn_c_origin'&&permissions&&permissions.can_validate)paper+='<label style="display:grid;gap:6px;margin-top:16px;font-weight:700;font-size:12px">Comentário do Controle<textarea id="boReviewComment" rows="3" placeholder="Obrigatório somente para devolver ao conferente"></textarea></label><div class="bo-review-actions"><button class="bo-btn-danger" id="boReturnButton">Devolver para correção</button><button class="bo-btn-primary" id="boValidateButton">Validar B.O.</button></div>';
     $('boDialogBody').innerHTML=paper;
     if($('boReturnButton'))$('boReturnButton').onclick=()=>review('returned');if($('boValidateButton'))$('boValidateButton').onclick=()=>review('validated');
     $('boReviewDialog').showModal();
@@ -163,7 +194,7 @@
     iframe.style.width='1px';iframe.style.height='1px';iframe.style.border='0';iframe.style.opacity='0';
     document.body.appendChild(iframe);
     const css='@page{size:A4 '+(landscape?'landscape':'portrait')+';margin:10mm}*{box-sizing:border-box}body{margin:0;color:#111;background:#fff;font-family:Arial,sans-serif}'+
-      '.bo-paper{background:#fff;border:2px solid #171717;color:#171717}.bo-paper-title{text-align:center;font-weight:900;font-size:20px;padding:12px 10px 5px}.bo-paper-subtitle{text-align:center;font-weight:900;font-size:18px;padding-bottom:10px}.bo-paper-top{display:grid;grid-template-columns:1fr 1fr;border-top:2px solid #171717;border-bottom:2px solid #171717}.bo-paper-box{padding:10px 12px;min-height:88px}.bo-paper-box+.bo-paper-box{border-left:2px solid #171717}.bo-paper-line{display:flex;align-items:center;gap:7px;margin:4px 0;flex-wrap:wrap}.bo-paper-check{display:inline-flex;align-items:center;gap:5px;margin-right:8px}.bo-paper-check i{width:14px;height:14px;border:2px solid #111;display:inline-block}.bo-paper-check.active i{background:#111;box-shadow:inset 0 0 0 3px #fff}.bo-paper-band{background:#111!important;color:#fff!important;text-align:center;font-weight:800;padding:5px 8px;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-paper-local{display:grid;grid-template-columns:1fr 1fr}.bo-paper-local>div{padding:8px 12px}.bo-paper-local>div+div{border-left:1px solid #111}.bo-paper-local h4{text-align:center;margin:0 0 6px;font-size:10px}.bo-paper-table{width:100%;border-collapse:collapse}.bo-paper-table th,.bo-paper-table td{border:1px solid #111;padding:4px 5px;font-size:9px}.bo-paper-table th{background:#111!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-paper-comments{min-height:48px;border-top:1px solid #111;padding:7px 9px;font-size:10px}.bo-paper-meta-row{display:grid;grid-template-columns:110px 1fr;border-top:1px solid #111}.bo-paper-meta-row strong{background:#111!important;color:#fff!important;padding:5px 7px;font-size:9px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-paper-meta-row span{padding:5px 7px;font-size:10px}.bo-paper-reasons{display:grid;grid-template-columns:repeat(4,1fr);gap:3px 8px;padding:8px 12px;font-size:9px}.bo-paper-footer{display:grid;grid-template-columns:1fr 1fr;border-top:2px solid #111}.bo-paper-footer>div{padding:8px 12px;font-size:10px}.bo-paper-footer>div+div{border-left:1px solid #111}.bo-paper-note{border-top:1px solid #111;background:#efefef!important;padding:4px 7px;font-size:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
+      '.bo-batch-page{page-break-after:always;break-after:page}.bo-batch-page:last-child{page-break-after:auto;break-after:auto}.bo-paper{background:#fff;border:2px solid #171717;color:#171717}.bo-paper-flow{text-align:center;padding:5px 8px;font-size:9px;font-weight:800;border-top:1px solid #111}.bo-paper-flow.source{background:#f3f3f3!important}.bo-paper-flow.official{background:#111!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-paper-title{text-align:center;font-weight:900;font-size:20px;padding:12px 10px 5px}.bo-paper-subtitle{text-align:center;font-weight:900;font-size:18px;padding-bottom:10px}.bo-paper-top{display:grid;grid-template-columns:1fr 1fr;border-top:2px solid #171717;border-bottom:2px solid #171717}.bo-paper-box{padding:10px 12px;min-height:88px}.bo-paper-box+.bo-paper-box{border-left:2px solid #171717}.bo-paper-line{display:flex;align-items:center;gap:7px;margin:4px 0;flex-wrap:wrap}.bo-paper-check{display:inline-flex;align-items:center;gap:5px;margin-right:8px}.bo-paper-check i{width:14px;height:14px;border:2px solid #111;display:inline-block}.bo-paper-check.active i{background:#111;box-shadow:inset 0 0 0 3px #fff}.bo-paper-band{background:#111!important;color:#fff!important;text-align:center;font-weight:800;padding:5px 8px;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-paper-local{display:grid;grid-template-columns:1fr 1fr}.bo-paper-local>div{padding:8px 12px}.bo-paper-local>div+div{border-left:1px solid #111}.bo-paper-local h4{text-align:center;margin:0 0 6px;font-size:10px}.bo-paper-table{width:100%;border-collapse:collapse}.bo-paper-table th,.bo-paper-table td{border:1px solid #111;padding:4px 5px;font-size:9px}.bo-paper-table th{background:#111!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-paper-comments{min-height:48px;border-top:1px solid #111;padding:7px 9px;font-size:10px}.bo-paper-meta-row{display:grid;grid-template-columns:110px 1fr;border-top:1px solid #111}.bo-paper-meta-row strong{background:#111!important;color:#fff!important;padding:5px 7px;font-size:9px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-paper-meta-row span{padding:5px 7px;font-size:10px}.bo-paper-reasons{display:grid;grid-template-columns:repeat(4,1fr);gap:3px 8px;padding:8px 12px;font-size:9px}.bo-paper-footer{display:grid;grid-template-columns:1fr 1fr;border-top:2px solid #111}.bo-paper-footer>div{padding:8px 12px;font-size:10px}.bo-paper-footer>div+div{border-left:1px solid #111}.bo-paper-note{border-top:1px solid #111;background:#efefef!important;padding:4px 7px;font-size:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
       '.bo-informativo-sheet{background:#fff;border:1px solid #222;padding:14px}.bo-inf-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-end}.bo-inf-title{font-weight:800;font-size:14px;margin:9px 0}.bo-inf-section{background:#111!important;color:#fff!important;text-align:center;font-weight:800;padding:6px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-inf-table{width:100%;border-collapse:collapse}.bo-inf-table th,.bo-inf-table td{border:1px solid #333;padding:4px;font-size:9px}.bo-inf-table th{background:#111!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-inf-legend{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:8px;font-size:9px}';
     const doc=iframe.contentDocument||iframe.contentWindow.document;
     doc.open();doc.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'+css+'</style></head><body>'+content+'</body></html>');doc.close();
@@ -177,6 +208,13 @@
     if(!paper)return showToast('Abra um B.O. antes de imprimir.',true);
     printSheet(selected&&selected.bo_number?selected.bo_number:'B.O.',paper.outerHTML,false);
   }
+  function printSelectedBos(){
+    const chosen=rows.filter(r=>selectedIds.has(Number(r.id)));
+    if(!chosen.length)return showToast('Selecione pelo menos um B.O. para imprimir.',true);
+    const content=chosen.map(r=>'<section class="bo-batch-page">'+paperHtml(r)+'</section>').join('');
+    printSheet(chosen.length+' B.O.s selecionados',content,false);
+  }
+
 
   function printInformativo(){
     const content=$('boInfBody')&&$('boInfBody').innerHTML;
