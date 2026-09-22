@@ -70,8 +70,8 @@
         '<td><span class="policy-badge curve-'+String(x.curve_class||'').toLowerCase()+'">'+esc(x.curve_class||'—')+'</span></td>'+
         '<td>'+nf.format(x.avg_daily_pallets||0)+'<small>PLT/dia</small></td>'+
         '<td><strong>3</strong><small>'+nf.format((x.avg_daily_pallets||0)*3)+' PLT</small></td>'+
-        '<td><strong>'+nf.format(x.objective_days||0)+'</strong><small>'+nf.format(x.objective_suggested||0)+' PLT</small></td>'+
-        '<td><strong>'+nf.format(x.max_days||0)+'</strong><small>'+nf.format(x.max_suggested||0)+' PLT</small></td>'+
+        '<td><strong>'+nf.format(x.objective_days||0)+'</strong><small>'+nf.format((x.avg_daily_pallets||0)*(x.objective_days||0))+' PLT</small></td>'+
+        '<td><strong>'+nf.format(x.max_days||0)+'</strong><small>'+nf.format((x.avg_daily_pallets||0)*(x.max_days||0))+' PLT</small></td>'+
         '<td>'+nf.format(x.current_pallets||0)+'<small>'+((x.current_days==null)?'cobertura —':nf.format(x.current_days)+' dias')+'</small></td>'+
         '<td><span class="policy-badge qty-'+cls(x.qty_status)+'">'+esc(qtyLabel(x.qty_status))+'</span></td>'+
         '<td>'+dt(x.oldest_expiry)+'<small>'+((x.days_to_expiry==null)?'—':x.days_to_expiry+' dias')+'</small></td>'+
