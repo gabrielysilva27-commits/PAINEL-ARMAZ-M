@@ -110,6 +110,40 @@ async function persistSnapshot(args: {
   return data;
 }
 
+
+function policyPeriodCode(reviewStart: string) {
+  const y = Number(String(reviewStart).slice(0, 4));
+  const m = Number(String(reviewStart).slice(5, 7));
+  return `${y}-H${m <= 6 ? 1 : 2}`;
+}
+function roundHalf(v: number) { return Math.ceil(v * 2) / 2; }
+function daysUntil(date: string | null, today: string) {
+  if (!date) return null;
+  const a = Date.parse(today + "T00:00:00Z"), b = Date.parse(date + "T00:00:00Z");
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return Math.round((b - a) / 86400000);
+}
+async function policyVersionById(id: string) {
+  const { data, error } = await db.from("stock_policy_versions").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+async function policyItems(versionId: string) {
+  const rows: any[] = [];
+  for (let offset = 0;; offset += 1000) {
+    const { data, error } = await db.from("stock_policy_items").select("*").eq("version_id", versionId).order("sku_code").range(offset, offset + 999);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return rows;
+}
+async function policyMetrics(periodCode: string) {
+  const { data, error } = await db.from("stock_policy_oor_metrics").select("*").eq("period_code", periodCode);
+  if (error) throw error;
+  return new Map((data || []).map((x: any) => [String(x.sku_code), x]));
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Método não permitido" }, 405);
@@ -163,6 +197,146 @@ Deno.serve(async (req: Request) => {
       const { data, error } = await db.from("stock_audit_log").select("id,created_at,action,changed_count,changed_rows,note,user_id,app_users(display_name,username,role)").order("created_at", { ascending: false }).limit(limit);
       if (error) throw error;
       return json({ items: data || [] });
+    }
+
+
+    if (body.action === "policy_list") {
+      const { data, error } = await db.from("stock_policy_versions").select("*").order("effective_start", { ascending: false }).order("created_at", { ascending: false });
+      if (error) throw error;
+      return json({ versions: data || [] });
+    }
+
+    if (body.action === "policy_get") {
+      let version: any = null;
+      if (body.version_id) version = await policyVersionById(String(body.version_id));
+      if (!version) {
+        const { data, error } = await db.from("stock_policy_versions").select("*").in("status", ["approved", "draft"]).order("effective_start", { ascending: false }).order("created_at", { ascending: false }).limit(1).maybeSingle();
+        if (error) throw error;
+        version = data;
+      }
+      if (!version) return json({ version: null, items: [] });
+      const items = await policyItems(version.id);
+      const metrics = await policyMetrics(policyPeriodCode(version.review_start));
+      const latestNow = latest;
+      const current = new Map<string, any>();
+      if (latestNow?.payload?.rows) {
+        for (const r of latestNow.payload.rows) {
+          if (r?.source_sheet !== "Base Ruas" || !r?.sku_code) continue;
+          const code = String(r.sku_code);
+          const p = current.get(code) || { pallets: 0, oldest_expiry: null };
+          const q = Number(r.pallets);
+          if (Number.isFinite(q) && q > 0) p.pallets += q;
+          if (r.expires_on && (!p.oldest_expiry || String(r.expires_on) < p.oldest_expiry)) p.oldest_expiry = String(r.expires_on);
+          current.set(code, p);
+        }
+      }
+      const today = todayBR();
+      const enriched = items.map((x: any) => {
+        const inv = current.get(String(x.sku_code)) || { pallets: 0, oldest_expiry: null };
+        const avg = Number(x.avg_daily_pallets);
+        const currentDays = Number.isFinite(avg) && avg > 0 ? Number(inv.pallets) / avg : null;
+        let qtyStatus = "SEM_DADO";
+        if (currentDays !== null) {
+          if (currentDays < 3) qtyStatus = "OUT";
+          else if (currentDays < Number(x.objective_days || 5)) qtyStatus = "ABAIXO_DO_OBJETIVO";
+          else if (currentDays > Number(x.max_days || x.objective_days || 5)) qtyStatus = "OVER";
+          else qtyStatus = "OK";
+        }
+        const remain = daysUntil(inv.oldest_expiry, today);
+        let validityStatus = "SEM_VALIDADE";
+        if (remain !== null) validityStatus = remain <= 0 ? "VENCIDO" : remain <= 30 ? "CRITICO" : remain <= 45 ? "ATENCAO" : "NORMAL";
+        return { ...x, current_pallets: Number(inv.pallets || 0), current_days: currentDays, oldest_expiry: inv.oldest_expiry, days_to_expiry: remain, qty_status: qtyStatus, validity_status: validityStatus, metrics: metrics.get(String(x.sku_code)) || null };
+      });
+      return json({ version, items: enriched, snapshot: latestNow ? { id: latestNow.id, as_of: latestNow.as_of } : null });
+    }
+
+    if (body.action === "policy_generate") {
+      if (String(user.role || "").toLowerCase() !== "admin") return json({ error: "Somente ADM pode gerar revisão da Política de Estoque" }, 403);
+      const code = String(body.code || "").trim();
+      const reviewStart = String(body.review_start || ""), reviewEnd = String(body.review_end || "");
+      const effectiveStart = String(body.effective_start || ""), effectiveEnd = String(body.effective_end || "");
+      if (!/^R[12]\/\d{4}$/.test(code) || !/^\d{4}-\d{2}-\d{2}$/.test(reviewStart) || !/^\d{4}-\d{2}-\d{2}$/.test(reviewEnd) || !/^\d{4}-\d{2}-\d{2}$/.test(effectiveStart) || !/^\d{4}-\d{2}-\d{2}$/.test(effectiveEnd)) return json({ error: "Período da revisão inválido" }, 400);
+      const { data: existing } = await db.from("stock_policy_versions").select("id").eq("code", code).maybeSingle();
+      if (existing) return json({ error: code + " já existe" }, 409);
+      const firstMonth = reviewStart.slice(0, 7) + "-01", lastMonth = reviewEnd.slice(0, 7) + "-01";
+      const { data: monthRows, error: monthError } = await db.from("abc_months").select("reference_month,days_worked,status").gte("reference_month", firstMonth).lte("reference_month", lastMonth).eq("status", "imported");
+      if (monthError) throw monthError;
+      const monthDays = new Map((monthRows || []).map((x: any) => [String(x.reference_month), Number(x.days_worked || 0)]));
+      const totalDays = [...monthDays.values()].reduce((s, x) => s + (Number.isFinite(x) ? x : 0), 0);
+      if (!totalDays) return json({ error: "Não há meses de Curva ABC importados no período da revisão" }, 409);
+      const salesRows: any[] = [];
+      for (let offset = 0;; offset += 1000) {
+        const { data, error } = await db.from("abc_items").select("reference_month,sku_code,sku_name,curve_class,volume_caixas,volume_hl,volume_pallets").eq("area", "Regulador").gte("reference_month", firstMonth).lte("reference_month", lastMonth).range(offset, offset + 999);
+        if (error) throw error;
+        salesRows.push(...(data || []));
+        if (!data || data.length < 1000) break;
+      }
+      const hist = await policyMetrics(policyPeriodCode(reviewStart));
+      const grouped = new Map<string, any>();
+      for (const r of salesRows) {
+        const sku = String(r.sku_code || "");
+        if (!sku) continue;
+        const g = grouped.get(sku) || { sku_code: sku, sku_name: r.sku_name || "", boxes: 0, hl: 0, pallets: 0, hasPallets: false, curve_class: r.curve_class || null, latest_month: "" };
+        g.boxes += Number(r.volume_caixas || 0);
+        g.hl += Number(r.volume_hl || 0);
+        if (r.volume_pallets != null && Number.isFinite(Number(r.volume_pallets))) { g.pallets += Number(r.volume_pallets); g.hasPallets = true; }
+        if (String(r.reference_month) >= g.latest_month) { g.latest_month = String(r.reference_month); g.curve_class = r.curve_class || g.curve_class; g.sku_name = r.sku_name || g.sku_name; }
+        grouped.set(sku, g);
+      }
+      const { data: version, error: versionError } = await db.from("stock_policy_versions").insert({ code, review_start: reviewStart, review_end: reviewEnd, effective_start: effectiveStart, effective_end: effectiveEnd, status: "draft", min_days_default: 3, attention_days: 45, critical_days: 30, method_version: "policy-v1", notes: "Mínimo fixo 3 dias; objetivo inicial 5 dias pela puxada D+2.", created_by: user.id }).select("*").single();
+      if (versionError) throw versionError;
+      const inserts = [...grouped.values()].map((g: any) => {
+        const m: any = hist.get(g.sku_code);
+        const avgBoxes = g.boxes / totalDays, avgHl = g.hl / totalDays, avgPallets = g.hasPallets ? g.pallets / totalDays : null;
+        let maxDays = Number(m?.legacy_p75_days);
+        if (!Number.isFinite(maxDays) || maxDays < 5) maxDays = 5;
+        maxDays = roundHalf(maxDays);
+        const flags: string[] = [];
+        if ((m?.out_count || 0) > 0) flags.push("HIST_OUT");
+        if ((m?.over_count || 0) > 0) flags.push("HIST_OVER");
+        if ((m?.critical_months || 0) > 0) flags.push("VALIDADE_30");
+        if ((m?.attention_months || 0) > 0) flags.push("VALIDADE_45");
+        if ((m?.age_nok_months || 0) > 0) flags.push("STOCK_AGE_NOK");
+        const basis = m ? `P75 cobertura histórica ${Number(m.legacy_p75_days || 0).toFixed(1)}d · OUT ${m.out_count || 0} · OVER ${m.over_count || 0} · Age NOK ${m.age_nok_months || 0} mês(es)` : "Sem histórico OOR consolidado; máximo inicia igual ao objetivo e requer revisão.";
+        return { version_id: version.id, sku_code: g.sku_code, sku_name: g.sku_name, curve_class: ["A","B","C"].includes(g.curve_class) ? g.curve_class : null, avg_daily_boxes: avgBoxes, avg_daily_hl: avgHl, avg_daily_pallets: avgPallets, min_days: 3, objective_days: 5, max_days: maxDays, objective_suggested: avgPallets == null ? null : avgPallets * 5, max_suggested: avgPallets == null ? null : avgPallets * maxDays, suggestion_basis: basis, review_flags: flags, updated_by: user.id };
+      });
+      for (let i = 0; i < inserts.length; i += 250) {
+        const { error } = await db.from("stock_policy_items").insert(inserts.slice(i, i + 250));
+        if (error) throw error;
+      }
+      await db.from("stock_policy_audit_log").insert({ version_id: version.id, action: "GENERATE", details: { code, skus: inserts.length, review_start: reviewStart, review_end: reviewEnd, total_days: totalDays }, user_id: user.id });
+      return json({ ok: true, version_id: version.id, code, items: inserts.length });
+    }
+
+    if (body.action === "policy_edit") {
+      if (String(user.role || "").toLowerCase() !== "admin") return json({ error: "Somente ADM pode revisar parâmetros" }, 403);
+      const versionId = String(body.version_id || ""), sku = String(body.sku_code || "");
+      const version = await policyVersionById(versionId);
+      if (!version || version.status !== "draft") return json({ error: "Somente versões em rascunho podem ser editadas" }, 409);
+      const objective = Number(body.objective_days), max = Number(body.max_days);
+      if (!Number.isFinite(objective) || objective < 3) return json({ error: "Objetivo deve ser pelo menos 3 dias" }, 400);
+      if (!Number.isFinite(max) || max < objective) return json({ error: "Máximo deve ser maior ou igual ao objetivo" }, 400);
+      const { data: currentItem, error: itemError } = await db.from("stock_policy_items").select("*").eq("version_id", versionId).eq("sku_code", sku).maybeSingle();
+      if (itemError) throw itemError;
+      if (!currentItem) return json({ error: "SKU não encontrado na revisão" }, 404);
+      const avg = Number(currentItem.avg_daily_pallets);
+      const patch = { objective_days: objective, max_days: max, objective_suggested: Number.isFinite(avg) ? avg * objective : null, max_suggested: Number.isFinite(avg) ? avg * max : null, review_note: String(body.review_note || "").slice(0, 500), updated_by: user.id, updated_at: new Date().toISOString() };
+      const { error } = await db.from("stock_policy_items").update(patch).eq("version_id", versionId).eq("sku_code", sku);
+      if (error) throw error;
+      await db.from("stock_policy_audit_log").insert({ version_id: versionId, sku_code: sku, action: "EDIT", details: { before: { objective_days: currentItem.objective_days, max_days: currentItem.max_days }, after: { objective_days: objective, max_days: max }, note: patch.review_note }, user_id: user.id });
+      return json({ ok: true });
+    }
+
+    if (body.action === "policy_approve") {
+      if (String(user.role || "").toLowerCase() !== "admin") return json({ error: "Somente ADM pode aprovar a Política de Estoque" }, 403);
+      const versionId = String(body.version_id || "");
+      const version = await policyVersionById(versionId);
+      if (!version || version.status !== "draft") return json({ error: "A versão não está disponível para aprovação" }, 409);
+      await db.from("stock_policy_versions").update({ status: "superseded", updated_at: new Date().toISOString() }).eq("status", "approved").neq("id", versionId).lte("effective_start", version.effective_end).gte("effective_end", version.effective_start);
+      const { error } = await db.from("stock_policy_versions").update({ status: "approved", approved_by: user.id, approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", versionId);
+      if (error) throw error;
+      await db.from("stock_policy_audit_log").insert({ version_id: versionId, action: "APPROVE", details: { code: version.code, effective_start: version.effective_start, effective_end: version.effective_end }, user_id: user.id });
+      return json({ ok: true });
     }
 
     if (body.action === "edit_row") {
