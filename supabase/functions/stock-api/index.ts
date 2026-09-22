@@ -302,8 +302,8 @@ Deno.serve(async (req: Request) => {
         if (avgBoxes == null && avgHl != null && Number.isFinite(factor) && factor > 0) avgBoxes = avgHl / factor;
         let avgPallets = g.n_pallets ? g.sum_pallets / g.n_pallets : null;
         if (avgPallets == null && avgBoxes != null && Number.isFinite(boxesPerPallet) && boxesPerPallet > 0) avgPallets = avgBoxes / boxesPerPallet;
-        let maxDays = Number(m?.legacy_p75_days);
-        if (!Number.isFinite(maxDays) || maxDays < 5) maxDays = 5;
+        const historicalP75 = Number(m?.legacy_p75_days);
+        let maxDays = Number.isFinite(historicalP75) ? Math.min(30, Math.max(7, historicalP75)) : 7;
         maxDays = roundHalf(maxDays);
         const flags: string[] = [];
         if ((m?.out_count || 0) > 0) flags.push("HIST_OUT");
@@ -311,7 +311,9 @@ Deno.serve(async (req: Request) => {
         if ((m?.critical_months || 0) > 0) flags.push("VALIDADE_30");
         if ((m?.attention_months || 0) > 0) flags.push("VALIDADE_45");
         if ((m?.age_nok_months || 0) > 0) flags.push("STOCK_AGE_NOK");
-        const basis = m ? `P75 cobertura histórica ${Number(m.legacy_p75_days || 0).toFixed(1)}d · OUT ${m.out_count || 0} · OVER ${m.over_count || 0} · Age NOK ${m.age_nok_months || 0} mês(es)` : "Sem histórico OOR consolidado; máximo inicia igual ao objetivo e requer revisão.";
+        if (!Number.isFinite(historicalP75) || historicalP75 < 7) flags.push("MAX_BASE_7D");
+        if (Number.isFinite(historicalP75) && historicalP75 > 30) flags.push("MAX_CAP_30D");
+        const basis = m ? `P75 histórico ${Number(m.legacy_p75_days || 0).toFixed(1)}d · proposta limitada entre 7 e 30d · OUT ${m.out_count || 0} · OVER ${m.over_count || 0} · Age NOK ${m.age_nok_months || 0} mês(es)` : "Sem histórico OOR consolidado; máximo provisório em 7 dias (objetivo 5d + 2d D+2), sujeito à revisão.";
         return { version_id: version.id, sku_code: g.sku_code, sku_name: g.sku_name, curve_class: ["A","B","C"].includes(g.curve_class) ? g.curve_class : null, avg_daily_boxes: avgBoxes, avg_daily_hl: avgHl, avg_daily_pallets: avgPallets, min_days: 3, objective_days: 5, max_days: maxDays, objective_suggested: avgPallets == null ? null : avgPallets * 5, max_suggested: avgPallets == null ? null : avgPallets * maxDays, suggestion_basis: basis, review_flags: flags, updated_by: user.id };
       });
       for (let i = 0; i < inserts.length; i += 250) {
