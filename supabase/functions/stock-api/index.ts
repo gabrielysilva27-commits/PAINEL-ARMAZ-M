@@ -266,7 +266,7 @@ Deno.serve(async (req: Request) => {
       if (!totalDays) return json({ error: "Não há meses de Curva ABC importados no período da revisão" }, 409);
       const salesRows: any[] = [];
       for (let offset = 0;; offset += 1000) {
-        const { data, error } = await db.from("abc_items").select("reference_month,sku_code,sku_name,curve_class,volume_caixas,volume_hl,volume_pallets").eq("area", "Regulador").gte("reference_month", firstMonth).lte("reference_month", lastMonth).range(offset, offset + 999);
+        const { data, error } = await db.from("abc_items").select("reference_month,sku_code,sku_name,curve_class,avg_caixas,avg_hl,avg_pallets").eq("area", "Regulador").gte("reference_month", firstMonth).lte("reference_month", lastMonth).range(offset, offset + 999);
         if (error) throw error;
         salesRows.push(...(data || []));
         if (!data || data.length < 1000) break;
@@ -276,18 +276,32 @@ Deno.serve(async (req: Request) => {
       for (const r of salesRows) {
         const sku = String(r.sku_code || "");
         if (!sku) continue;
-        const g = grouped.get(sku) || { sku_code: sku, sku_name: r.sku_name || "", boxes: 0, hl: 0, pallets: 0, hasPallets: false, curve_class: r.curve_class || null, latest_month: "" };
-        g.boxes += Number(r.volume_caixas || 0);
-        g.hl += Number(r.volume_hl || 0);
-        if (r.volume_pallets != null && Number.isFinite(Number(r.volume_pallets))) { g.pallets += Number(r.volume_pallets); g.hasPallets = true; }
+        const g = grouped.get(sku) || { sku_code: sku, sku_name: r.sku_name || "", sum_boxes: 0, n_boxes: 0, sum_hl: 0, n_hl: 0, sum_pallets: 0, n_pallets: 0, curve_class: r.curve_class || null, latest_month: "" };
+        const bx = Number(r.avg_caixas), hl = Number(r.avg_hl), pl = Number(r.avg_pallets);
+        if (r.avg_caixas != null && Number.isFinite(bx)) { g.sum_boxes += bx; g.n_boxes++; }
+        if (r.avg_hl != null && Number.isFinite(hl)) { g.sum_hl += hl; g.n_hl++; }
+        if (r.avg_pallets != null && Number.isFinite(pl)) { g.sum_pallets += pl; g.n_pallets++; }
         if (String(r.reference_month) >= g.latest_month) { g.latest_month = String(r.reference_month); g.curve_class = r.curve_class || g.curve_class; g.sku_name = r.sku_name || g.sku_name; }
         grouped.set(sku, g);
+      }
+      const codes = [...grouped.keys()];
+      const catalog = new Map<string, any>();
+      for (let i = 0; i < codes.length; i += 150) {
+        const { data, error } = await db.from("product_catalog").select("sku_code,factor_hecto_commercial,boxes_per_pallet").in("sku_code", codes.slice(i, i + 150));
+        if (error) throw error;
+        for (const x of data || []) catalog.set(String(x.sku_code), x);
       }
       const { data: version, error: versionError } = await db.from("stock_policy_versions").insert({ code, review_start: reviewStart, review_end: reviewEnd, effective_start: effectiveStart, effective_end: effectiveEnd, status: "draft", min_days_default: 3, attention_days: 45, critical_days: 30, method_version: "policy-v1", notes: "Mínimo fixo 3 dias; objetivo inicial 5 dias pela puxada D+2.", created_by: user.id }).select("*").single();
       if (versionError) throw versionError;
       const inserts = [...grouped.values()].map((g: any) => {
         const m: any = hist.get(g.sku_code);
-        const avgBoxes = g.boxes / totalDays, avgHl = g.hl / totalDays, avgPallets = g.hasPallets ? g.pallets / totalDays : null;
+        const cat: any = catalog.get(g.sku_code) || {};
+        let avgBoxes = g.n_boxes ? g.sum_boxes / g.n_boxes : null;
+        const avgHl = g.n_hl ? g.sum_hl / g.n_hl : null;
+        const factor = Number(cat.factor_hecto_commercial), boxesPerPallet = Number(cat.boxes_per_pallet);
+        if (avgBoxes == null && avgHl != null && Number.isFinite(factor) && factor > 0) avgBoxes = avgHl / factor;
+        let avgPallets = g.n_pallets ? g.sum_pallets / g.n_pallets : null;
+        if (avgPallets == null && avgBoxes != null && Number.isFinite(boxesPerPallet) && boxesPerPallet > 0) avgPallets = avgBoxes / boxesPerPallet;
         let maxDays = Number(m?.legacy_p75_days);
         if (!Number.isFinite(maxDays) || maxDays < 5) maxDays = 5;
         maxDays = roundHalf(maxDays);
@@ -304,7 +318,7 @@ Deno.serve(async (req: Request) => {
         const { error } = await db.from("stock_policy_items").insert(inserts.slice(i, i + 250));
         if (error) throw error;
       }
-      await db.from("stock_policy_audit_log").insert({ version_id: version.id, action: "GENERATE", details: { code, skus: inserts.length, review_start: reviewStart, review_end: reviewEnd, total_days: totalDays }, user_id: user.id });
+      await db.from("stock_policy_audit_log").insert({ version_id: version.id, action: "GENERATE", details: { code, skus: inserts.length, review_start: reviewStart, review_end: reviewEnd, source_months: monthRows?.length || 0 }, user_id: user.id });
       return json({ ok: true, version_id: version.id, code, items: inserts.length });
     }
 
