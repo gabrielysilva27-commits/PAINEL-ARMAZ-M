@@ -314,7 +314,7 @@ Deno.serve(async (req: Request) => {
         if (!Number.isFinite(historicalP75) || historicalP75 < 7) flags.push("MAX_BASE_7D");
         if (Number.isFinite(historicalP75) && historicalP75 > 30) flags.push("MAX_CAP_30D");
         const basis = m ? `P75 histórico ${Number(m.legacy_p75_days || 0).toFixed(1)}d · proposta limitada entre 7 e 30d · OUT ${m.out_count || 0} · OVER ${m.over_count || 0} · Age NOK ${m.age_nok_months || 0} mês(es)` : "Sem histórico OOR consolidado; máximo provisório em 7 dias (objetivo 5d + 2d D+2), sujeito à revisão.";
-        return { version_id: version.id, sku_code: g.sku_code, sku_name: g.sku_name, curve_class: ["A","B","C"].includes(g.curve_class) ? g.curve_class : null, avg_daily_boxes: avgBoxes, avg_daily_hl: avgHl, avg_daily_pallets: avgPallets, min_days: 3, objective_days: 5, max_days: maxDays, objective_suggested: avgPallets == null ? null : avgPallets * 5, max_suggested: avgPallets == null ? null : avgPallets * maxDays, suggestion_basis: basis, review_flags: flags, updated_by: user.id };
+        return { version_id: version.id, sku_code: g.sku_code, sku_name: g.sku_name, curve_class: ["A","B","C"].includes(g.curve_class) ? g.curve_class : null, avg_daily_boxes: avgBoxes, avg_daily_hl: avgHl, avg_daily_pallets: avgPallets, min_days: 3, objective_days: 5, max_days: maxDays, objective_suggested: 5, max_suggested: maxDays, suggestion_basis: basis, review_flags: flags, updated_by: user.id };
       });
       for (let i = 0; i < inserts.length; i += 250) {
         const { error } = await db.from("stock_policy_items").insert(inserts.slice(i, i + 250));
@@ -336,7 +336,7 @@ Deno.serve(async (req: Request) => {
       if (itemError) throw itemError;
       if (!currentItem) return json({ error: "SKU não encontrado na revisão" }, 404);
       const avg = Number(currentItem.avg_daily_pallets);
-      const patch = { objective_days: objective, max_days: max, objective_suggested: Number.isFinite(avg) ? avg * objective : null, max_suggested: Number.isFinite(avg) ? avg * max : null, review_note: String(body.review_note || "").slice(0, 500), updated_by: user.id, updated_at: new Date().toISOString() };
+      const patch = { objective_days: objective, max_days: max, review_note: String(body.review_note || "").slice(0, 500), updated_by: user.id, updated_at: new Date().toISOString() };
       const { error } = await db.from("stock_policy_items").update(patch).eq("version_id", versionId).eq("sku_code", sku);
       if (error) throw error;
       await db.from("stock_policy_audit_log").insert({ version_id: versionId, sku_code: sku, action: "EDIT", details: { before: { objective_days: currentItem.objective_days, max_days: currentItem.max_days }, after: { objective_days: objective, max_days: max }, note: patch.review_note }, user_id: user.id });
