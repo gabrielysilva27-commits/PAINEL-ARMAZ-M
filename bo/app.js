@@ -4,7 +4,7 @@
   const REASONS=['Falha no Manuseio','Falta','Falta de fitilho','Vencido','Consumo interno','Avaria','Falha manobrista','Descarte repack','Quebra ao descarregar','Sem tampa/Liq. pela metade','Produto sem gás','Quebra ao carregar','Embalagem secundária','Corrosão','Outros'];
   const RESPONSIBILITIES=['Conferente','SVA','COA','GOD'];
   const $=id=>document.getElementById(id);
-  let token=sessionStorage.getItem('bo_token')||'',conferencer=null,shift='',movement='',subjectType='Funcionário',editingOccurrence=null,employeeTimer=null,skuTimers=new WeakMap();
+  let token=sessionStorage.getItem('bo_token')||'',conferencer=null,shift='',movement='',subjectType='Funcionário',editingOccurrence=null,confrontSource=null,employeeTimer=null,skuTimers=new WeakMap();
 
   async function call(action,payload={},auth=true){
     const headers={'Content-Type':'application/json'};if(auth&&token)headers['x-bo-token']=token;
@@ -12,7 +12,7 @@
     const d=await r.json().catch(()=>({error:'Resposta inválida'}));if(!r.ok)throw new Error(d.error||'Erro no B.O. Digital');return d;
   }
   function toast(msg,error=false){const t=$('toast');t.textContent=msg;t.classList.toggle('error',error);t.classList.remove('hidden');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.add('hidden'),3200);}
-  function show(id){for(const x of ['loginView','formView','successView','historyView'])$(x).classList.toggle('hidden',x!==id);}
+  function show(id){for(const x of ['loginView','formView','successView','historyView','confrontView'])$(x).classList.toggle('hidden',x!==id);}
   function today(){return new Date().toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'});}
   function nowTime(){return new Date().toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'});}
   function needsInterview(){return subjectType==='Funcionário'&&$('reasonSelect').value.startsWith('Quebra ao ');}
@@ -49,20 +49,24 @@
   $('addProductButton').onclick=()=>addItem();
 
   function updateEditingUi(){
-    const editing=!!editingOccurrence;
-    $('editingBanner').classList.toggle('hidden',!editing);
-    if(editing){
+    const editing=!!editingOccurrence,confronting=!!confrontSource;
+    $('editingBanner').classList.toggle('hidden',!editing&&!confronting);
+    if(confronting){
+      $('editingTitle').textContent='Confrontando '+confrontSource.bo_number+' · Turno C';
+      $('editingSubtitle').textContent='Registre o resultado encontrado pelo Turno A. Este será o B.O. oficial para indicadores e baixas.';
+    }else if(editing){
       $('editingTitle').textContent='Editando '+editingOccurrence.bo_number;
       $('editingSubtitle').textContent=editingOccurrence.status==='returned'?'Corrija o B.O. devolvido e reenvie para validação.':'Enquanto estiver pendente, você pode alterar o B.O.';
     }
-    $('submitButton').textContent=editing?'Salvar alterações':'Enviar B.O.';
+    $('shiftOptions').querySelectorAll('button').forEach(b=>{b.disabled=confronting&&b.dataset.value!=='A';});
+    $('submitButton').textContent=confronting?'Salvar confronto do Turno A':editing?'Salvar alterações':'Enviar B.O.';
   }
   function resetForm(clearEditing=true){
-    if(clearEditing)editingOccurrence=null;
+    if(clearEditing){editingOccurrence=null;confrontSource=null;}
     $('boForm').reset();shift='';movement='';subjectType='Funcionário';$('shiftOptions').querySelectorAll('button').forEach(x=>x.classList.remove('active'));$('movementOptions').querySelectorAll('button').forEach(x=>x.classList.remove('active'));$('occurrenceDate').value=today();$('occurrenceTime').value=nowTime();$('employeeFunction').value='';$('itemsList').innerHTML='';addItem();$('formError').textContent='';setSubjectType('Funcionário');updateEditingUi();
   }
   function editOccurrence(row){
-    editingOccurrence=row;
+    confrontSource=null;editingOccurrence=row;
     resetForm(false);
     $('occurrenceDate').value=String(row.occurrence_date||'').slice(0,10);
     $('occurrenceTime').value=String(row.occurrence_time||'').slice(0,5);
@@ -83,27 +87,62 @@
     if(!$('itemsList').children.length)addItem();
     updateEditingUi();show('formView');window.scrollTo({top:0,behavior:'smooth'});
   }
+  function startConfront(row){
+    editingOccurrence=null;confrontSource=row;resetForm(false);
+    $('occurrenceDate').value=today();$('occurrenceTime').value=nowTime();
+    const sb=$('shiftOptions').querySelector('[data-value="A"]');if(sb)sb.click();
+    const mb=$('movementOptions').querySelector('[data-value="'+row.movement_type+'"]');if(mb)mb.click();
+    setSubjectType(row.subject_type||'Funcionário');
+    $('locationSelect').value=row.location||'';
+    $('employeeInput').value=row.employee_name||'';
+    $('employeeFunction').value=row.employee_function||'';
+    $('factoryInput').value=row.factory_name||'';
+    $('reasonSelect').value=row.reason||'';
+    $('responsibilitySelect').value=row.responsibility||'';
+    $('comments').value=row.comments||'';
+    $('interviewReport').value=row.interview_report||'';
+    updateInterview();$('itemsList').innerHTML='';
+    (row.items||[]).slice().sort((a,b)=>(a.line_no||0)-(b.line_no||0)).forEach(item=>addItem(item));
+    if(!$('itemsList').children.length)addItem();
+    updateEditingUi();show('formView');window.scrollTo({top:0,behavior:'smooth'});
+  }
   function collect(){
     if(!shift)throw new Error('Selecione o turno.');if(!movement)throw new Error('Selecione Entrada ou Saída.');
     const items=[...$('itemsList').children].map(card=>({sku_code:card.querySelector('.sku-input').value,total_qty:card.querySelector('.qty-total').value,repacked_qty:card.querySelector('.qty-repacked').value,discarded_qty:card.querySelector('.qty-discarded').value,invoice_number:card.querySelector('.invoice-number').value,lot_number:card.querySelector('.lot-number').value,expiry_date:card.querySelector('.expiry-date').value}));
     return{occurrence_date:$('occurrenceDate').value,occurrence_time:$('occurrenceTime').value,shift,movement_type:movement,location:$('locationSelect').value,subject_type:subjectType,factory_name:$('factoryInput').value,employee_name:$('employeeInput').value,employee_function:$('employeeFunction').value,reason:$('reasonSelect').value,responsibility:$('responsibilitySelect').value,comments:$('comments').value,interview_report:$('interviewReport').value,items};
   }
-  $('boForm').onsubmit=async e=>{e.preventDefault();const b=$('submitButton');$('formError').textContent='';const editing=!!editingOccurrence;try{b.disabled=true;b.textContent=editing?'Salvando...':'Enviando...';const d=editing?await call('update_occurrence',{id:editingOccurrence.id,occurrence:collect()}):await call('submit',{occurrence:collect()});$('successNumber').textContent=d.occurrence.bo_number;$('successMessage').textContent=editing?'As alterações foram salvas e o B.O. voltou para a fila de validação.':'O registro foi enviado para validação do Controle.';editingOccurrence=null;show('successView');}catch(err){$('formError').textContent=err.message;window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});}finally{b.disabled=false;updateEditingUi();}};
-  $('newBoButton').onclick=()=>{show('formView');resetForm();};$('successHistoryButton').onclick=()=>openHistory();$('historyButton').onclick=()=>openHistory();$('backToFormButton').onclick=()=>{show('formView');resetForm();};$('cancelEditButton').onclick=()=>{editingOccurrence=null;openHistory();};
+  $('boForm').onsubmit=async e=>{e.preventDefault();const b=$('submitButton');$('formError').textContent='';const editing=!!editingOccurrence,confronting=!!confrontSource;try{b.disabled=true;b.textContent=confronting?'Salvando confronto...':editing?'Salvando...':'Enviando...';const occurrence=collect();const d=confronting?await call('confront_submit',{source_id:confrontSource.id,occurrence}):editing?await call('update_occurrence',{id:editingOccurrence.id,occurrence}):await call('submit',{occurrence});$('successNumber').textContent=d.occurrence.bo_number;$('successMessage').textContent=confronting?'Confronto do Turno A registrado. O B.O. do Turno C permanece no histórico e este novo B.O. passa a ser o resultado oficial.':editing?'As alterações foram salvas e o B.O. voltou para a fila de validação.':(occurrence.shift==='C'?'Registro do Turno C salvo. Ele aguardará o confronto do Turno A antes de entrar nos indicadores oficiais.':'O registro foi enviado para validação do Controle.');editingOccurrence=null;confrontSource=null;show('successView');}catch(err){$('formError').textContent=err.message;window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});}finally{b.disabled=false;updateEditingUi();}};
+  $('newBoButton').onclick=()=>{show('formView');resetForm();};$('successHistoryButton').onclick=()=>openHistory();$('historyButton').onclick=()=>openHistory();$('confrontButton').onclick=()=>openConfrontQueue();$('historyConfrontButton').onclick=()=>openConfrontQueue();$('backFromConfrontButton').onclick=()=>{show('formView');resetForm();};$('backToFormButton').onclick=()=>{show('formView');resetForm();};$('cancelEditButton').onclick=()=>{editingOccurrence=null;confrontSource=null;openHistory();};
 
   async function deleteOccurrence(row){
     if(!confirm('Excluir '+row.bo_number+'?\n\nEle deixará de aparecer como pendente e não poderá ser usado na PA ou no Informativo.'))return;
     try{await call('delete_occurrence',{id:row.id});toast('B.O. excluído.');await openHistory();}catch(e){toast(e.message,true);}
   }
+  async function openConfrontQueue(){
+    editingOccurrence=null;confrontSource=null;show('confrontView');$('confrontList').innerHTML='<div class="history-card">Carregando B.O.s do Turno C...</div>';
+    try{
+      const d=await call('confront_queue'),rows=d.occurrences||[];
+      $('confrontList').innerHTML=rows.length?rows.map(row=>{
+        const itemSummary=(row.items||[]).slice(0,3).map(x=>escapeHtml(x.sku_code)+' · '+escapeHtml(x.sku_name)+' ('+escapeHtml(x.total_qty)+')').join('<br>');
+        return '<article class="history-card confront-card"><div class="history-top"><div><strong>'+escapeHtml(row.bo_number)+'</strong><span class="confront-origin">Turno C · aguardando confronto</span></div><span class="status pending">Pendente</span></div><p>'+escapeHtml(row.reason)+' · '+escapeHtml(row.location)+' · '+escapeHtml(row.occurrence_date)+'</p><div class="confront-items">'+itemSummary+((row.items||[]).length>3?'<br>+'+((row.items||[]).length-3)+' produto(s)':'')+'</div><div class="history-actions"><button type="button" class="primary" data-confront="'+row.id+'">Realizar confronto no Turno A</button></div></article>';
+      }).join(''):'<div class="history-card"><strong>Nenhum confronto pendente.</strong><p>Quando o Turno C registrar um B.O., ele aparecerá aqui para a repecagem do Turno A.</p></div>';
+      $('confrontList').querySelectorAll('[data-confront]').forEach(b=>b.onclick=()=>{const row=rows.find(x=>String(x.id)===b.dataset.confront);if(row)startConfront(row);});
+    }catch(e){$('confrontList').innerHTML='<div class="history-card error">'+escapeHtml(e.message)+'</div>';}
+  }
+
   async function openHistory(){
     editingOccurrence=null;show('historyView');$('historyList').innerHTML='<div class="history-card">Carregando...</div>';
     try{
       const d=await call('my_occurrences'),rows=d.occurrences||[];
       const labels={pending:'Pendente',validated:'Validado',returned:'Devolvido',cancelled:'Excluído'};
       $('historyList').innerHTML=rows.length?rows.map(row=>{
-        const editable=row.status==='pending'||row.status==='returned';
+        const cOrigin=row.record_kind==='turn_c_origin',official=row.record_kind==='turn_a_confront';
+        const editable=(row.status==='pending'||row.status==='returned')&&(!cOrigin||row.confront_state!=='completed');
         const origin=(row.subject_type||'Funcionário')+(row.subject_type==='Fábrica'&&row.factory_name?' · '+row.factory_name:'');
-        return '<article class="history-card '+(row.status==='cancelled'?'cancelled':'')+'"><div class="history-top"><strong>'+escapeHtml(row.bo_number)+'</strong><span class="status '+row.status+'">'+escapeHtml(labels[row.status]||row.status)+'</span></div><p>'+escapeHtml(row.reason)+' · '+escapeHtml(row.location)+' · '+escapeHtml(origin)+' · Turno '+escapeHtml(row.shift)+'</p><small>'+escapeHtml(row.occurrence_date)+' · '+(row.items?.length||0)+' produto(s)'+(row.validation_comment?' · '+escapeHtml(row.validation_comment):'')+'</small>'+(editable?'<div class="history-actions"><button type="button" data-edit="'+row.id+'">'+(row.status==='returned'?'Corrigir':'Editar')+'</button><button type="button" class="danger" data-delete="'+row.id+'">Excluir</button></div>':'')+'</article>';
+        const flow=cOrigin?(row.confront_state==='completed'?'Turno C · confrontado pelo A':'Turno C · aguardando confronto'):(official?'Turno A · resultado oficial de '+escapeHtml(row.source?.bo_number||'B.O. do Turno C'):'Turno '+escapeHtml(row.shift));
+        const label=cOrigin?(row.confront_state==='completed'?'Confrontado':'Aguardando confronto'):(labels[row.status]||row.status);
+        const cls=cOrigin?(row.confront_state==='completed'?'validated':'pending'):row.status;
+        return '<article class="history-card '+(row.status==='cancelled'?'cancelled':'')+'"><div class="history-top"><div><strong>'+escapeHtml(row.bo_number)+'</strong><span class="confront-origin">'+flow+'</span></div><span class="status '+cls+'">'+escapeHtml(label)+'</span></div><p>'+escapeHtml(row.reason)+' · '+escapeHtml(row.location)+' · '+escapeHtml(origin)+'</p><small>'+escapeHtml(row.occurrence_date)+' · '+(row.items?.length||0)+' produto(s)'+(row.validation_comment?' · '+escapeHtml(row.validation_comment):'')+'</small>'+(editable?'<div class="history-actions"><button type="button" data-edit="'+row.id+'">'+(row.status==='returned'?'Corrigir':'Editar')+'</button><button type="button" class="danger" data-delete="'+row.id+'">Excluir</button></div>':'')+'</article>';
       }).join(''):'<div class="history-card">Nenhum B.O. registrado por você ainda.</div>';
       $('historyList').querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{const row=rows.find(x=>String(x.id)===b.dataset.edit);if(row)editOccurrence(row);});
       $('historyList').querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>{const row=rows.find(x=>String(x.id)===b.dataset.delete);if(row)deleteOccurrence(row);});
