@@ -42,7 +42,7 @@
   function render(){
     const root=view();if(!root)return;const d=S.data;
     if(!d?.version){root.innerHTML='<div class="policy-empty"><strong>Nenhuma Política de Estoque cadastrada.</strong></div>';return;}
-    const v=d.version,rows=filtered(),maxVals=d.items.map(x=>Number(x.max_days)).filter(Number.isFinite),minMax=maxVals.length?Math.min(...maxVals):null,maxMax=maxVals.length?Math.max(...maxVals):null;
+    const v=d.version,rows=filtered(),maxVals=d.items.filter(x=>x.max_days!=null&&x.max_days!=='').map(x=>Number(x.max_days)).filter(Number.isFinite),minMax=maxVals.length?Math.min(...maxVals):null,maxMax=maxVals.length?Math.max(...maxVals):null;
     const act=d.activity||null;
     const activityText=act?(' · '+nf.format(act.excluded_count||0)+' retirados sem puxada 30d'):'';
     root.innerHTML='<div class="policy-v4">'+
