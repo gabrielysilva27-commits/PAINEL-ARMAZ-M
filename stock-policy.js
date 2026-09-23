@@ -131,7 +131,7 @@
   }
   function install(){
     policyView();
-    if(!document.getElementById('stockPolicyCss')){const l=document.createElement('link');l.id='stockPolicyCss';l.rel='stylesheet';l.href='stock-policy.css?v=20260923-2';document.head.appendChild(l);}
+    if(!document.getElementById('stockPolicyCss')){const l=document.createElement('link');l.id='stockPolicyCss';l.rel='stylesheet';l.href='stock-policy.css?v=20260923-3';document.head.appendChild(l);}
     window.__stockPolicy={open,reload:load};
   }
   install();
