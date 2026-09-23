@@ -393,9 +393,9 @@ Deno.serve(async (req: Request) => {
         month_daily: monthDaily.map(decorate),
         policy,
         formula: {
-          daily: "COUNTIFS(status,status_escolhido,data,dia) / COUNTIFS(data,dia)",
-          accumulated: "COUNTIF(status,status_escolhido) / COUNT(data) no arquivo mensal",
-          monthly: "mesmo cálculo do acumulado de cada arquivo mensal"
+          daily: "STOCKOUT = SKUs abaixo do mínimo / total de SKUs da PE; STOCKOVER = SKUs acima do máximo / total de SKUs da PE; OK = demais SKUs da PE",
+          accumulated: "soma das classificações diárias / soma do total de SKUs da PE em cada dia",
+          monthly: "mesma memória oficial aplicada ao acumulado dos dias do mês"
         }
       });
     }
@@ -463,22 +463,55 @@ Deno.serve(async (req: Request) => {
       const { data: policy, error: policyError } = await db.from("stock_policy_versions").select("*").eq("status", "approved").lte("effective_start", referenceDate).gte("effective_end", referenceDate).order("effective_start", { ascending: false }).limit(1).maybeSingle();
       if (policyError) throw policyError;
       if (!policy) return json({ error: "Não existe Política de Estoque vigente para esta data" }, 409);
-      const limits = new Map((await policyItems(policy.id)).map((x: any) => [String(x.sku_code), x]));
-      const prepared = incoming.map((r: any) => {
+      const policyRows = await policyItems(policy.id);
+      const limits = new Map(policyRows.map((x: any) => [String(x.sku_code), x]));
+
+      // Memória oficial DPO:
+      // STOCKOUT = SKU abaixo do mínimo da PE.
+      // STOCKOVER = SKU acima do máximo da PE.
+      // O denominador é sempre o total de SKUs cadastrados na PE.
+      // Se um SKU da PE não vier no relatório de estoque, seu saldo operacional é zero.
+      const incomingBySku = new Map<string, any>();
+      for (const r of incoming) {
         const sku = String(r.sku_code || "").trim(), qty = Number(r.available_qty);
         if (!/^\d+$/.test(sku) || !Number.isFinite(qty)) throw new Error("SKU ou quantidade inválida na base OOR");
-        const lim: any = limits.get(sku);
-        let status = "SEM_POLITICA";
-        if (lim && lim.out_qty != null && lim.over_qty != null) {
-          if (qty >= Number(lim.over_qty)) status = "OVER";
-          else if (qty <= Number(lim.out_qty)) status = "OUT";
-          else status = "OK";
+        const prev = incomingBySku.get(sku);
+        if (prev) {
+          prev.available_qty += qty;
+          if (!prev.sku_name && r.sku_name) prev.sku_name = String(r.sku_name);
+          if (!prev.unit_code && r.unit_code) prev.unit_code = r.unit_code;
+        } else {
+          incomingBySku.set(sku, {
+            available_qty: qty,
+            sku_name: String(r.sku_name || ""),
+            unit_code: r.unit_code || null
+          });
         }
+      }
+
+      const prepared = policyRows.map((lim: any) => {
+        const sku = String(lim.sku_code || "").trim();
+        const src = incomingBySku.get(sku);
+        const qty = Number(src?.available_qty ?? 0);
+        const minQty = Number(lim.min_qty ?? lim.out_qty);
+        const maxQty = Number(lim.max_qty ?? lim.over_qty);
+        if (!/^\d+$/.test(sku) || !Number.isFinite(minQty) || !Number.isFinite(maxQty)) {
+          throw new Error("Política de Estoque possui SKU ou limite mínimo/máximo inválido");
+        }
+        const status = qty < minQty ? "OUT" : qty > maxQty ? "OVER" : "OK";
         return {
-          reference_date: referenceDate, sku_code: sku, sku_name: String(r.sku_name || lim?.sku_name || ""),
-          unit_code: r.unit_code || lim?.unit_code || null, available_qty: qty, status,
-          out_qty: lim?.out_qty ?? null, over_qty: lim?.over_qty ?? null, policy_version_id: policy.id,
-          source_file: String(body.source_file || "").slice(0, 240) || null, imported_by: user.id, imported_at: new Date().toISOString()
+          reference_date: referenceDate,
+          sku_code: sku,
+          sku_name: String(src?.sku_name || lim.sku_name || ""),
+          unit_code: src?.unit_code || lim.unit_code || null,
+          available_qty: qty,
+          status,
+          out_qty: minQty,
+          over_qty: maxQty,
+          policy_version_id: policy.id,
+          source_file: String(body.source_file || "").slice(0, 240) || null,
+          imported_by: user.id,
+          imported_at: new Date().toISOString()
         };
       });
       const { error: deleteError } = await db.from("stock_oor_daily").delete().eq("reference_date", referenceDate);
