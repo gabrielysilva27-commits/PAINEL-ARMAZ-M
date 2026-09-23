@@ -8,6 +8,17 @@
   const dt=v=>v?String(v).slice(0,10).split('-').reverse().join('/'):'—';
   const canAdmin=()=>String(window.state?.user?.role||'').toLowerCase()==='admin';
   const toast=(m,e=false)=>window.showToast?.(m,e);
+  function policyView(){
+    let view=$('stockPolicyView');
+    if(view)return view;
+    const main=document.querySelector('main');
+    if(!main)return null;
+    view=document.createElement('section');
+    view.id='stockPolicyView';
+    view.className='view hidden';
+    main.appendChild(view);
+    return view;
+  }
   async function call(action,payload={}){
     const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-session-token':window.state?.token||''},body:JSON.stringify({action,...payload})});
     const d=await r.json().catch(()=>({error:'Resposta inválida'}));
@@ -37,8 +48,8 @@
       render();
     }catch(e){renderError(e.message);}finally{P.loading=false;}
   }
-  function renderLoading(){const v=$('replenishmentView');if(!v)return;v.innerHTML=tabs('policy')+'<div class="policy-loading">Carregando Política de Estoque…</div>';bindTabs(v);}
-  function renderError(msg){const v=$('replenishmentView');if(!v)return;v.innerHTML=tabs('policy')+'<div class="policy-empty-card"><strong>Não foi possível carregar</strong><span>'+esc(msg)+'</span><button class="outline-button" data-retry>Tentar novamente</button></div>';bindTabs(v);v.querySelector('[data-retry]').onclick=load;}
+  function renderLoading(){const v=policyView();if(!v)return;v.innerHTML=tabs('policy')+'<div class="policy-loading">Carregando Política de Estoque…</div>';bindTabs(v);}
+  function renderError(msg){const v=policyView();if(!v)return;v.innerHTML=tabs('policy')+'<div class="policy-empty-card"><strong>Não foi possível carregar</strong><span>'+esc(msg)+'</span><button class="outline-button" data-retry>Tentar novamente</button></div>';bindTabs(v);v.querySelector('[data-retry]').onclick=load;}
   function filtered(){
     const items=P.data?.items||[],q=P.query.trim().toLowerCase();
     return items.filter(x=>(!q||String(x.sku_code).toLowerCase().includes(q)||String(x.sku_name||'').toLowerCase().includes(q))&&(!P.curve||x.curve_class===P.curve)&&(!P.qty||x.qty_status===P.qty)&&(!P.validity||x.validity_status===P.validity));
@@ -79,7 +90,7 @@
     }).join('');
   }
   function render(){
-    const view=$('replenishmentView');if(!view)return;
+    const view=policyView();if(!view)return;
     if(!P.data){
       const r=currentRevision();
       view.innerHTML=tabs('policy')+'<div class="policy-empty-card"><strong>Nenhuma Política de Estoque criada.</strong><span>Crie '+esc(r.code)+' usando as vendas do período '+dt(r.review_start)+' a '+dt(r.review_end)+'. A regra operacional mantém o mínimo em 3 dias e o ponto objetivo inicial em 5 dias (D+2).</span>'+(canAdmin()?'<button class="primary-button" data-generate>Gerar '+esc(r.code)+'</button>':'')+'</div>';
@@ -120,13 +131,14 @@
     try{await call('policy_approve',{version_id:P.data.version.id});toast('Política aprovada.');await load();}catch(e){toast(e.message,true);}
   }
   async function open(){
-    const view=$('replenishmentView');if(!view)return;
+    const view=policyView();if(!view)return;
     document.querySelectorAll('main > .view').forEach(v=>v.classList.add('hidden'));document.querySelectorAll('.nav-link').forEach(n=>n.classList.remove('active'));view.classList.remove('hidden');document.querySelector('[data-view="pull-policy"]')?.classList.add('active');document.querySelector('.pull-nav-group')?.classList.add('open');$('sidebar')?.classList.remove('open');
-    if($('pageTitle'))$('pageTitle').textContent='Puxada';if($('pageSubtitle'))$('pageSubtitle').textContent='Reposição D+2 e Política de Estoque semestral.';
+    if($('pageTitle'))$('pageTitle').textContent='Política de Estoque';if($('pageSubtitle'))$('pageSubtitle').textContent='Revisão semestral de mínimo, objetivo, máximo, OOR e Stock Age.';
     await load();
   }
   function install(){
-    if(!document.getElementById('stockPolicyCss')){const l=document.createElement('link');l.id='stockPolicyCss';l.rel='stylesheet';l.href='stock-policy.css?v=20260923-1';document.head.appendChild(l);}
+    policyView();
+    if(!document.getElementById('stockPolicyCss')){const l=document.createElement('link');l.id='stockPolicyCss';l.rel='stylesheet';l.href='stock-policy.css?v=20260923-2';document.head.appendChild(l);}
     window.__stockPolicy={open,reload:load};
   }
   install();
