@@ -393,7 +393,7 @@ Deno.serve(async (req: Request) => {
         month_daily: monthDaily.map(decorate),
         policy,
         formula: {
-          daily: "STOCKOUT = SKUs abaixo do mínimo / total de SKUs da PE; STOCKOVER = SKUs acima do máximo / total de SKUs da PE; OK = demais SKUs da PE",
+          daily: "Comparação em HL: OUT quando disponível HL < mínimo HL; OVER quando disponível HL > máximo HL; sem demanda-base não gera OVER automático",
           accumulated: "soma das classificações diárias / soma do total de SKUs da PE em cada dia",
           monthly: "mesma memória oficial aplicada ao acumulado dos dias do mês"
         }
@@ -493,12 +493,26 @@ Deno.serve(async (req: Request) => {
         const sku = String(lim.sku_code || "").trim();
         const src = incomingBySku.get(sku);
         const qty = Number(src?.available_qty ?? 0);
-        const minQty = Number(lim.min_qty ?? lim.out_qty);
-        const maxQty = Number(lim.max_qty ?? lim.over_qty);
-        if (!/^\d+$/.test(sku) || !Number.isFinite(minQty) || !Number.isFinite(maxQty)) {
-          throw new Error("Política de Estoque possui SKU ou limite mínimo/máximo inválido");
+        const avgQty = Number(lim.avg_daily_qty ?? 0);
+        const avgHl = Number(lim.avg_daily_hl ?? 0);
+        const minQty = lim.min_qty == null ? 0 : Number(lim.min_qty);
+        const maxQty = lim.max_qty == null ? null : Number(lim.max_qty);
+        const minHl = lim.min_hl == null ? 0 : Number(lim.min_hl);
+        const maxHl = lim.max_hl == null ? null : Number(lim.max_hl);
+        if (!/^\d+$/.test(sku) || !Number.isFinite(qty) || !Number.isFinite(minQty) || !Number.isFinite(minHl)) {
+          throw new Error("Política de Estoque possui SKU ou limite mínimo inválido");
         }
-        const status = qty < minQty ? "OUT" : qty > maxQty ? "OVER" : "OK";
+
+        // A Política é construída e comparada em HL.
+        // Sem demanda-base não se cria máximo artificial nem OVER automático.
+        let status = "OK";
+        if (avgQty > 0 && avgHl > 0) {
+          const hlPerQty = avgHl / avgQty;
+          const availableHl = qty * hlPerQty;
+          if (availableHl < minHl) status = "OUT";
+          else if (maxHl != null && Number.isFinite(maxHl) && availableHl > maxHl) status = "OVER";
+        }
+
         return {
           reference_date: referenceDate,
           sku_code: sku,
