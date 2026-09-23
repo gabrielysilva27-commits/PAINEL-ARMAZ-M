@@ -9,7 +9,7 @@ const promax = require("./lib/promax");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.1.0";
+const VERSION = "3.1.1";
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
