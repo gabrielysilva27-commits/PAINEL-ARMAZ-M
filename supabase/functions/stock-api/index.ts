@@ -403,27 +403,55 @@ Deno.serve(async (req: Request) => {
     if (body.action === "oor_get") {
       let referenceDate = String(body.reference_date || "");
       if (!/^\d{4}-\d{2}-\d{2}$/.test(referenceDate)) {
-        const { data, error } = await db.from("stock_oor_daily").select("reference_date").order("reference_date", { ascending: false }).limit(1).maybeSingle();
+        const { data, error } = await db.from("stock_oor_daily_summary").select("reference_date").order("reference_date", { ascending: false }).limit(1).maybeSingle();
         if (error) throw error;
         referenceDate = String(data?.reference_date || "");
       }
       if (!referenceDate) return json({ reference_date: null, rows: [], dates: [], counts: {} });
-      const rows: any[] = [];
-      for (let offset = 0;; offset += 1000) {
-        const { data, error } = await db.from("stock_oor_daily").select("*").eq("reference_date", referenceDate).order("sku_code").range(offset, offset + 999);
-        if (error) throw error;
-        rows.push(...(data || []));
-        if (!data || data.length < 1000) break;
+
+      const { data: detailRows, error: detailError } = await db.from("stock_oor_daily_detail")
+        .select("reference_date,sku_code,status,available_qty,avg_sales_qty,min_days,max_days,real_days,curve_class")
+        .eq("reference_date", referenceDate).order("sku_code");
+      if (detailError) throw detailError;
+
+      const skuCodes = [...new Set((detailRows || []).map((x: any) => String(x.sku_code)))];
+      const skuMap = new Map<string, any>();
+      for (let i = 0; i < skuCodes.length; i += 200) {
+        const slice = skuCodes.slice(i, i + 200);
+        if (!slice.length) continue;
+        const { data: mapped, error: mapError } = await db.from("stock_oor_sku_map").select("sku_code,sku_name,unit_code").in("sku_code", slice);
+        if (mapError) throw mapError;
+        for (const x of (mapped || [])) skuMap.set(String(x.sku_code), x);
       }
-      const { data: dateRows, error: dateError } = await db.from("stock_oor_daily").select("reference_date").order("reference_date", { ascending: false }).limit(5000);
+      const rows = (detailRows || []).map((x: any) => {
+        const m = skuMap.get(String(x.sku_code)) || {};
+        return {
+          ...x,
+          sku_code: String(x.sku_code),
+          sku_name: String(m.sku_name || ""),
+          unit_code: m.unit_code || null,
+          available_qty: x.available_qty == null ? null : Number(x.available_qty),
+          avg_sales_qty: x.avg_sales_qty == null ? null : Number(x.avg_sales_qty),
+          min_days: x.min_days == null ? null : Number(x.min_days),
+          max_days: x.max_days == null ? null : Number(x.max_days),
+          real_days: x.real_days == null ? null : Number(x.real_days),
+        };
+      });
+
+      const { data: dateRows, error: dateError } = await db.from("stock_oor_daily_summary").select("reference_date").order("reference_date", { ascending: false }).limit(5000);
       if (dateError) throw dateError;
-      const dates = [...new Set((dateRows || []).map((x: any) => String(x.reference_date)))].slice(0, 90);
-      const counts: Record<string, number> = { OUT: 0, OVER: 0, OK: 0, SEM_POLITICA: 0 };
-      for (const r of rows) counts[String(r.status || "SEM_POLITICA")] = (counts[String(r.status || "SEM_POLITICA")] || 0) + 1;
+      const dates = [...new Set((dateRows || []).map((x: any) => String(x.reference_date)))];
+      const counts: Record<string, number> = { OUT: 0, OVER: 0, OK: 0 };
+      for (const r of rows) if (counts[r.status] != null) counts[r.status]++;
+
       let policy: any = null;
-      const versionId = rows.find((x: any) => x.policy_version_id)?.policy_version_id;
-      if (versionId) policy = await policyVersionById(String(versionId));
-      return json({ reference_date: referenceDate, rows, dates, counts, policy });
+      const { data: policyRow, error: policyError } = await db.from("stock_policy_versions").select("*")
+        .eq("status", "approved").lte("effective_start", referenceDate).gte("effective_end", referenceDate)
+        .order("effective_start", { ascending: false }).limit(1).maybeSingle();
+      if (policyError) throw policyError;
+      policy = policyRow || null;
+
+      return json({ reference_date: referenceDate, rows, dates, counts, policy, detail_available: rows.length > 0 });
     }
 
     if (body.action === "oor_import") {
