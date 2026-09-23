@@ -284,10 +284,10 @@ async function createSession(config, rootDir) {
         "se:ieOptions": {
           "ie.edgechromium": true,
           "ie.edgepath": edge,
-          "ie.ignoreprocessmatch": true,
+          "ie.ignoreprocessmatch": false,
           ignoreProtectedModeSettings: true,
           ignoreZoomSetting: true,
-          browserAttachTimeout: 20000,
+          browserAttachTimeout: 30000,
           requireWindowFocus: false,
           nativeEvents: false,
           initialBrowserUrl: baseUrl
@@ -735,8 +735,30 @@ async function openCalibrationBrowser(config, rootDir) {
   clearSavedSession(rootDir);
   await sleep(700);
   await createSession(config, rootDir);
-  try { await wd("POST", "/window/maximize", {}, 8000); } catch {}
+
+  // Edge IE mode can attach successfully while reusing an existing top-level
+  // Edge process. Force a new top-level WebDriver window for the explicit
+  // "Abrir Promax" action so the user always gets a visible controlled window.
+  try {
+    const before = await handles();
+    const created = await wd("POST", "/window/new", { type: "window" }, 12000);
+    const newHandle = String(created && created.handle || "");
+    if (newHandle) {
+      await waitUntil(async function () {
+        const hs = await handles();
+        return hs.indexOf(newHandle) >= 0;
+      }, 12000, 300);
+      await switchWindow(newHandle);
+    } else if (before.length) {
+      await switchWindow(before[before.length - 1]);
+    }
+  } catch {
+    const hs = await handles();
+    if (hs.length) await switchWindow(hs[hs.length - 1]);
+  }
+
   await navigate(url);
+  try { await wd("POST", "/window/maximize", {}, 8000); } catch {}
 }
 
 module.exports = { isConfigured, readinessError, missingSelectors, openCalibrationBrowser, export020501 };
