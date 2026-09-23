@@ -1,92 +1,78 @@
-# Agente Puxada - Promax
+# Agente Puxada - Promax V2
 
-Este servico representa um unico **Agente Puxada**, mas pode ser instalado simultaneamente em dois computadores autorizados: o PC oficial da Puxada e o PC ADM.
+O Agente Puxada sincroniza automaticamente o relatório **02.05.01** do Promax com o Painel Armazém.
 
-Fluxo:
+Fluxo real validado em setembro/2026:
 
-Promax -> relatorio 020501 -> CSV -> Painel Armazem -> cruzamento Fisico x Sistema.
+Promax no Microsoft Edge (Modo IE) -> atalho 02.05.01 -> filtros -> Visualizar -> CSV -> arquivo .csv.inf -> Painel Armazém -> cruzamento físico x sistema.
 
-## Filtros definidos
+## Dois computadores autorizados
 
-- Relatorio: 020501
-- Armazem: 1
-- Deposito: 1
-- Operacao inicial: 251
-- Operacao final: 314
-- Exportacao: CSV
-
-A data inicial nao e fixa. O Painel calcula a carreta mais antiga ainda sem resolucao na Puxada e envia o periodo correto ao agente. A data final e o dia atual.
-
-## Consolidacao
-
-O CSV e consolidado por:
-
-Fornecedor + NF + Codigo do produto
-
-Assim compra, bonificacao e outras repeticoes do mesmo produto na mesma NF sao somadas antes do cruzamento.
-
-## Um agente em dois computadores
-
-Os dois computadores executam o mesmo codigo, mas cada instalacao usa seu proprio token.
+Existe um único Agente Puxada lógico, com dois computadores autorizados:
 
 - Computador oficial da Puxada
 - Computador ADM
 
-Existe uma unica fila de sincronizacao no Painel. Quando surge uma tarefa, o primeiro computador disponivel faz um **claim atomico** e recebe um lease. Enquanto ele executa, o outro fica em espera e nao pode baixar o mesmo relatorio.
+Cada computador possui seu próprio token. A fila é compartilhada e o primeiro computador disponível assume a sincronização com lease atômico.
 
-Se o computador que assumiu a tarefa perder contato, o lease expira e a mesma solicitacao volta para a fila para o outro computador assumir. Em falhas normais, o computador com erro entra em cooldown por alguns minutos e a tarefa e liberada imediatamente ao outro.
+## Regras do relatório
 
-## Instalacao
+- Relatório: 02.05.01
+- Armazém: 1 a 1
+- Depósito: 1 a 1
+- Operação: 251 a 314
+- Item, fornecedor, tipo de movimento e mapa permanecem nos padrões do Promax
+- Movimentações automáticas do dia: permanece como padrão da tela
+- Tipo de data: Entrega
+- Data inicial: calculada pelo Painel conforme a carreta mais antiga pendente
+- Data final: dia da sincronização
 
-1. No Painel Armazem, abra ADM -> Agente Puxada.
-2. Gere o token especifico do computador que esta sendo instalado.
-3. Copie a pasta agent-puxada para esse computador.
-3. Instale Node.js LTS se ainda nao estiver instalado.
-4. Abra PowerShell na pasta e execute .\install.ps1
-5. Cole o token correspondente àquele PC quando solicitado.
-6. Execute .\calibrar.ps1
-7. Repita o processo no segundo computador usando o outro token.
+## Como a V2 opera o Promax
 
-O token e salvo com DPAPI do Windows e nao fica em texto puro.
+A V2 não usa Playwright e não inicia o Edge com depuração remota.
 
-## Login do Promax
+Ela usa o **IEDriver oficial do Selenium** para controlar o Microsoft Edge em **Modo Internet Explorer**, compatível com o Promax legado. Isso evita o problema em que a tela apenas atualizava ao clicar em Visualizar quando o navegador era aberto com depuração remota.
 
-O agente usa um perfil dedicado do Microsoft Edge na pasta promax-profile.
+O agente mantém a sessão do Edge durante sua execução. O usuário deve manter o Promax autenticado no Edge do computador.
 
-A senha do Promax nao fica no codigo. O usuario faz login uma vez no perfil local dedicado e a sessao permanece no computador.
+## Download CSV
 
-## Calibracao pendente
+O Promax gera arquivos com extensão `.csv.inf`. Apesar da extensão, o conteúdo é CSV separado por ponto e vírgula e codificado em Windows-1252.
 
-A infraestrutura esta pronta, mas os seletores reais da tela do Promax dependem do computador que acessa o sistema.
+O agente tenta primeiro baixar o arquivo diretamente usando a sessão autenticada do Promax. Se o Promax exigir a barra de download do Edge, o agente aciona Salvar e monitora a pasta Downloads.
 
-Eles ficam no arquivo config.json:
+## Consolidação
 
-- reportSearch
-- reportOpen, opcional
-- dateFrom
-- dateTo
-- warehouse
-- deposit
-- operationFrom
-- operationTo
-- searchButton
-- exportCsvMenu, opcional
-- exportCsv
+O arquivo é consolidado por:
 
-Os seletores podem ser CSS ou atalhos como label=Data Inicial, placeholder=Relatorio, text=Exportar CSV ou role=button:Buscar.
+Fornecedor + NF/Documento + Código do produto
 
-Enquanto a calibracao nao estiver concluida, o agente informa Aguardando calibracao e nao tenta exportar dados.
+As operações positivas entre 251 e 314 são somadas antes do cruzamento.
 
-## Funcionamento normal
+## Instalação
 
-Depois de calibrado:
+1. No Painel Armazém, abra ADM -> Agente Puxada.
+2. Gere o token do computador correto.
+3. Extraia o pacote portátil.
+4. Abra AgentePuxada.exe.
+5. Cole o token.
+6. Deixe "Iniciar automaticamente com o Windows" marcado.
+7. Clique em "Calibrar Promax" apenas para abrir o Edge normal e fazer login no Promax.
+8. Clique em "Iniciar agente".
 
-- consulta o Painel a cada 30 segundos;
-- sincroniza automaticamente no intervalo definido no Painel, padrao de 10 minutos;
-- atende o botao Sincronizar agora;
-- baixa o 020501;
-- importa e consolida a base;
-- recalcula automaticamente os recebimentos concluidos;
-- registra historico e erros.
+Não são necessários PowerShell, Node.js instalado, permissões de administrador, ChatGPT aberto ou token da OpenAI.
 
-Logs locais: logs\agent.log
+## Segurança
+
+O token é protegido pelo DPAPI do Windows e fica vinculado ao usuário local.
+
+Se AppLocker, WDAC ou outra política corporativa bloquear AgentePuxada.exe ou IEDriverServer.exe, a liberação deve ser feita pela TI. O agente não tenta contornar proteções corporativas.
+
+## Diagnóstico
+
+Logs:
+
+- app\logs\agent.log
+- app\logs\iedriver.log
+
+Versão do agente: 2.0.0
