@@ -14,9 +14,7 @@
     if(!r.ok)throw new Error(d.error||'Falha na Política de Estoque');
     return d;
   }
-  function tabs(active='policy'){
-    return '<nav class="pull-subtabs"><button type="button" data-pull-tab="pull" class="'+(active==='pull'?'active':'')+'">Puxada</button><button type="button" data-pull-tab="policy" class="'+(active==='policy'?'active':'')+'">Política de Estoque</button></nav>';
-  }
+  function tabs(){return '';}
   function currentRevision(){
     const now=new Date(), y=now.getFullYear(), m=now.getMonth()+1;
     if(m<=6)return {code:'R1/'+y,review_start:(y-1)+'-07-01',review_end:(y-1)+'-12-31',effective_start:y+'-01-01',effective_end:y+'-06-30'};
@@ -26,10 +24,7 @@
   function qtyLabel(v){return ({OUT:'OUT','ABAIXO_DO_OBJETIVO':'Abaixo do objetivo',OK:'OK',OVER:'OVER','SEM_DADO':'Sem dado','SEM_POLITICA':'Sem política'})[v]||v||'—';}
   function validityLabel(v){return ({NORMAL:'Normal',ATENCAO:'Atenção ≤45d',CRITICO:'Crítico ≤30d',VENCIDO:'Vencido','SEM_VALIDADE':'Sem validade'})[v]||v||'—';}
   function cls(v){return String(v||'').toLowerCase().replace(/_/g,'-').replace(/[ãáàâ]/g,'a').replace(/[ç]/g,'c').replace(/[í]/g,'i');}
-  function bindTabs(root){
-    root.querySelector('[data-pull-tab="pull"]')?.addEventListener('click',()=>window.__replenishmentLazy?.openModule?.());
-    root.querySelector('[data-pull-tab="policy"]')?.addEventListener('click',()=>open());
-  }
+  function bindTabs(){ }
   async function loadVersions(){
     const d=await call('policy_list');P.versions=d.versions||[];
     if(!P.versionId)P.versionId=P.versions.find(x=>x.status==='approved')?.id||P.versions.find(x=>x.status==='draft')?.id||P.versions[0]?.id||'';
@@ -126,7 +121,7 @@
   }
   async function open(){
     const view=$('replenishmentView');if(!view)return;
-    document.querySelectorAll('main > .view').forEach(v=>v.classList.add('hidden'));document.querySelectorAll('.nav-link').forEach(n=>n.classList.remove('active'));view.classList.remove('hidden');document.querySelector('[data-view="replenishment"]')?.classList.add('active');$('sidebar')?.classList.remove('open');
+    document.querySelectorAll('main > .view').forEach(v=>v.classList.add('hidden'));document.querySelectorAll('.nav-link').forEach(n=>n.classList.remove('active'));view.classList.remove('hidden');document.querySelector('[data-view="pull-policy"]')?.classList.add('active');document.querySelector('.pull-nav-group')?.classList.add('open');$('sidebar')?.classList.remove('open');
     if($('pageTitle'))$('pageTitle').textContent='Puxada';if($('pageSubtitle'))$('pageSubtitle').textContent='Reposição D+2 e Política de Estoque semestral.';
     await load();
   }
