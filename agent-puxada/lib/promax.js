@@ -716,7 +716,26 @@ async function export020501(job, config, rootDir) {
 
 async function openCalibrationBrowser(config, rootDir) {
   const url = String(config.promax && config.promax.url || "https://imperio.promaxcloud.com.br").trim();
+
+  // "Abrir Promax" é uma ação explícita de recuperação. Não reutilize uma
+  // sessão invisível/órfã: encerre as sessões do IEDriver dedicado do agente
+  // e crie uma janela nova e controlada.
+  await startDriver(rootDir);
+  try {
+    const response = await http("GET", driverBase() + "/sessions", null, 3000);
+    const sessions = Array.isArray(response.value) ? response.value : [];
+    for (const session of sessions) {
+      const id = String(session.id || session.sessionId || "");
+      if (!id) continue;
+      try { await http("DELETE", driverBase() + "/session/" + encodeURIComponent(id), null, 8000); } catch {}
+    }
+  } catch {}
+
+  SESSION_ID = null;
+  clearSavedSession(rootDir);
+  await sleep(700);
   await createSession(config, rootDir);
+  try { await wd("POST", "/window/maximize", {}, 8000); } catch {}
   await navigate(url);
 }
 
