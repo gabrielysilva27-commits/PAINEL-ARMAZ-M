@@ -23,11 +23,12 @@ async function run() {
   let nestedFrame = false;
   let markerOnly = false;
   let activeWindow = "home";
+  let sessionUrl = "https://imperio.promaxcloud.com.br";
   const server = http.createServer((req, res) => {
     res.setHeader("Content-Type", "application/json");
     if (req.url === "/status") res.end(JSON.stringify({ value: { ready: true } }));
     else if (req.url === "/sessions") res.end(JSON.stringify({ value: [{ id: "test-session" }] }));
-    else if (req.url === "/session/test-session/url") res.end(JSON.stringify({ value: "https://imperio.promaxcloud.com.br" }));
+    else if (req.url === "/session/test-session/url") res.end(JSON.stringify({ value: sessionUrl }));
     else if (req.url === "/session/test-session/window/handles") res.end(JSON.stringify({ value: ["report", "home"] }));
     else if (req.url === "/session/test-session/frame" && req.method === "POST") res.end(JSON.stringify({ value: null }));
     else if (req.url === "/session/test-session/frame/parent" && req.method === "POST") res.end(JSON.stringify({ value: null }));
@@ -75,7 +76,8 @@ async function run() {
     assert.equal(await isConfigured({ promax: { url: "https://imperio.promaxcloud.com.br" } }, app), false, "login não é calibração pronta");
     fs.writeFileSync(path.join(base, "data", "promax-session.json"), JSON.stringify({ session_id: "expired" }));
     page = "LogOff Atalho";
-    assert.equal(await isConfigured({ promax: { url: "https://imperio.promaxcloud.com.br" } }, app), true, "sessão existente é recuperada");
+    sessionUrl = "https://sso.promaxcloud.com.br/home";
+    assert.equal(await isConfigured({ promax: { url: "https://imperio.promaxcloud.com.br" } }, app), true, "sessão única redirecionada é recuperada");
     assert.equal(JSON.parse(fs.readFileSync(path.join(base, "data", "promax-session.json"))).session_id, "test-session");
     console.log("Sessão ativa, login e sessão expirada: OK");
   } finally {

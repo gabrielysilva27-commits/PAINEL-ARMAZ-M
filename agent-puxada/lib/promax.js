@@ -91,6 +91,8 @@ async function isConfigured(config, rootDir) {
       SESSION_ID = id;
     }
     const hs = await handles();
+    let loginDetected = false;
+    let usablePromaxWindow = false;
     for (const handle of hs) {
       try {
         await switchWindow(handle);
@@ -98,9 +100,22 @@ async function isConfigured(config, rootDir) {
           LAST_READINESS_ERROR = "";
           return true;
         }
+        if (await findLoginInFrames()) {
+          loginDetected = true;
+          continue;
+        }
+        if (urlLooksPromax(await currentUrl(), config)) usablePromaxWindow = true;
       } catch {}
     }
-    LAST_READINESS_ERROR = "Sessão conectada, mas a tela inicial logada (LogOff e Atalho) não foi detectada nos quadros do Promax.";
+    if (loginDetected) {
+      LAST_READINESS_ERROR = "Sessão do Promax encontrada, mas a tela de login ainda está aberta.";
+      return false;
+    }
+    if (usablePromaxWindow) {
+      LAST_READINESS_ERROR = "";
+      return true;
+    }
+    LAST_READINESS_ERROR = "Sessão conectada, mas nenhuma janela navegável do Promax foi encontrada.";
     return false;
   } catch (error) {
     LAST_READINESS_ERROR = "Falha ao consultar a sessão do Promax: " + (error && error.message || String(error));
@@ -122,16 +137,29 @@ async function findExistingSession(config, rootDir) {
     const response = await http("GET", driverBase() + "/sessions", null, 3000);
     const sessions = Array.isArray(response.value) ? response.value : [];
     const host = new URL(String(config.promax && config.promax.url)).hostname;
+    const alive = [];
     for (const session of sessions) {
       const id = String(session.id || session.sessionId || "");
       if (!id) continue;
       try {
         const current = await http("GET", driverBase() + "/session/" + encodeURIComponent(id) + "/url", null, 3000);
-        if (new URL(String(current.value || "")).hostname !== host) continue;
-        SESSION_ID = id;
-        saveSession(rootDir, id);
-        return id;
+        const url = String(current.value || "");
+        alive.push({ id, url });
+        try {
+          if (new URL(url).hostname === host) {
+            SESSION_ID = id;
+            saveSession(rootDir, id);
+            return id;
+          }
+        } catch {}
       } catch {}
+    }
+    // O IEDriver usado pelo Agente Puxada aceita uma sessão por vez. Se ela
+    // redirecionou para outro host/subdomínio do Promax, ainda é a sessão certa.
+    if (alive.length === 1) {
+      SESSION_ID = alive[0].id;
+      saveSession(rootDir, SESSION_ID);
+      return SESSION_ID;
     }
   } catch {}
   return "";
@@ -350,6 +378,26 @@ async function findHomeInFrames() {
   }, 8);
 }
 
+async function findLoginInFrames() {
+  return findInFrames(async function () {
+    const t = normalized(await bodyText());
+    return t.indexOf("USUARIO") >= 0 && t.indexOf("SENHA") >= 0;
+  }, 8);
+}
+
+function urlLooksPromax(url, config) {
+  try {
+    const current = new URL(String(url || ""));
+    const base = new URL(String(config.promax && config.promax.url || "https://imperio.promaxcloud.com.br"));
+    return current.protocol.indexOf("http") === 0 &&
+      (current.hostname === base.hostname ||
+       current.hostname.endsWith(".promaxcloud.com.br") ||
+       current.hostname.indexOf("promax") >= 0);
+  } catch {
+    return false;
+  }
+}
+
 async function waitUntil(check, timeoutMs, intervalMs) {
   const until = Date.now() + (timeoutMs || 30000);
   let lastErr = null;
@@ -380,91 +428,107 @@ async function switchToWindowContaining(expected) {
 }
 
 async function openShortcut(reportCode) {
-  if (!await findTextInFrames("Atalho")) throw new Error("Campo ATALHO não encontrado nos quadros do Promax.");
   const script = [
     "var target=arguments[0];",
     "function n(s){return String(s||'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
     "function vis(e){if(!e)return false;try{var r=e.getBoundingClientRect();return r.width>0&&r.height>0;}catch(x){return true;}}",
-    "function docs(w,depth,out){if(depth>8)return;try{if(w.document)out.push(w.document);}catch(e){}try{for(var i=0;i<w.frames.length;i++)docs(w.frames[i],depth+1,out);}catch(e){}}",
-    "var all=[];docs(window,0,all);var best=null,bestDoc=null,bestScore=999999;",
-    "for(var di=0;di<all.length;di++){var d=all[di],labels=d.querySelectorAll('td,th,div,span,font,b,label');var lab=null;",
-    "for(var i=0;i<labels.length;i++){var t=n(labels[i].innerText||labels[i].textContent||labels[i].title||labels[i].value);if(t==='ATALHO'||t.indexOf('ATALHO')===0){lab=labels[i];break;}}",
-    "if(!lab)continue;var lr=lab.getBoundingClientRect();var inputs=d.querySelectorAll('input[type=text],input:not([type]),textarea');",
-    "for(var j=0;j<inputs.length;j++){var e=inputs[j];if(!vis(e))continue;var r=e.getBoundingClientRect();var score=Math.abs(r.top-lr.bottom)+Math.max(0,lr.left-r.left);if(score<bestScore){best=e;bestDoc=d;bestScore=score;}}}",
-    "if(!best)throw new Error('Campo ATALHO nao encontrado nos quadros do Promax.');",
+    "var d=document,best=null,ok=null;",
+    "var inputs=d.querySelectorAll('input[type=text],input:not([type]),textarea');",
+    "for(var i=0;i<inputs.length;i++){var e=inputs[i],meta=n((e.name||'')+' '+(e.id||'')+' '+(e.title||'')+' '+(e.placeholder||'')+' '+(e.getAttribute('aria-label')||''));if(vis(e)&&meta.indexOf('ATALHO')>=0){best=e;break;}}",
+    "if(!best){var labels=d.querySelectorAll('td,th,div,span,font,b,label');for(var j=0;j<labels.length&&!best;j++){var l=labels[j],t=n(l.innerText||l.textContent||l.title||l.getAttribute('aria-label'));if(t.indexOf('ATALHO')<0)continue;var lr=l.getBoundingClientRect(),score=999999;for(var k=0;k<inputs.length;k++){var x=inputs[k];if(!vis(x))continue;var r=x.getBoundingClientRect(),s=Math.abs(r.top-lr.bottom)+Math.max(0,lr.left-r.left);if(s<score){score=s;best=x;}}}}",
+    "var acts=d.querySelectorAll('input,button,a,img');for(var q=0;q<acts.length;q++){var a=acts[q],txt=n(a.value||a.innerText||a.textContent||a.title||a.alt||a.name||a.id);if(vis(a)&&(txt==='OK'||txt.indexOf(' OK ')>=0||txt.indexOf('OK')===0)){ok=a;break;}}",
+    "if(!best||!ok)return false;",
     "best.focus();best.value=target;",
-    "try{best.fireEvent('onchange');}catch(x){try{var ev=bestDoc.createEvent('HTMLEvents');ev.initEvent('change',true,false);best.dispatchEvent(ev);}catch(y){}}",
-    "var searchDocs=[bestDoc];for(var z=0;z<all.length;z++)if(all[z]!==bestDoc)searchDocs.push(all[z]);var ok=null;",
-    "for(var q=0;q<searchDocs.length&&!ok;q++){var acts=searchDocs[q].querySelectorAll('input,button,a');for(var k=0;k<acts.length;k++){var a=acts[k],txt=n(a.value||a.innerText||a.textContent||a.title);if(vis(a)&&txt==='OK'){ok=a;break;}}}",
-    "if(!ok)throw new Error('Botao OK do ATALHO nao encontrado.');",
-    "ok.click();return true;"
+    "try{best.fireEvent('onchange');}catch(x){try{var ev=d.createEvent('HTMLEvents');ev.initEvent('change',true,false);best.dispatchEvent(ev);}catch(y){}}",
+    "try{ok.click();}catch(x){try{ok.fireEvent('onclick');}catch(y){return false;}}",
+    "return true;"
   ].join("");
-  return execute(script, [reportCode]);
+  const hs = await handles();
+  for (let i = hs.length - 1; i >= 0; i--) {
+    try {
+      await switchWindow(hs[i]);
+      const found = await findInFrames(async function () {
+        return !!(await execute(script, [reportCode]));
+      }, 8);
+      if (found) return true;
+    } catch {}
+  }
+  throw new Error("Campo ATALHO/OK não foi localizado na sessão do Promax.");
 }
 
 async function fillReport(job, config) {
-  const reportFrame = await findInFrames(async function () {
-    const t = normalized(await bodyText());
-    return t.indexOf("PERIODO") >= 0 && t.indexOf("ARMAZEM") >= 0 && t.indexOf("OPERACAO") >= 0;
-  }, 8);
-  if (!reportFrame) throw new Error("Formulário 02.05.01 não encontrado nos quadros do Promax.");
-  const script = [
-    "var vals=arguments[0];",
-    "function n(s){return String(s||'').replace(/[ÁÀÂÃÄ]/gi,'A').replace(/[ÉÈÊË]/gi,'E').replace(/[ÍÌÎÏ]/gi,'I').replace(/[ÓÒÔÕÖ]/gi,'O').replace(/[ÚÙÛÜ]/gi,'U').replace(/Ç/gi,'C').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
-    "function vis(e){if(!e)return false;try{var r=e.getBoundingClientRect();return r.width>0&&r.height>0;}catch(x){return true;}}",
-    "function docs(w,depth,out){if(depth>8)return;try{if(w.document)out.push(w.document);}catch(e){}try{for(var i=0;i<w.frames.length;i++)docs(w.frames[i],depth+1,out);}catch(e){}}",
-    "var all=[];docs(window,0,all);",
-    "function setv(e,v){e.focus();e.value=String(v);try{e.fireEvent('onchange');}catch(x){try{var d=e.ownerDocument||document,ev=d.createEvent('HTMLEvents');ev.initEvent('change',true,false);e.dispatchEvent(ev);}catch(y){}}}",
-    "function labelNode(d,label){var nodes=d.querySelectorAll('td,th,span,div,font,b,label');var want=n(label);for(var i=0;i<nodes.length;i++){var t=n(nodes[i].innerText||nodes[i].textContent||nodes[i].title||nodes[i].value);if(t===want||t.indexOf(want)===0)return nodes[i];}return null;}",
-    "function pair(label){for(var di=0;di<all.length;di++){var d=all[di],l=labelNode(d,label);if(!l)continue;var lr=l.getBoundingClientRect();var a=d.querySelectorAll('input[type=text],input:not([type]),select');var list=[];for(var i=0;i<a.length;i++){var e=a[i];if(!vis(e))continue;var r=e.getBoundingClientRect();var dy=Math.abs((r.top+r.bottom)/2-(lr.top+lr.bottom)/2);if(dy<28&&r.left>lr.left-20)list.push({e:e,x:r.left,dy:dy});}list.sort(function(x,y){return x.x-y.x;});if(list.length>=2)return [list[0].e,list[1].e];var p=l.parentNode;for(var up=0;up<5&&p;up++,p=p.parentNode){var q=p.querySelectorAll('input[type=text],input:not([type]),select');var z=[];for(var j=0;j<q.length;j++)if(vis(q[j]))z.push(q[j]);if(z.length>=2)return [z[0],z[1]];}}throw new Error('Campos '+label+' nao encontrados nos quadros do Promax.');}",
-    "var p=pair('Periodo');setv(p[0],vals.dateFrom);setv(p[1],vals.dateTo);",
-    "var a=pair('Armazem');setv(a[0],vals.warehouse);setv(a[1],vals.warehouse);",
-    "var d=pair('Deposito');setv(d[0],vals.deposit);setv(d[1],vals.deposit);",
-    "var o=pair('Operacao');setv(o[0],vals.operationFrom);setv(o[1],vals.operationTo);",
-    "var view=null;for(var di2=0;di2<all.length&&!view;di2++){var acts=all[di2].querySelectorAll('input,button,a');for(var k=0;k<acts.length;k++){var t=n(acts[k].value||acts[k].innerText||acts[k].textContent||acts[k].title);if(vis(acts[k])&&(t==='VISUALIZAR'||t.indexOf('VISUALIZAR')>=0)){view=acts[k];break;}}}",
-    "if(!view)throw new Error('Botao Visualizar nao encontrado nos quadros do Promax.');view.click();return true;"
-  ].join("");
-
-  return execute(script, [{
+  const vals = {
     dateFrom: formatDate(job.date_from),
     dateTo: formatDate(job.date_to),
     warehouse: String(config.promax && config.promax.warehouse || job.warehouse || "1"),
     deposit: String(config.promax && config.promax.deposit || job.deposit || "1"),
     operationFrom: String(config.promax && config.promax.operationFrom || job.operation_from || "251"),
     operationTo: String(config.promax && config.promax.operationTo || job.operation_to || "314")
-  }]);
+  };
+  const script = [
+    "var vals=arguments[0];",
+    "function n(s){return String(s||'').replace(/[ÁÀÂÃÄ]/gi,'A').replace(/[ÉÈÊË]/gi,'E').replace(/[ÍÌÎÏ]/gi,'I').replace(/[ÓÒÔÕÖ]/gi,'O').replace(/[ÚÙÛÜ]/gi,'U').replace(/Ç/gi,'C').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
+    "function vis(e){if(!e)return false;try{var r=e.getBoundingClientRect();return r.width>0&&r.height>0;}catch(x){return true;}}",
+    "function setv(e,v){e.focus();e.value=String(v);try{e.fireEvent('onchange');}catch(x){try{var ev=document.createEvent('HTMLEvents');ev.initEvent('change',true,false);e.dispatchEvent(ev);}catch(y){}}}",
+    "function labelNode(label){var nodes=document.querySelectorAll('td,th,span,div,font,b,label');var want=n(label);for(var i=0;i<nodes.length;i++){var t=n(nodes[i].innerText||nodes[i].textContent||nodes[i].title||nodes[i].getAttribute('aria-label'));if(t===want||t.indexOf(want)===0)return nodes[i];}return null;}",
+    "function pair(label){var l=labelNode(label);if(!l)return null;var lr=l.getBoundingClientRect();var a=document.querySelectorAll('input[type=text],input:not([type]),select'),list=[];for(var i=0;i<a.length;i++){var e=a[i];if(!vis(e))continue;var r=e.getBoundingClientRect(),dy=Math.abs((r.top+r.bottom)/2-(lr.top+lr.bottom)/2);if(dy<32&&r.left>lr.left-30)list.push({e:e,x:r.left});}list.sort(function(x,y){return x.x-y.x;});if(list.length>=2)return [list[0].e,list[1].e];var p=l.parentNode;for(var up=0;up<6&&p;up++,p=p.parentNode){var q=p.querySelectorAll('input[type=text],input:not([type]),select'),z=[];for(var j=0;j<q.length;j++)if(vis(q[j]))z.push(q[j]);if(z.length>=2)return [z[0],z[1]];}return null;}",
+    "var p=pair('Periodo'),a=pair('Armazem'),d=pair('Deposito'),o=pair('Operacao');if(!p||!a||!d||!o)return false;",
+    "var view=null,acts=document.querySelectorAll('input,button,a,img');for(var k=0;k<acts.length;k++){var t=n(acts[k].value||acts[k].innerText||acts[k].textContent||acts[k].title||acts[k].alt);if(vis(acts[k])&&t.indexOf('VISUALIZAR')>=0){view=acts[k];break;}}if(!view)return false;",
+    "setv(p[0],vals.dateFrom);setv(p[1],vals.dateTo);setv(a[0],vals.warehouse);setv(a[1],vals.warehouse);setv(d[0],vals.deposit);setv(d[1],vals.deposit);setv(o[0],vals.operationFrom);setv(o[1],vals.operationTo);",
+    "try{view.click();}catch(x){try{view.fireEvent('onclick');}catch(y){return false;}}return true;"
+  ].join("");
+
+  const hs = await handles();
+  for (let i = hs.length - 1; i >= 0; i--) {
+    try {
+      await switchWindow(hs[i]);
+      const found = await findInFrames(async function () {
+        return !!(await execute(script, [vals]));
+      }, 8);
+      if (found) return true;
+    } catch {}
+  }
+  return false;
 }
 
 async function csvDescriptor() {
-  const csvFrame = await findInFrames(async function () {
-    const t = normalized(await bodyText());
-    return t.indexOf("CSV") >= 0;
-  }, 8);
-  if (!csvFrame) return null;
   const script = [
     "function n(s){return String(s||'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
-    "function docs(w,depth,out){if(depth>8)return;try{if(w.document)out.push(w.document);}catch(e){}try{for(var i=0;i<w.frames.length;i++)docs(w.frames[i],depth+1,out);}catch(e){}}",
-    "var all=[];docs(window,0,all);",
-    "for(var di=0;di<all.length;di++){var a=all[di].querySelectorAll('a,input,button');",
-    "for(var i=0;i<a.length;i++){var e=a[i],t=n(e.value||e.innerText||e.textContent||e.title);if(t==='CSV'){return {tag:e.tagName||'',href:e.href||e.getAttribute('href')||'',onclick:e.getAttribute('onclick')||'',html:e.outerHTML||''};}}}",
+    "var a=document.querySelectorAll('a,input,button,img');",
+    "for(var i=0;i<a.length;i++){var e=a[i],t=n(e.value||e.innerText||e.textContent||e.title||e.alt||e.name||e.id);if(t==='CSV'||t.indexOf('CSV')===0){return {tag:e.tagName||'',href:e.href||e.getAttribute('href')||'',onclick:e.getAttribute('onclick')||'',html:e.outerHTML||''};}}",
     "return null;"
   ].join("");
-  return execute(script);
+  const hs = await handles();
+  for (let i = hs.length - 1; i >= 0; i--) {
+    try {
+      await switchWindow(hs[i]);
+      let descriptor = null;
+      const found = await findInFrames(async function () {
+        descriptor = await execute(script);
+        return !!descriptor;
+      }, 8);
+      if (found) return descriptor;
+    } catch {}
+  }
+  return null;
 }
 
 async function clickCsv() {
-  const csvFrame = await findInFrames(async function () {
-    const t = normalized(await bodyText());
-    return t.indexOf("CSV") >= 0;
-  }, 8);
-  if (!csvFrame) throw new Error("Botão CSV não encontrado nos quadros do Promax.");
-  return execute([
+  const script = [
     "function n(s){return String(s||'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
-    "function docs(w,depth,out){if(depth>8)return;try{if(w.document)out.push(w.document);}catch(e){}try{for(var i=0;i<w.frames.length;i++)docs(w.frames[i],depth+1,out);}catch(e){}}",
-    "var all=[];docs(window,0,all);",
-    "for(var di=0;di<all.length;di++){var a=all[di].querySelectorAll('a,input,button');for(var i=0;i<a.length;i++){var e=a[i],t=n(e.value||e.innerText||e.textContent||e.title);if(t==='CSV'){e.click();return true;}}}",
-    "throw new Error('Botao CSV nao encontrado nos quadros do Promax.');"
-  ].join(""));
+    "var a=document.querySelectorAll('a,input,button,img');for(var i=0;i<a.length;i++){var e=a[i],t=n(e.value||e.innerText||e.textContent||e.title||e.alt||e.name||e.id);if(t==='CSV'||t.indexOf('CSV')===0){try{e.click();}catch(x){try{e.fireEvent('onclick');}catch(y){return false;}}return true;}}return false;"
+  ].join("");
+  const hs = await handles();
+  for (let i = hs.length - 1; i >= 0; i--) {
+    try {
+      await switchWindow(hs[i]);
+      const found = await findInFrames(async function () {
+        return !!(await execute(script));
+      }, 8);
+      if (found) return true;
+    } catch {}
+  }
+  throw new Error("Botão CSV não encontrado nos quadros do Promax.");
 }
 
 async function cookieHeader() {
@@ -562,15 +626,21 @@ async function ensurePromaxHome(config, rootDir) {
   await createSession(config, rootDir);
   const baseUrl = String(config.promax && config.promax.url || "https://imperio.promaxcloud.com.br").trim();
   await navigate(baseUrl);
-  await waitUntil(async function () {
-    if (await findHomeInFrames()) return true;
-    const login = await findInFrames(async function () {
-      const t = normalized(await bodyText());
-      return t.indexOf("USUARIO") >= 0 && t.indexOf("SENHA") >= 0;
-    }, 8);
-    if (login) throw new Error("PROMAX_LOGIN_REQUIRED: faca login no Promax no Edge e mantenha a sessao aberta.");
-    return false;
-  }, 25000, 500);
+  await sleep(1200);
+  const hs = await handles();
+  let usable = false;
+  for (const handle of hs) {
+    try {
+      await switchWindow(handle);
+      if (await findHomeInFrames()) return true;
+      if (await findLoginInFrames()) throw new Error("PROMAX_LOGIN_REQUIRED: faça login no Promax no Edge e mantenha a sessão aberta.");
+      if (urlLooksPromax(await currentUrl(), config)) usable = true;
+    } catch (e) {
+      if (String(e && e.message || e).indexOf("PROMAX_LOGIN_REQUIRED") >= 0) throw e;
+    }
+  }
+  if (usable) return true;
+  throw new Error("Sessão do Promax conectada, mas a aplicação não ficou navegável.");
 }
 
 async function export020501(job, config, rootDir) {
@@ -578,22 +648,15 @@ async function export020501(job, config, rootDir) {
   var report = String(config.promax && config.promax.report || "02.05.01").replace(/\D/g, "");
   if (report === "020501") report = "02.05.01";
   await openShortcut(report);
-  await switchToWindowContaining("Movimentação do Estoque");
-  await waitUntil(async function () {
-    return findInFrames(async function () {
-      const t = normalized(await bodyText());
-      return t.indexOf("PERIODO") >= 0 && t.indexOf("ARMAZEM") >= 0 && t.indexOf("OPERACAO") >= 0;
-    }, 8);
-  }, 20000, 400);
 
-  await fillReport(job, config);
-  await switchToWindowContaining("Movimentação de Estoque");
   await waitUntil(async function () {
-    const d = await csvDescriptor();
-    return d ? d : null;
+    return fillReport(job, config);
+  }, 30000, 600);
+
+  const d = await waitUntil(async function () {
+    return await csvDescriptor();
   }, 60000, 700);
 
-  const d = await csvDescriptor();
   if (d && d.href && !/^javascript:/i.test(d.href) && d.href !== "#") {
     try {
       return await directDownload(d.href, rootDir);
