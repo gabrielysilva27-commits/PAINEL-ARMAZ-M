@@ -273,15 +273,38 @@ async function agentUpdateState(node:any,b:any){
   const {data,error}=await db.from("receiving_pull_agent_nodes").update(patch).eq("id",node.id).select("*").single();if(error)throw error;
   return{ok:true,node:{id:data.id,slot_code:data.slot_code,agent_version:data.agent_version,update_status:data.update_status,update_target_version:data.update_target_version}}
 }
+function bytesToBase64(bytes:Uint8Array){
+  let out="";const chunk=0x8000;
+  for(let i=0;i<bytes.length;i+=chunk)out+=String.fromCharCode(...bytes.subarray(i,Math.min(i+chunk,bytes.length)));
+  return btoa(out)
+}
+async function sha256HexBytes(bytes:Uint8Array){
+  const digest=new Uint8Array(await crypto.subtle.digest("SHA-256",bytes));
+  return Array.from(digest).map(x=>x.toString(16).padStart(2,"0")).join("")
+}
+function agentAssetUrl(value:any,version:string){
+  const u=new URL(String(value||""));
+  const prefix="/gabrielysilva27-commits/PAINEL-ARMAZ-M/releases/download/agent-puxada-v"+version+"/";
+  if(u.protocol!=="https:"||u.hostname!=="github.com"||!u.pathname.startsWith(prefix))throw new Error("Origem de atualização não autorizada.");
+  return u.toString()
+}
 async function agentUpdateFile(node:any,b:any){
   const version=clean(b.version,40),target=clean(b.target,240).replace(/\\/g,"/");
   if(!version||!target||target.includes("..")||!target.match(/^(app|driver)\//))throw new Error("Arquivo de atualização inválido.");
-  const {data:release,error:re}=await db.from("receiving_pull_agent_releases").select("version,status").eq("version",version).eq("status","active").maybeSingle();if(re)throw re;
+  const {data:release,error:re}=await db.from("receiving_pull_agent_releases").select("version,status,manifest").eq("version",version).eq("status","active").maybeSingle();if(re)throw re;
   if(!release)throw new Error("Versão de atualização não está ativa.");
   const {data:file,error}=await db.from("receiving_pull_agent_release_files").select("target,sha256,content_base64,content_type").eq("version",version).eq("target",target).maybeSingle();if(error)throw error;
-  if(!file)throw new Error("Arquivo não encontrado na versão "+version+".");
   await db.from("receiving_pull_agent_nodes").update({last_seen_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",node.id);
-  return{version,target:file.target,sha256:file.sha256,content_type:file.content_type,content_base64:file.content_base64}
+  if(file)return{version,target:file.target,sha256:file.sha256,content_type:file.content_type,content_base64:file.content_base64};
+
+  const items=Array.isArray(release.manifest)?release.manifest:[];
+  const item=items.find((x:any)=>clean(x?.target,240).replace(/\\/g,"/")===target);
+  if(!item?.url||!/^[a-f0-9]{64}$/i.test(String(item.sha256||"")))throw new Error("Arquivo não encontrado na versão "+version+".");
+  const response=await fetch(agentAssetUrl(item.url,version),{redirect:"follow"});
+  if(!response.ok)throw new Error("Falha ao obter arquivo publicado: HTTP "+response.status+".");
+  const bytes=new Uint8Array(await response.arrayBuffer()),actual=await sha256HexBytes(bytes),expected=String(item.sha256).toLowerCase();
+  if(actual!==expected)throw new Error("SHA-256 divergente no arquivo publicado "+target+".");
+  return{version,target,sha256:actual,content_type:response.headers.get("content-type")||"application/octet-stream",content_base64:bytesToBase64(bytes)}
 }
 
 
