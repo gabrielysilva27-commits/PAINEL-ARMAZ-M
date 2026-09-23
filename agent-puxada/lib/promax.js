@@ -73,6 +73,33 @@ function driverBase() {
   return "http://127.0.0.1:" + DRIVER_PORT;
 }
 
+function sessionFile(rootDir) {
+  return path.resolve(rootDir, "..", "data", "promax-session.json");
+}
+
+function loadSavedSession(rootDir) {
+  try {
+    const p = sessionFile(rootDir);
+    if (!fs.existsSync(p)) return "";
+    const x = JSON.parse(fs.readFileSync(p, "utf8"));
+    return String(x && x.session_id || "");
+  } catch {
+    return "";
+  }
+}
+
+function saveSession(rootDir, id) {
+  try {
+    const p = sessionFile(rootDir);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify({ session_id: id, port: DRIVER_PORT, saved_at: new Date().toISOString() }), "utf8");
+  } catch {}
+}
+
+function clearSavedSession(rootDir) {
+  try { fs.unlinkSync(sessionFile(rootDir)); } catch {}
+}
+
 async function driverReady() {
   try {
     const r = await http("GET", driverBase() + "/status", null, 1200);
@@ -111,12 +138,14 @@ async function wd(method, suffix, body, timeoutMs) {
 
 async function createSession(config, rootDir) {
   await startDriver(rootDir);
+  if (!SESSION_ID) SESSION_ID = loadSavedSession(rootDir);
   if (SESSION_ID) {
     try {
       await wd("GET", "/url", null, 2500);
       return SESSION_ID;
     } catch {
       SESSION_ID = null;
+      clearSavedSession(rootDir);
     }
   }
 
@@ -147,6 +176,7 @@ async function createSession(config, rootDir) {
   const created = await http("POST", driverBase() + "/session", body, 60000);
   SESSION_ID = created && created.value && created.value.sessionId || created && created.sessionId;
   if (!SESSION_ID) throw new Error("IEDriver nao retornou uma sessao valida.");
+  saveSession(rootDir, SESSION_ID);
   return SESSION_ID;
 }
 
@@ -404,12 +434,10 @@ async function export020501(job, config, rootDir) {
   return browserDownload(rootDir);
 }
 
-async function openCalibrationBrowser(config) {
-  const edge = edgePath();
-  if (!edge) throw new Error("Microsoft Edge nao encontrado.");
+async function openCalibrationBrowser(config, rootDir) {
   const url = String(config.promax && config.promax.url || "https://imperio.promaxcloud.com.br").trim();
-  const p = childProcess.spawn(edge, [url], { detached: true, stdio: "ignore", windowsHide: false });
-  p.unref();
+  await createSession(config, rootDir);
+  await navigate(url);
 }
 
 module.exports = { isConfigured, missingSelectors, openCalibrationBrowser, export020501 };
