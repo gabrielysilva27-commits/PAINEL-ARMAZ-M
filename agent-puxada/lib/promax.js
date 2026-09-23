@@ -10,9 +10,13 @@ let LAST_READINESS_ERROR = "";
 // Promax renders its home and reports in nested frames; document.body on the
 // outer frameset does not contain the visible LogOff/Atalho controls.
 const PAGE_TEXT_SCRIPT = [
+  "function s(v){return String(v||'');}",
   "function collect(w,depth){",
-  "if(depth>6)return '';var result='';",
-  "try{var d=w.document;result=(d.title||'')+' '+(d.body?(d.body.innerText||d.body.textContent||''):'');}catch(e){}",
+  "if(depth>8)return '';var result='';",
+  "try{var d=w.document;result+=' '+s(d.title)+' '+(d.body?s(d.body.innerText||d.body.textContent):'');",
+  "var nodes=d.querySelectorAll('input,button,a,img,label,span,td,th');",
+  "for(var j=0;j<nodes.length;j++){var e=nodes[j];result+=' '+s(e.value)+' '+s(e.innerText||e.textContent)+' '+s(e.title)+' '+s(e.alt)+' '+s(e.name)+' '+s(e.id);}",
+  "}catch(e){}",
   "try{for(var i=0;i<w.frames.length;i++)result+=' '+collect(w.frames[i],depth+1);}catch(e){}",
   "return result;}",
   "return collect(window,0);"
@@ -55,6 +59,11 @@ function normalized(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 }
 
+function homeReady(value) {
+  const content = normalized(value).replace(/\s+/g, " ");
+  return content.includes("ATALHO") && (content.includes("LOGOFF") || content.includes("LOG OFF"));
+}
+
 async function isConfigured(config, rootDir) {
   const base = String(config && config.promax && config.promax.url || "https://imperio.promaxcloud.com.br").trim();
   if (!base || !edgePath() || !driverPath(rootDir || __dirname)) {
@@ -79,8 +88,8 @@ async function isConfigured(config, rootDir) {
       }
       response = await sessionBody(id);
     }
-    let content = normalized(response && response.value);
-    if (!content.includes("LOGOFF") || !content.includes("ATALHO")) {
+    let content = response && response.value;
+    if (!homeReady(content)) {
       // Promax can leave the driver focused on the report popup. Check each
       // window and restore the authenticated home window when found.
       const handles = await http("GET", driverBase() + "/session/" + encodeURIComponent(id) + "/window/handles", null, 4000);
@@ -88,15 +97,15 @@ async function isConfigured(config, rootDir) {
         try {
           await http("POST", driverBase() + "/session/" + encodeURIComponent(id) + "/window", { handle }, 4000);
           const page = await sessionBody(id);
-          const candidate = normalized(page && page.value);
-          if (candidate.includes("LOGOFF") && candidate.includes("ATALHO")) {
+          const candidate = page && page.value;
+          if (homeReady(candidate)) {
             content = candidate;
             break;
           }
         } catch {}
       }
     }
-    const ready = content.includes("LOGOFF") && content.includes("ATALHO");
+    const ready = homeReady(content);
     LAST_READINESS_ERROR = ready ? "" : "Sessão conectada, mas a tela inicial logada (LogOff e Atalho) não foi detectada.";
     return ready;
   } catch (error) {
@@ -317,13 +326,13 @@ async function waitUntil(check, timeoutMs, intervalMs) {
 }
 
 async function switchToWindowContaining(expected) {
-  const wanted = String(expected || "").toUpperCase();
+  const wanted = normalized(expected);
   return waitUntil(async function () {
     const hs = await handles();
     for (let i = hs.length - 1; i >= 0; i--) {
       try {
         await switchWindow(hs[i]);
-        const hay = String(await execute(PAGE_TEXT_SCRIPT) || "").toUpperCase();
+        const hay = normalized(await execute(PAGE_TEXT_SCRIPT));
         if (hay.indexOf(wanted) >= 0) return hs[i];
       } catch {}
     }
@@ -335,17 +344,18 @@ async function openShortcut(reportCode) {
   const script = [
     "var target=arguments[0];",
     "function n(s){return String(s||'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
-    "function vis(e){if(!e)return false;var r=e.getBoundingClientRect();return r.width>0&&r.height>0;}",
-    "var labels=document.querySelectorAll('td,th,div,span,font,b,label');var lab=null;",
-    "for(var i=0;i<labels.length;i++){var t=n(labels[i].innerText||labels[i].textContent);if(t==='ATALHO'||t.indexOf('ATALHO')===0){lab=labels[i];break;}}",
-    "var inputs=document.querySelectorAll('input[type=text],input:not([type]),textarea');var best=null,bestScore=999999;",
-    "var lr=lab?lab.getBoundingClientRect():null;",
-    "for(var j=0;j<inputs.length;j++){var e=inputs[j];if(!vis(e))continue;var r=e.getBoundingClientRect();var score=lr?Math.abs(r.top-lr.bottom)+Math.max(0,lr.left-r.left):r.top;if(score<bestScore){best=e;bestScore=score;}}",
-    "if(!best)throw new Error('Campo ATALHO nao encontrado.');",
+    "function vis(e){if(!e)return false;try{var r=e.getBoundingClientRect();return r.width>0&&r.height>0;}catch(x){return true;}}",
+    "function docs(w,depth,out){if(depth>8)return;try{if(w.document)out.push(w.document);}catch(e){}try{for(var i=0;i<w.frames.length;i++)docs(w.frames[i],depth+1,out);}catch(e){}}",
+    "var all=[];docs(window,0,all);var best=null,bestDoc=null,bestScore=999999;",
+    "for(var di=0;di<all.length;di++){var d=all[di],labels=d.querySelectorAll('td,th,div,span,font,b,label');var lab=null;",
+    "for(var i=0;i<labels.length;i++){var t=n(labels[i].innerText||labels[i].textContent||labels[i].title||labels[i].value);if(t==='ATALHO'||t.indexOf('ATALHO')===0){lab=labels[i];break;}}",
+    "if(!lab)continue;var lr=lab.getBoundingClientRect();var inputs=d.querySelectorAll('input[type=text],input:not([type]),textarea');",
+    "for(var j=0;j<inputs.length;j++){var e=inputs[j];if(!vis(e))continue;var r=e.getBoundingClientRect();var score=Math.abs(r.top-lr.bottom)+Math.max(0,lr.left-r.left);if(score<bestScore){best=e;bestDoc=d;bestScore=score;}}}",
+    "if(!best)throw new Error('Campo ATALHO nao encontrado nos quadros do Promax.');",
     "best.focus();best.value=target;",
-    "try{best.fireEvent('onchange');}catch(x){try{var ev=document.createEvent('HTMLEvents');ev.initEvent('change',true,false);best.dispatchEvent(ev);}catch(y){}}",
-    "var acts=document.querySelectorAll('input,button,a');var ok=null;",
-    "for(var k=0;k<acts.length;k++){var a=acts[k],txt=n(a.value||a.innerText||a.textContent);if(vis(a)&&txt==='OK'){ok=a;break;}}",
+    "try{best.fireEvent('onchange');}catch(x){try{var ev=bestDoc.createEvent('HTMLEvents');ev.initEvent('change',true,false);best.dispatchEvent(ev);}catch(y){}}",
+    "var searchDocs=[bestDoc];for(var z=0;z<all.length;z++)if(all[z]!==bestDoc)searchDocs.push(all[z]);var ok=null;",
+    "for(var q=0;q<searchDocs.length&&!ok;q++){var acts=searchDocs[q].querySelectorAll('input,button,a');for(var k=0;k<acts.length;k++){var a=acts[k],txt=n(a.value||a.innerText||a.textContent||a.title);if(vis(a)&&txt==='OK'){ok=a;break;}}}",
     "if(!ok)throw new Error('Botao OK do ATALHO nao encontrado.');",
     "ok.click();return true;"
   ].join("");
@@ -355,18 +365,19 @@ async function openShortcut(reportCode) {
 async function fillReport(job, config) {
   const script = [
     "var vals=arguments[0];",
-    "function n(s){return String(s||'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
-    "function vis(e){if(!e)return false;var r=e.getBoundingClientRect();return r.width>0&&r.height>0;}",
-    "function setv(e,v){e.focus();e.value=String(v);try{e.fireEvent('onchange');}catch(x){try{var ev=document.createEvent('HTMLEvents');ev.initEvent('change',true,false);e.dispatchEvent(ev);}catch(y){}}}",
-    "function labelNode(label){var all=document.querySelectorAll('td,th,span,div,font,b,label');var want=n(label);for(var i=0;i<all.length;i++){var t=n(all[i].innerText||all[i].textContent);if(t===want||t.indexOf(want)===0)return all[i];}return null;}",
-    "function pair(label){var l=labelNode(label);if(!l)throw new Error('Rotulo '+label+' nao encontrado.');var lr=l.getBoundingClientRect();var a=document.querySelectorAll('input[type=text],input:not([type]),select');var list=[];for(var i=0;i<a.length;i++){var e=a[i];if(!vis(e))continue;var r=e.getBoundingClientRect();var dy=Math.abs((r.top+r.bottom)/2-(lr.top+lr.bottom)/2);if(dy<28&&r.left>lr.left-20)list.push({e:e,x:r.left,dy:dy});}list.sort(function(x,y){return x.x-y.x;});if(list.length<2){var p=l.parentNode;for(var up=0;up<5&&p;up++,p=p.parentNode){var q=p.querySelectorAll('input[type=text],input:not([type]),select');var z=[];for(var j=0;j<q.length;j++)if(vis(q[j]))z.push(q[j]);if(z.length>=2)return [z[0],z[1]];}throw new Error('Campos '+label+' nao encontrados.');}return [list[0].e,list[1].e];}",
-    "var p=pair('Período');setv(p[0],vals.dateFrom);setv(p[1],vals.dateTo);",
-    "var a=pair('Armazém');setv(a[0],vals.warehouse);setv(a[1],vals.warehouse);",
-    "var d=pair('Depósito');setv(d[0],vals.deposit);setv(d[1],vals.deposit);",
-    "var o=pair('Operação');setv(o[0],vals.operationFrom);setv(o[1],vals.operationTo);",
-    "var acts=document.querySelectorAll('input,button,a');var view=null;",
-    "for(var k=0;k<acts.length;k++){var t=n(acts[k].value||acts[k].innerText||acts[k].textContent);if(vis(acts[k])&&(t==='VISUALIZAR'||t.indexOf('VISUALIZAR')>=0)){view=acts[k];break;}}",
-    "if(!view)throw new Error('Botao Visualizar nao encontrado.');view.click();return true;"
+    "function n(s){return String(s||'').replace(/[ÁÀÂÃÄ]/gi,'A').replace(/[ÉÈÊË]/gi,'E').replace(/[ÍÌÎÏ]/gi,'I').replace(/[ÓÒÔÕÖ]/gi,'O').replace(/[ÚÙÛÜ]/gi,'U').replace(/Ç/gi,'C').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
+    "function vis(e){if(!e)return false;try{var r=e.getBoundingClientRect();return r.width>0&&r.height>0;}catch(x){return true;}}",
+    "function docs(w,depth,out){if(depth>8)return;try{if(w.document)out.push(w.document);}catch(e){}try{for(var i=0;i<w.frames.length;i++)docs(w.frames[i],depth+1,out);}catch(e){}}",
+    "var all=[];docs(window,0,all);",
+    "function setv(e,v){e.focus();e.value=String(v);try{e.fireEvent('onchange');}catch(x){try{var d=e.ownerDocument||document,ev=d.createEvent('HTMLEvents');ev.initEvent('change',true,false);e.dispatchEvent(ev);}catch(y){}}}",
+    "function labelNode(d,label){var nodes=d.querySelectorAll('td,th,span,div,font,b,label');var want=n(label);for(var i=0;i<nodes.length;i++){var t=n(nodes[i].innerText||nodes[i].textContent||nodes[i].title||nodes[i].value);if(t===want||t.indexOf(want)===0)return nodes[i];}return null;}",
+    "function pair(label){for(var di=0;di<all.length;di++){var d=all[di],l=labelNode(d,label);if(!l)continue;var lr=l.getBoundingClientRect();var a=d.querySelectorAll('input[type=text],input:not([type]),select');var list=[];for(var i=0;i<a.length;i++){var e=a[i];if(!vis(e))continue;var r=e.getBoundingClientRect();var dy=Math.abs((r.top+r.bottom)/2-(lr.top+lr.bottom)/2);if(dy<28&&r.left>lr.left-20)list.push({e:e,x:r.left,dy:dy});}list.sort(function(x,y){return x.x-y.x;});if(list.length>=2)return [list[0].e,list[1].e];var p=l.parentNode;for(var up=0;up<5&&p;up++,p=p.parentNode){var q=p.querySelectorAll('input[type=text],input:not([type]),select');var z=[];for(var j=0;j<q.length;j++)if(vis(q[j]))z.push(q[j]);if(z.length>=2)return [z[0],z[1]];}}throw new Error('Campos '+label+' nao encontrados nos quadros do Promax.');}",
+    "var p=pair('Periodo');setv(p[0],vals.dateFrom);setv(p[1],vals.dateTo);",
+    "var a=pair('Armazem');setv(a[0],vals.warehouse);setv(a[1],vals.warehouse);",
+    "var d=pair('Deposito');setv(d[0],vals.deposit);setv(d[1],vals.deposit);",
+    "var o=pair('Operacao');setv(o[0],vals.operationFrom);setv(o[1],vals.operationTo);",
+    "var view=null;for(var di2=0;di2<all.length&&!view;di2++){var acts=all[di2].querySelectorAll('input,button,a');for(var k=0;k<acts.length;k++){var t=n(acts[k].value||acts[k].innerText||acts[k].textContent||acts[k].title);if(vis(acts[k])&&(t==='VISUALIZAR'||t.indexOf('VISUALIZAR')>=0)){view=acts[k];break;}}}",
+    "if(!view)throw new Error('Botao Visualizar nao encontrado nos quadros do Promax.');view.click();return true;"
   ].join("");
 
   return execute(script, [{
@@ -382,8 +393,10 @@ async function fillReport(job, config) {
 async function csvDescriptor() {
   const script = [
     "function n(s){return String(s||'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
-    "var a=document.querySelectorAll('a,input,button');",
-    "for(var i=0;i<a.length;i++){var e=a[i],t=n(e.value||e.innerText||e.textContent);if(t==='CSV'){return {tag:e.tagName||'',href:e.href||e.getAttribute('href')||'',onclick:e.getAttribute('onclick')||'',html:e.outerHTML||''};}}",
+    "function docs(w,depth,out){if(depth>8)return;try{if(w.document)out.push(w.document);}catch(e){}try{for(var i=0;i<w.frames.length;i++)docs(w.frames[i],depth+1,out);}catch(e){}}",
+    "var all=[];docs(window,0,all);",
+    "for(var di=0;di<all.length;di++){var a=all[di].querySelectorAll('a,input,button');",
+    "for(var i=0;i<a.length;i++){var e=a[i],t=n(e.value||e.innerText||e.textContent||e.title);if(t==='CSV'){return {tag:e.tagName||'',href:e.href||e.getAttribute('href')||'',onclick:e.getAttribute('onclick')||'',html:e.outerHTML||''};}}}",
     "return null;"
   ].join("");
   return execute(script);
@@ -392,9 +405,10 @@ async function csvDescriptor() {
 async function clickCsv() {
   return execute([
     "function n(s){return String(s||'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
-    "var a=document.querySelectorAll('a,input,button');",
-    "for(var i=0;i<a.length;i++){var e=a[i],t=n(e.value||e.innerText||e.textContent);if(t==='CSV'){e.click();return true;}}",
-    "throw new Error('Botao CSV nao encontrado.');"
+    "function docs(w,depth,out){if(depth>8)return;try{if(w.document)out.push(w.document);}catch(e){}try{for(var i=0;i<w.frames.length;i++)docs(w.frames[i],depth+1,out);}catch(e){}}",
+    "var all=[];docs(window,0,all);",
+    "for(var di=0;di<all.length;di++){var a=all[di].querySelectorAll('a,input,button');for(var i=0;i<a.length;i++){var e=a[i],t=n(e.value||e.innerText||e.textContent||e.title);if(t==='CSV'){e.click();return true;}}}",
+    "throw new Error('Botao CSV nao encontrado nos quadros do Promax.');"
   ].join(""));
 }
 
@@ -494,9 +508,10 @@ async function ensurePromaxHome(config, rootDir) {
   const baseUrl = String(config.promax && config.promax.url || "https://imperio.promaxcloud.com.br").trim();
   await navigate(baseUrl);
   await waitUntil(async function () {
-    const t = normalized(await bodyText());
-    if (t.indexOf("LOGOFF") >= 0 && t.indexOf("ATALHO") >= 0) return true;
-    if (t.indexOf("USUARIO") >= 0 && t.indexOf("SENHA") >= 0 && t.indexOf("LOGOFF") < 0) {
+    const t = await bodyText();
+    if (homeReady(t)) return true;
+    const normalizedText = normalized(t);
+    if (normalizedText.indexOf("USUARIO") >= 0 && normalizedText.indexOf("SENHA") >= 0 && !homeReady(t)) {
       throw new Error("PROMAX_LOGIN_REQUIRED: faca login no Promax no Edge e mantenha a sessao aberta.");
     }
     return false;
@@ -510,8 +525,8 @@ async function export020501(job, config, rootDir) {
   await openShortcut(report);
   await switchToWindowContaining("Movimentação do Estoque");
   await waitUntil(async function () {
-    const t = (await bodyText()).toUpperCase();
-    return t.indexOf("PERÍODO") >= 0 && t.indexOf("ARMAZÉM") >= 0 && t.indexOf("OPERAÇÃO") >= 0;
+    const t = normalized(await bodyText());
+    return t.indexOf("PERIODO") >= 0 && t.indexOf("ARMAZEM") >= 0 && t.indexOf("OPERACAO") >= 0;
   }, 20000, 400);
 
   await fillReport(job, config);
