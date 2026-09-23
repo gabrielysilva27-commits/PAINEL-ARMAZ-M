@@ -29,6 +29,9 @@ async function run() {
     else if (req.url === "/sessions") res.end(JSON.stringify({ value: [{ id: "test-session" }] }));
     else if (req.url === "/session/test-session/url") res.end(JSON.stringify({ value: "https://imperio.promaxcloud.com.br" }));
     else if (req.url === "/session/test-session/window/handles") res.end(JSON.stringify({ value: ["report", "home"] }));
+    else if (req.url === "/session/test-session/frame" && req.method === "POST") res.end(JSON.stringify({ value: null }));
+    else if (req.url === "/session/test-session/frame/parent" && req.method === "POST") res.end(JSON.stringify({ value: null }));
+    else if (req.url === "/session/test-session/elements" && req.method === "POST") res.end(JSON.stringify({ value: [] }));
     else if (req.url === "/session/test-session/window" && req.method === "POST") {
       let body = "";
       req.on("data", chunk => { body += chunk; });
