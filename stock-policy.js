@@ -131,7 +131,7 @@
     await load();
   }
   function install(){
-    if(!document.getElementById('stockPolicyCss')){const l=document.createElement('link');l.id='stockPolicyCss';l.rel='stylesheet';l.href='stock-policy.css?v=20260922-1';document.head.appendChild(l);}
+    if(!document.getElementById('stockPolicyCss')){const l=document.createElement('link');l.id='stockPolicyCss';l.rel='stylesheet';l.href='stock-policy.css?v=20260923-1';document.head.appendChild(l);}
     window.__stockPolicy={open,reload:load};
   }
   install();
