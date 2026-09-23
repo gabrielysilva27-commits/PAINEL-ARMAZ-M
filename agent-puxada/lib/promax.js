@@ -132,6 +132,7 @@ async function startDriver(rootDir) {
   DRIVER = childProcess.spawn(exe, ["--port=" + DRIVER_PORT], {
     cwd: path.dirname(exe),
     windowsHide: true,
+    detached: true,
     stdio: ["ignore", out, out]
   });
   DRIVER.unref();
