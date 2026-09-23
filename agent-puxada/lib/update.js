@@ -109,7 +109,10 @@ async function checkForUpdate(api, info, baseDir, log) {
   if (fs.existsSync(record)) {
     try {
       const prior = JSON.parse(fs.readFileSync(record, "utf8"));
-      if (prior.status === "failed" && prior.version === response.release.version) return false;
+      if (prior.status === "failed" && prior.version === response.release.version) {
+        await api.updateState({ ...info, updater_version: UPDATER_VERSION, update_status: "failed", update_target_version: prior.version, update_error: prior.error }).catch(() => {});
+        return false;
+      }
     } catch (_) {}
   }
   return stageUpdate(response, baseDir, api, info, log);
