@@ -379,7 +379,9 @@ async function ensurePromaxHome(config, rootDir) {
 
 async function export020501(job, config, rootDir) {
   await ensurePromaxHome(config, rootDir);
-  await openShortcut(String(config.promax && config.promax.report || "02.05.01"));
+  var report = String(config.promax && config.promax.report || "02.05.01").replace(/\D/g, "");
+  if (report === "020501") report = "02.05.01";
+  await openShortcut(report);
   await switchToWindowContaining("Movimentação do Estoque");
   await waitUntil(async function () {
     const t = (await bodyText()).toUpperCase();
