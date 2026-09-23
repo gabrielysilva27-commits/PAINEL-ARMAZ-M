@@ -8,7 +8,7 @@ const { parse020501 } = require("./lib/csv020501");
 const promax = require("./lib/promax");
 
 const ROOT = __dirname;
-const VERSION = "1.0.0";
+const VERSION = "2.0.0";
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -49,17 +49,17 @@ async function main() {
     return {
       hostname: os.hostname(),
       agent_version: VERSION,
-      calibration_ready: promax.isConfigured(config)
+      calibration_ready: promax.isConfigured(config, ROOT)
     };
   }
 
   if (process.argv.indexOf("--check") >= 0) {
     const response = await api.ping(info());
     log("Conexao com o Painel Armazem OK.");
-    if (!promax.isConfigured(config)) {
-      log("Promax aguardando calibracao: " + promax.missingSelectors(config.promax).join(", "));
+    if (!promax.isConfigured(config, ROOT)) {
+      log("Promax aguardando preparacao: Microsoft Edge/IEDriver indisponivel.");
     } else {
-      log("Configuracao Promax pronta.");
+      log("Promax pronto para automacao pelo Edge em modo IE.");
     }
     return;
   }
