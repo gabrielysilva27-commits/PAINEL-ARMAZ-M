@@ -3,11 +3,11 @@ const path = require("path");
 const crypto = require("crypto");
 const childProcess = require("child_process");
 
-const UPDATER_VERSION = "1";
+const UPDATER_VERSION = "2";
 
 function safeTarget(value) {
   const v = String(value || "").replace(/\\/g, "/").replace(/^\/+/, "");
-  if (!v || v.includes("..") || !/^(app|driver)\//.test(v)) {
+  if (!v || v.split("/").some(p => !p || p === "." || p === "..") || !/^(app|driver)\/[A-Za-z0-9._/-]+$/.test(v)) {
     throw new Error("Destino de atualização inválido: " + value);
   }
   return v;
@@ -52,6 +52,12 @@ async function stageUpdate(manifest, baseDir, api, info, log) {
   const version = String(release.version || "");
   const files = Array.isArray(release.files) ? release.files : [];
   if (!version || !files.length) throw new Error("Manifesto de atualização inválido.");
+  const seen = new Set();
+  for (const file of files) {
+    const target = safeTarget(file.target);
+    if (seen.has(target) || !/^[a-f0-9]{64}$/i.test(String(file.sha256 || ""))) throw new Error("Manifesto duplicado ou sem SHA-256 válido.");
+    seen.add(target);
+  }
 
   const dataDir = path.join(baseDir, "data");
   const stageDir = path.join(dataDir, "update-staging", version);
@@ -99,6 +105,13 @@ async function checkForUpdate(api, info, baseDir, log) {
   if (process.env.AGENTE_PUXADA_SKIP_UPDATE === "1") return false;
   const response = await api.updateManifest({ ...info, updater_version: UPDATER_VERSION });
   if (!response || !response.update_available) return false;
+  const record = path.join(baseDir, "data", "last-update.json");
+  if (fs.existsSync(record)) {
+    try {
+      const prior = JSON.parse(fs.readFileSync(record, "utf8"));
+      if (prior.status === "failed" && prior.version === response.release.version) return false;
+    } catch (_) {}
+  }
   return stageUpdate(response, baseDir, api, info, log);
 }
 

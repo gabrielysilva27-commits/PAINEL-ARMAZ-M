@@ -9,7 +9,7 @@ const promax = require("./lib/promax");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.0.2";
+const VERSION = "3.1.0";
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -51,12 +51,24 @@ async function main() {
       hostname: os.hostname(),
       agent_version: VERSION,
       updater_version: updater.UPDATER_VERSION,
-      capabilities: ["020501_SYNC","PROMAX_IE_MODE","AUTO_UPDATE_V1"],
+      capabilities: ["020501_SYNC","PROMAX_IE_MODE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
       calibration_ready: promax.isConfigured(config, ROOT)
     };
   }
 
   let lastUpdateCheck = 0;
+  const updateRecord = path.resolve(ROOT, "..", "data", "last-update.json");
+  if (fs.existsSync(updateRecord)) {
+    try {
+      const result = JSON.parse(fs.readFileSync(updateRecord, "utf8"));
+      if (result.status === "failed") {
+        await api.updateState({ ...info(), update_status: "failed", update_target_version: result.version, update_error: result.error }).catch(function(){});
+      } else if (result.version === VERSION && !result.reported) {
+        await api.updateState({ ...info(), update_status: "updated", update_target_version: VERSION });
+        fs.writeFileSync(updateRecord, JSON.stringify({ ...result, reported: true }, null, 2));
+      }
+    } catch (e) { log("Estado da atualização: " + e.message, true); }
+  }
   async function maybeUpdate(force) {
     if (!force && Date.now() - lastUpdateCheck < 15 * 60 * 1000) return false;
     lastUpdateCheck = Date.now();
