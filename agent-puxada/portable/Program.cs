@@ -179,7 +179,7 @@ internal static class Program
             Text = "Computador configurado.\nO status operacional aparece no Painel Armazém."
         };
         var start = new Button { Left = 24, Top = 133, Width = 145, Height = 38, Text = "Iniciar agente" };
-        var calibrate = new Button { Left = 182, Top = 133, Width = 145, Height = 38, Text = "Calibrar Promax" };
+        var calibrate = new Button { Left = 182, Top = 133, Width = 145, Height = 38, Text = "Abrir Promax" };
         var configure = new Button { Left = 340, Top = 133, Width = 145, Height = 38, Text = "Trocar token" };
         var autoStart = new CheckBox { Left = 24, Top = 193, Width = 300, Text = "Iniciar automaticamente com o Windows", Checked = AutoStartEnabled() };
         var close = new Button { Left = 375, Top = 205, Width = 110, Height = 32, Text = "Fechar" };
@@ -193,7 +193,7 @@ internal static class Program
         calibrate.Click += (_, _) =>
         {
             StartSelf("--calibrate");
-            MessageBox.Show("O perfil dedicado do Edge será aberto. Faça login no Promax. A calibração fina dos campos será concluída no computador da empresa.", "Calibrar Promax", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show("O Microsoft Edge normal será aberto. Faça login no Promax e mantenha a sessão aberta. A automação usa o Modo Internet Explorer, sem depuração remota.", "Abrir Promax", MessageBoxButtons.OK, MessageBoxIcon.Information);
         };
 
         configure.Click += (_, _) => ShowSetup();
