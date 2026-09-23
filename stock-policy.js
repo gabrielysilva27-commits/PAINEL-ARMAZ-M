@@ -57,34 +57,28 @@
   function kpis(items){
     const total=items.length;
     return '<section class="policy-kpis">'+
-      '<article><small>SKUs na política</small><strong>'+total+'</strong><span>mínimo fixo em 3 dias</span></article>'+
-      '<article class="danger"><small>OUT</small><strong>'+items.filter(x=>x.qty_status==='OUT').length+'</strong><span>abaixo do mínimo</span></article>'+
-      '<article class="warn"><small>Abaixo objetivo</small><strong>'+items.filter(x=>x.qty_status==='ABAIXO_DO_OBJETIVO').length+'</strong><span>acionar puxada</span></article>'+
-      '<article class="over"><small>OVER</small><strong>'+items.filter(x=>x.qty_status==='OVER').length+'</strong><span>acima do máximo</span></article>'+
-      '<article class="attention"><small>Validade ≤45d</small><strong>'+items.filter(x=>x.validity_status==='ATENCAO').length+'</strong><span>faixa de atenção</span></article>'+
-      '<article class="critical"><small>Validade ≤30d</small><strong>'+items.filter(x=>['CRITICO','VENCIDO'].includes(x.validity_status)).length+'</strong><span>tratativa prioritária</span></article>'+
+      '<article><small>SKUs</small><strong>'+total+'</strong></article>'+
+      '<article class="danger"><small>OUT</small><strong>'+items.filter(x=>x.qty_status==='OUT').length+'</strong></article>'+
+      '<article class="warn"><small>Abaixo objetivo</small><strong>'+items.filter(x=>x.qty_status==='ABAIXO_DO_OBJETIVO').length+'</strong></article>'+
+      '<article class="over"><small>OVER</small><strong>'+items.filter(x=>x.qty_status==='OVER').length+'</strong></article>'+
+      '<article class="critical"><small>Stock Age crítico</small><strong>'+items.filter(x=>['CRITICO','VENCIDO'].includes(x.validity_status)).length+'</strong></article>'+
     '</section>';
   }
   function tableRows(items){
     if(!items.length)return '<tr><td colspan="15" class="policy-empty">Nenhum SKU encontrado com os filtros selecionados.</td></tr>';
     return items.map(x=>{
-      const h=x.metrics||{};
-      const hist=h.observations?((h.out_count||0)+' OUT · '+(h.over_count||0)+' OVER · '+(h.age_nok_months||0)+' mês(es) Age NOK'):'Sem histórico consolidado';
       return '<tr>'+
         '<td><strong>'+esc(x.sku_code)+'</strong></td>'+
-        '<td class="policy-product"><strong>'+esc(x.sku_name||'')+'</strong><small>'+esc(x.suggestion_basis||'')+'</small></td>'+
+        '<td class="policy-product"><strong>'+esc(x.sku_name||'')+'</strong></td>'+
         '<td><span class="policy-badge curve-'+String(x.curve_class||'').toLowerCase()+'">'+esc(x.curve_class||'—')+'</span></td>'+
         '<td>'+nf.format(x.avg_daily_pallets||0)+'<small>PLT/dia</small></td>'+
         '<td><strong>3</strong><small>'+nf.format((x.avg_daily_pallets||0)*3)+' PLT</small></td>'+
         '<td><strong>'+nf.format(x.objective_days||0)+'</strong><small>'+nf.format((x.avg_daily_pallets||0)*(x.objective_days||0))+' PLT</small></td>'+
         '<td><strong>'+nf.format(x.max_days||0)+'</strong><small>'+nf.format((x.avg_daily_pallets||0)*(x.max_days||0))+' PLT</small></td>'+
-        '<td>'+nf.format(x.current_pallets||0)+'<small>'+((x.current_days==null)?'cobertura —':nf.format(x.current_days)+' dias')+'</small></td>'+
+        '<td>'+nf.format(x.current_pallets||0)+'<small>'+((x.current_days==null)?'—':nf.format(x.current_days)+' dias')+'</small></td>'+
         '<td><span class="policy-badge qty-'+cls(x.qty_status)+'">'+esc(qtyLabel(x.qty_status))+'</span></td>'+
         '<td>'+dt(x.oldest_expiry)+'<small>'+((x.days_to_expiry==null)?'—':x.days_to_expiry+' dias')+'</small></td>'+
         '<td><span class="policy-badge validity-'+cls(x.validity_status)+'">'+esc(validityLabel(x.validity_status))+'</span></td>'+
-        '<td>'+pct(h.observations?((h.out_count||0)/h.observations):0)+'</td>'+
-        '<td>'+pct(h.observations?((h.over_count||0)/h.observations):0)+'</td>'+
-        '<td class="policy-history">'+esc(hist)+'</td>'+
         '<td>'+(P.data.version.status==='draft'&&canAdmin()?'<button class="policy-edit" data-edit="'+esc(x.sku_code)+'">Editar</button>':'—')+'</td>'+
       '</tr>';
     }).join('');
@@ -98,11 +92,10 @@
     }
     const v=P.data.version,items=P.data.items||[],show=filtered();
     view.innerHTML=tabs('policy')+'<div class="stock-policy">'+
-      '<section class="policy-hero"><div><div class="policy-titleline"><h2>Política de Estoque</h2><span class="policy-badge version-'+esc(v.status)+'">'+esc(statusLabel(v.status))+'</span></div><p>Mínimo fixo de 3 dias por regra D+2. Objetivo é o ponto de acionamento da puxada. Máximo é revisado semestralmente com vendas, OOR e risco de Stock Age.</p></div><div class="policy-version-box"><label>Versão<select id="policyVersion">'+P.versions.map(x=>'<option value="'+esc(x.id)+'" '+(x.id===v.id?'selected':'')+'>'+esc(x.code)+' · '+esc(statusLabel(x.status))+'</option>').join('')+'</select></label><small>Revisão '+dt(v.review_start)+' a '+dt(v.review_end)+' · vigência '+dt(v.effective_start)+' a '+dt(v.effective_end)+'</small></div></section>'+
+      '<section class="policy-head"><div class="policy-version-line"><strong>'+esc(v.code)+'</strong><span class="policy-badge version-'+esc(v.status)+'">'+esc(statusLabel(v.status))+'</span><small>Vigência '+dt(v.effective_start)+' a '+dt(v.effective_end)+'</small></div><div class="policy-head-actions"><label>Versão<select id="policyVersion">'+P.versions.map(x=>'<option value="'+esc(x.id)+'" '+(x.id===v.id?'selected':'')+'>'+esc(x.code)+'</option>').join('')+'</select></label>'+(v.status==='draft'&&canAdmin()?'<button class="primary-button" data-approve>Aprovar política</button>':'')+'</div></section>'+
       kpis(items)+
-      '<div class="policy-source-note">Venda média: Curva ABC do Painel • OOR: histórico semestral • Stock Age: atenção ≤45 dias e crítico ≤30 dias • fotografia atual: Estoque x Estoque.</div>'+
-      '<div class="policy-toolbar"><div class="policy-filters"><input id="policySearch" placeholder="Buscar SKU ou descrição" value="'+esc(P.query)+'"><select id="policyCurve"><option value="">Todas as curvas</option><option value="A" '+(P.curve==='A'?'selected':'')+'>A</option><option value="B" '+(P.curve==='B'?'selected':'')+'>B</option><option value="C" '+(P.curve==='C'?'selected':'')+'>C</option></select><select id="policyQty"><option value="">Todos os status</option><option value="OUT">OUT</option><option value="ABAIXO_DO_OBJETIVO">Abaixo do objetivo</option><option value="OK">OK</option><option value="OVER">OVER</option><option value="SEM_DADO">Sem dado</option></select><select id="policyValidity"><option value="">Toda validade</option><option value="NORMAL">Normal</option><option value="ATENCAO">Atenção ≤45d</option><option value="CRITICO">Crítico ≤30d</option><option value="VENCIDO">Vencido</option><option value="SEM_VALIDADE">Sem validade</option></select></div><div class="policy-actions">'+(v.status==='draft'&&canAdmin()?'<button class="primary-button" data-approve>Aprovar política</button>':'')+'</div></div>'+
-      '<section class="policy-table-card"><div class="policy-table-head"><div><strong>'+show.length+'</strong><span>SKUs exibidos</span></div><p>Valores em dias e paletes. “Sem política” nunca é tratado como OK.</p></div><div class="policy-table-wrap"><table><thead><tr><th>SKU</th><th>Produto</th><th>Curva</th><th>Venda média</th><th>Mínimo</th><th>Objetivo</th><th>Máximo</th><th>Estoque atual</th><th>Quantidade</th><th>Validade mais próxima</th><th>Stock Age</th><th>% OUT</th><th>% OVER</th><th>Histórico</th><th></th></tr></thead><tbody>'+tableRows(show)+'</tbody></table></div></section>'+
+      '<div class="policy-toolbar"><div class="policy-filters"><input id="policySearch" placeholder="Buscar SKU ou descrição" value="'+esc(P.query)+'"><select id="policyCurve"><option value="">Todas as curvas</option><option value="A" '+(P.curve==='A'?'selected':'')+'>A</option><option value="B" '+(P.curve==='B'?'selected':'')+'>B</option><option value="C" '+(P.curve==='C'?'selected':'')+'>C</option></select><select id="policyQty"><option value="">Todos os status</option><option value="OUT">OUT</option><option value="ABAIXO_DO_OBJETIVO">Abaixo do objetivo</option><option value="OK">OK</option><option value="OVER">OVER</option><option value="SEM_DADO">Sem dado</option></select><select id="policyValidity"><option value="">Toda validade</option><option value="NORMAL">Normal</option><option value="ATENCAO">Atenção ≤45d</option><option value="CRITICO">Crítico ≤30d</option><option value="VENCIDO">Vencido</option><option value="SEM_VALIDADE">Sem validade</option></select></div><span class="policy-result-count">'+show.length+' SKUs</span></div>'+
+      '<section class="policy-table-card"><div class="policy-table-wrap"><table><thead><tr><th>SKU</th><th>Produto</th><th>Curva</th><th>Venda média</th><th>Mínimo</th><th>Objetivo</th><th>Máximo</th><th>Estoque atual</th><th>Status</th><th>Validade</th><th>Stock Age</th><th></th></tr></thead><tbody>'+tableRows(show)+'</tbody></table></div></section>'+
     '</div>';
     bindTabs(view);
     $('policyVersion').onchange=async e=>{P.versionId=e.target.value;await load();};
@@ -138,7 +131,7 @@
   }
   function install(){
     policyView();
-    if(!document.getElementById('stockPolicyCss')){const l=document.createElement('link');l.id='stockPolicyCss';l.rel='stylesheet';l.href='stock-policy.css?v=20260923-2';document.head.appendChild(l);}
+    if(!document.getElementById('stockPolicyCss')){const l=document.createElement('link');l.id='stockPolicyCss';l.rel='stylesheet';l.href='stock-policy.css?v=20260923-3';document.head.appendChild(l);}
     window.__stockPolicy={open,reload:load};
   }
   install();
