@@ -228,9 +228,24 @@ Deno.serve(async (req: Request) => {
         sku_code: String(x.sku_code || ""),
         sku_name: String(x.sku_name || ""),
         unit_code: x.unit_code || null,
+        avg_daily_qty: x.avg_daily_qty == null ? null : Number(x.avg_daily_qty),
+        avg_daily_hl: x.avg_daily_hl == null ? null : Number(x.avg_daily_hl),
+        min_days: x.min_days == null ? null : Number(x.min_days),
+        objective_days: x.objective_days == null ? null : Number(x.objective_days),
+        max_days: x.max_days == null ? null : Number(x.max_days),
+        base_max_days: x.base_max_days == null ? null : Number(x.base_max_days),
+        min_qty: x.min_qty == null ? null : Number(x.min_qty),
+        objective_qty: x.objective_qty == null ? null : Number(x.objective_qty),
+        max_qty: x.max_qty == null ? null : Number(x.max_qty),
+        min_hl: x.min_hl == null ? null : Number(x.min_hl),
+        objective_hl: x.objective_hl == null ? null : Number(x.objective_hl),
+        max_hl: x.max_hl == null ? null : Number(x.max_hl),
+        pallet_floor_qty: x.pallet_floor_qty == null ? null : Number(x.pallet_floor_qty),
+        policy_source: x.policy_source || null,
         out_qty: x.out_qty == null ? null : Number(x.out_qty),
         over_qty: x.over_qty == null ? null : Number(x.over_qty),
         source_file: x.source_file || null,
+        suggestion_basis: x.suggestion_basis || null,
         review_note: x.review_note || null,
       }));
       return json({ version, items });
@@ -257,7 +272,13 @@ Deno.serve(async (req: Request) => {
       const baseItems = await policyItems(base.id);
       const inserts = baseItems.map((x: any) => ({
         version_id: version.id, sku_code: x.sku_code, sku_name: x.sku_name, unit_code: x.unit_code,
-        out_qty: x.out_qty, over_qty: x.over_qty, source_file: x.source_file, review_note: null, updated_by: user.id
+        avg_daily_qty: x.avg_daily_qty, avg_daily_hl: x.avg_daily_hl,
+        min_days: x.min_days, objective_days: x.objective_days, max_days: x.max_days, base_max_days: x.base_max_days,
+        min_qty: x.min_qty, objective_qty: x.objective_qty, max_qty: x.max_qty,
+        min_hl: x.min_hl, objective_hl: x.objective_hl, max_hl: x.max_hl,
+        pallet_floor_qty: x.pallet_floor_qty, out_qty: x.out_qty, over_qty: x.over_qty,
+        policy_source: x.policy_source, suggestion_basis: x.suggestion_basis,
+        source_file: x.source_file, review_note: null, updated_by: user.id
       }));
       for (let i = 0; i < inserts.length; i += 250) {
         const { error } = await db.from("stock_policy_items").insert(inserts.slice(i, i + 250));
