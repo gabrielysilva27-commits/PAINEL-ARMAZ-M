@@ -60,7 +60,8 @@ async function openContext(config, rootDir) {
     channel: browser.channel || "msedge",
     headless: !!browser.headless,
     acceptDownloads: true,
-    viewport: null
+    viewport: null,
+    chromiumSandbox: true
   });
 }
 
@@ -70,8 +71,28 @@ async function openCalibrationBrowser(config, rootDir) {
   if (config.promax && config.promax.url) {
     await page.goto(config.promax.url, { waitUntil: "domcontentloaded", timeout: 60000 });
   }
-  console.log("CALIBRACAO PROMAX: faca login no perfil dedicado e feche a janela do Edge quando terminar.");
-  await page.waitForEvent("close").catch(function () {});
+  console.log("CALIBRACAO PROMAX: faca login no perfil dedicado e feche todas as janelas do Edge deste perfil quando terminar.");
+
+  // O Promax pode abrir o relatório em outra janela/aba e fechar a tela inicial.
+  // Não encerre o contexto quando apenas a primeira página for fechada.
+  await new Promise(function (resolve) {
+    let finished = false;
+    function finish() {
+      if (finished) return;
+      finished = true;
+      resolve();
+    }
+    function watch(p) {
+      p.on("close", function () {
+        setTimeout(function () {
+          if (ctx.pages().length === 0) finish();
+        }, 300);
+      });
+    }
+    ctx.pages().forEach(watch);
+    ctx.on("page", watch);
+    ctx.on("close", finish);
+  });
   await ctx.close().catch(function () {});
 }
 
