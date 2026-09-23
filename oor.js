@@ -1,6 +1,6 @@
 (() => {
   const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/stock-api';
-  const S={dash:null,detail:null,date:'',mode:'daily',status:'OUT',query:''};
+  const S={dash:null,detail:null,date:'',month:'',mode:'daily',status:'OUT',query:''};
   const $=id=>document.getElementById(id);
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const nf=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2});
@@ -29,6 +29,7 @@
     try{
       S.dash=await call('oor_dashboard',S.date?{reference_date:S.date}:{});
       S.date=S.dash.reference_date||'';
+      S.month=S.date?S.date.slice(0,7):S.month;
       S.detail=await call('oor_get',{reference_date:S.date});
       render();
     }catch(e){
@@ -74,13 +75,29 @@
       rows.map(x=>'<tr><td><strong>'+monthLabel(x.month)+'</strong></td><td>'+nf.format(x.out_count)+'</td><td class="out-text">'+pct(x.out_pct)+'</td><td>'+nf.format(x.over_count)+'</td><td class="over-text">'+pct(x.over_pct)+'</td><td>'+nf.format(x.ok_count)+'</td><td class="ok-text">'+pct(x.ok_pct)+'</td><td>'+nf.format(x.total_count)+'</td></tr>').join('')+
       '</tbody></table></section>';
   }
+  function monthOptions(){
+    const dates=S.dash?.dates||[];
+    const months=[...new Set(dates.map(x=>String(x).slice(0,7)))];
+    return months.map(m=>'<option value="'+esc(m)+'" '+(m===S.month?'selected':'')+'>'+monthLabel(m)+'</option>').join('');
+  }
+  function dayOptions(){
+    const dates=(S.dash?.dates||[]).filter(x=>String(x).slice(0,7)===S.month);
+    return dates.map(x=>'<option value="'+esc(x)+'" '+(x===S.date?'selected':'')+'>'+String(x).slice(8,10)+'</option>').join('');
+  }
   function render(){
     const root=view();if(!root)return;const d=S.dash||{};
     root.innerHTML='<section class="oor-card">'+
       '<div class="oor-card-head"><div class="oor-tabs"><button data-mode="daily" class="'+(S.mode==='daily'?'active':'')+'">Diário</button><button data-mode="accumulated" class="'+(S.mode==='accumulated'?'active':'')+'">Acumulado</button><button data-mode="monthly" class="'+(S.mode==='monthly'?'active':'')+'">Mensal</button></div>'+
-      '<div class="oor-meta"><span>Política '+esc(d.policy?.code||'—')+(d.policy?' · Vigente':'')+'</span><label>Data<select id="oorDate">'+(d.dates||[]).map(x=>'<option value="'+esc(x)+'" '+(x===S.date?'selected':'')+'>'+dt(x)+'</option>').join('')+'</select></label></div></div>'+
+      '<div class="oor-meta"><span>Política '+esc(d.policy?.code||'—')+(d.policy?' · Vigente':'')+'</span><label>Mês<select id="oorMonth">'+monthOptions()+'</select></label><label>Dia<select id="oorDate">'+dayOptions()+'</select></label></div></div>'+
       '<div class="oor-card-body">'+(S.mode==='daily'?dailyContent():S.mode==='accumulated'?accumulatedContent():monthlyContent())+'</div>'+
       '</section>';
+    $('oorMonth').onchange=async e=>{
+      S.month=e.target.value;
+      const dates=(S.dash?.dates||[]).filter(x=>String(x).slice(0,7)===S.month).sort();
+      S.date=dates[dates.length-1]||'';
+      S.query='';
+      await load();
+    };
     $('oorDate').onchange=async e=>{S.date=e.target.value;S.query='';await load();};
     root.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{S.mode=b.dataset.mode;render();});
     root.querySelectorAll('[data-status]').forEach(b=>b.onclick=()=>{S.status=b.dataset.status;render();});
