@@ -52,6 +52,7 @@ jobs:
           Copy-Item "$env:RUNNER_TEMP\launcher\AgentePuxada.exe" "$dist\AgentePuxada.exe"
           Copy-Item (Get-Command node).Source "$dist\runtime\node.exe"
           Copy-Item "agent-puxada\agent.js" "$dist\app\agent.js"
+          Copy-Item "agent-puxada\update-runner.js" "$dist\app\update-runner.js"
           Copy-Item "agent-puxada\config.example.json" "$dist\app\config.example.json"
           Copy-Item "agent-puxada\package.json" "$dist\app\package.json"
           Copy-Item "agent-puxada\lib\*" "$dist\app\lib\" -Recurse
@@ -65,15 +66,16 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$upd\app\lib" | Out-Null
           New-Item -ItemType Directory -Force -Path "$upd\driver" | Out-Null
           Copy-Item "agent-puxada\agent.js" "$upd\app\agent.js"
+          Copy-Item "agent-puxada\update-runner.js" "$upd\app\update-runner.js"
           Copy-Item "agent-puxada\config.example.json" "$upd\app\config.example.json"
           Copy-Item "agent-puxada\package.json" "$upd\app\package.json"
           Copy-Item "agent-puxada\lib\*" "$upd\app\lib\" -Recurse
           Copy-Item "$env:RUNNER_TEMP\iedriver\IEDriverServer.exe" "$upd\driver\IEDriverServer.exe"
           Set-Content "$upd\LEIA-ME-ATUALIZACAO.txt" @"
-          AGENTE PUXADA V2
+          AGENTE PUXADA V3 · AUTO-UPDATE
           Extraia por cima da pasta atual do AgentePuxada.
           Nao apague a pasta data: o token protegido permanece no computador.
-          A V2 usa Microsoft Edge em modo IE pelo IEDriver oficial e nao usa Playwright/depuracao remota.
+          A V3 usa Microsoft Edge em modo IE pelo IEDriver oficial, nao usa Playwright/depuracao remota e inclui atualizacao automatica com validacao SHA-256 e rollback.
           "@
 
       - name: Verify package
@@ -84,6 +86,7 @@ jobs:
             "$base\AgentePuxada.exe",
             "$base\runtime\node.exe",
             "$base\app\agent.js",
+            "$base\app\update-runner.js",
             "$base\app\lib\promax.js",
             "$base\app\lib\csv020501.js",
             "$base\driver\IEDriverServer.exe"
@@ -96,27 +99,29 @@ jobs:
         shell: pwsh
         run: |
           node --check agent-puxada/agent.js
+          node --check agent-puxada/update-runner.js
+          node --check agent-puxada/lib/update.js
           node --check agent-puxada/lib/promax.js
           node --check agent-puxada/lib/csv020501.js
 
       - name: Create ZIPs
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist\AgentePuxada\*" -DestinationPath "AgentePuxada-Portatil-Windows-x64-v2.zip" -CompressionLevel Optimal
-          Compress-Archive -Path "dist\AtualizacaoAgentePuxadaV2\*" -DestinationPath "AgentePuxada-Atualizacao-v2.zip" -CompressionLevel Optimal
+          Compress-Archive -Path "dist\AgentePuxada\*" -DestinationPath "AgentePuxada-Portatil-Windows-x64-v3.zip" -CompressionLevel Optimal
+          Compress-Archive -Path "dist\AtualizacaoAgentePuxadaV2\*" -DestinationPath "AgentePuxada-Atualizacao-v3.zip" -CompressionLevel Optimal
 
       - name: Upload full artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AgentePuxada-Portatil-Windows-x64-v2
-          path: AgentePuxada-Portatil-Windows-x64-v2.zip
+          name: AgentePuxada-Portatil-Windows-x64-v3
+          path: AgentePuxada-Portatil-Windows-x64-v3.zip
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload update artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AgentePuxada-Atualizacao-v2
-          path: AgentePuxada-Atualizacao-v2.zip
+          name: AgentePuxada-Atualizacao-v3
+          path: AgentePuxada-Atualizacao-v3.zip
           if-no-files-found: error
           retention-days: 30
