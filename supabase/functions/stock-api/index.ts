@@ -328,6 +328,75 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true });
     }
 
+    if (body.action === "oor_dashboard") {
+      const { data: summaryRows, error: summaryError } = await db.from("stock_oor_daily_summary")
+        .select("reference_date,out_count,over_count,ok_count,total_count,source")
+        .order("reference_date", { ascending: true });
+      if (summaryError) throw summaryError;
+      const all = (summaryRows || []).map((r: any) => ({
+        reference_date: String(r.reference_date),
+        out_count: Number(r.out_count || 0),
+        over_count: Number(r.over_count || 0),
+        ok_count: Number(r.ok_count || 0),
+        total_count: Number(r.total_count || 0),
+        source: r.source || null,
+      }));
+      if (!all.length) return json({ reference_date: null, dates: [], daily: null, accumulated: null, monthly: [] });
+
+      let referenceDate = String(body.reference_date || "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(referenceDate) || !all.some((x: any) => x.reference_date === referenceDate)) {
+        referenceDate = all[all.length - 1].reference_date;
+      }
+      const pct = (n: number, d: number) => d > 0 ? Number((n / d).toFixed(6)) : 0;
+      const decorate = (x: any) => ({
+        ...x,
+        out_pct: pct(x.out_count, x.total_count),
+        over_pct: pct(x.over_count, x.total_count),
+        ok_pct: pct(x.ok_count, x.total_count),
+      });
+      const daily = decorate(all.find((x: any) => x.reference_date === referenceDate));
+      const month = referenceDate.slice(0, 7);
+      const accumulatedRows = all.filter((x: any) => x.reference_date.slice(0, 7) === month && x.reference_date <= referenceDate);
+      const sumRows = (rows: any[]) => rows.reduce((a: any, x: any) => {
+        a.out_count += x.out_count; a.over_count += x.over_count; a.ok_count += x.ok_count; a.total_count += x.total_count; return a;
+      }, { out_count: 0, over_count: 0, ok_count: 0, total_count: 0 });
+      const acc = sumRows(accumulatedRows);
+      const accumulated = decorate({ month, through_date: referenceDate, days: accumulatedRows.length, ...acc });
+
+      const monthlyMap = new Map<string, any[]>();
+      for (const row of all) {
+        const key = row.reference_date.slice(0, 7);
+        if (!monthlyMap.has(key)) monthlyMap.set(key, []);
+        monthlyMap.get(key)!.push(row);
+      }
+      const monthly = [...monthlyMap.entries()].map(([key, rows]: any) => {
+        const s = sumRows(rows);
+        return decorate({ month: key, days: rows.length, ...s });
+      });
+
+      let policy: any = null;
+      const { data: policyRow, error: policyError } = await db.from("stock_policy_versions").select("*")
+        .eq("status", "approved").lte("effective_start", referenceDate).gte("effective_end", referenceDate)
+        .order("effective_start", { ascending: false }).limit(1).maybeSingle();
+      if (policyError) throw policyError;
+      policy = policyRow || null;
+
+      return json({
+        reference_date: referenceDate,
+        dates: all.map((x: any) => x.reference_date).reverse(),
+        daily,
+        accumulated,
+        monthly,
+        month_daily: accumulatedRows.map(decorate),
+        policy,
+        formula: {
+          daily: "status_no_dia / total_de_observacoes_do_dia",
+          accumulated: "status_acumulado / total_de_observacoes_acumuladas",
+          monthly: "status_no_mes / total_de_observacoes_do_mes"
+        }
+      });
+    }
+
     if (body.action === "oor_get") {
       let referenceDate = String(body.reference_date || "");
       if (!/^\d{4}-\d{2}-\d{2}$/.test(referenceDate)) {
@@ -389,6 +458,17 @@ Deno.serve(async (req: Request) => {
       }
       const counts: Record<string, number> = {};
       for (const r of prepared) counts[r.status] = (counts[r.status] || 0) + 1;
+      const summaryPayload = {
+        reference_date: referenceDate,
+        out_count: Number(counts.OUT || 0),
+        over_count: Number(counts.OVER || 0),
+        ok_count: Number(counts.OK || 0),
+        total_count: prepared.length,
+        source: String(body.source_file || "AGENTE_OOR").slice(0, 240),
+        updated_at: new Date().toISOString()
+      };
+      const { error: summaryUpsertError } = await db.from("stock_oor_daily_summary").upsert(summaryPayload, { onConflict: "reference_date" });
+      if (summaryUpsertError) throw summaryUpsertError;
       return json({ ok: true, reference_date: referenceDate, rows: prepared.length, counts, policy: { id: policy.id, code: policy.code } });
     }
 
