@@ -24,12 +24,13 @@ async function run() {
   let markerOnly = false;
   let activeWindow = "home";
   let sessionUrl = "https://imperio.promaxcloud.com.br";
+  let onlyLoginWindow = false;
   const server = http.createServer((req, res) => {
     res.setHeader("Content-Type", "application/json");
     if (req.url === "/status") res.end(JSON.stringify({ value: { ready: true } }));
     else if (req.url === "/sessions") res.end(JSON.stringify({ value: [{ id: "test-session" }] }));
     else if (req.url === "/session/test-session/url") res.end(JSON.stringify({ value: sessionUrl }));
-    else if (req.url === "/session/test-session/window/handles") res.end(JSON.stringify({ value: ["report", "home"] }));
+    else if (req.url === "/session/test-session/window/handles") res.end(JSON.stringify({ value: onlyLoginWindow ? ["home"] : ["report", "home"] }));
     else if (req.url === "/session/test-session/frame" && req.method === "POST") res.end(JSON.stringify({ value: null }));
     else if (req.url === "/session/test-session/frame/parent" && req.method === "POST") res.end(JSON.stringify({ value: null }));
     else if (req.url === "/session/test-session/elements" && req.method === "POST") res.end(JSON.stringify({ value: [] }));
@@ -73,7 +74,9 @@ async function run() {
     assert.equal(await isConfigured({ promax: { url: "https://imperio.promaxcloud.com.br" } }, app), true, "reconhece LogOff e Atalho quando aparecem como atributos de controles");
     markerOnly = false;
     page = "Login de Usuário Senha";
-    assert.equal(await isConfigured({ promax: { url: "https://imperio.promaxcloud.com.br" } }, app), false, "login não é calibração pronta");
+    onlyLoginWindow = true;
+    assert.equal(await isConfigured({ promax: { url: "https://imperio.promaxcloud.com.br" } }, app), false, "somente login não é calibração pronta");
+    onlyLoginWindow = false;
     fs.writeFileSync(path.join(base, "data", "promax-session.json"), JSON.stringify({ session_id: "expired" }));
     page = "LogOff Atalho";
     sessionUrl = "https://sso.promaxcloud.com.br/home";
