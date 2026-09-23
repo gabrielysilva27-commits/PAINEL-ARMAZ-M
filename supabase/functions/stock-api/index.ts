@@ -210,136 +210,86 @@ Deno.serve(async (req: Request) => {
       let version: any = null;
       if (body.version_id) version = await policyVersionById(String(body.version_id));
       if (!version) {
-        const { data, error } = await db.from("stock_policy_versions").select("*").in("status", ["approved", "draft"]).order("effective_start", { ascending: false }).order("created_at", { ascending: false }).limit(1).maybeSingle();
+        const today = todayBR();
+        const { data: current, error: currentError } = await db.from("stock_policy_versions")
+          .select("*").eq("status", "approved").lte("effective_start", today).gte("effective_end", today)
+          .order("effective_start", { ascending: false }).limit(1).maybeSingle();
+        if (currentError) throw currentError;
+        version = current;
+      }
+      if (!version) {
+        const { data, error } = await db.from("stock_policy_versions").select("*").eq("status", "approved")
+          .order("effective_start", { ascending: false }).order("created_at", { ascending: false }).limit(1).maybeSingle();
         if (error) throw error;
         version = data;
       }
       if (!version) return json({ version: null, items: [] });
-      const items = await policyItems(version.id);
-      const metrics = await policyMetrics(policyPeriodCode(version.review_start));
-      const latestNow = latest;
-      const current = new Map<string, any>();
-      if (latestNow?.payload?.rows) {
-        for (const r of latestNow.payload.rows) {
-          if (r?.source_sheet !== "Base Ruas" || !r?.sku_code) continue;
-          const code = String(r.sku_code);
-          const p = current.get(code) || { pallets: 0, oldest_expiry: null };
-          const q = Number(r.pallets);
-          if (Number.isFinite(q) && q > 0) p.pallets += q;
-          if (r.expires_on && (!p.oldest_expiry || String(r.expires_on) < p.oldest_expiry)) p.oldest_expiry = String(r.expires_on);
-          current.set(code, p);
-        }
-      }
-      const today = todayBR();
-      const enriched = items.map((x: any) => {
-        const inv = current.get(String(x.sku_code)) || { pallets: 0, oldest_expiry: null };
-        const avg = Number(x.avg_daily_pallets);
-        const currentDays = Number.isFinite(avg) && avg > 0 ? Number(inv.pallets) / avg : null;
-        let qtyStatus = "SEM_DADO";
-        if (currentDays !== null) {
-          if (currentDays < 3) qtyStatus = "OUT";
-          else if (currentDays < Number(x.objective_days || 5)) qtyStatus = "ABAIXO_DO_OBJETIVO";
-          else if (currentDays > Number(x.max_days || x.objective_days || 5)) qtyStatus = "OVER";
-          else qtyStatus = "OK";
-        }
-        const remain = daysUntil(inv.oldest_expiry, today);
-        let validityStatus = "SEM_VALIDADE";
-        if (remain !== null) validityStatus = remain <= 0 ? "VENCIDO" : remain <= 30 ? "CRITICO" : remain <= 45 ? "ATENCAO" : "NORMAL";
-        return { ...x, current_pallets: Number(inv.pallets || 0), current_days: currentDays, oldest_expiry: inv.oldest_expiry, days_to_expiry: remain, qty_status: qtyStatus, validity_status: validityStatus, metrics: metrics.get(String(x.sku_code)) || null };
-      });
-      return json({ version, items: enriched, snapshot: latestNow ? { id: latestNow.id, as_of: latestNow.as_of } : null });
+      const items = (await policyItems(version.id)).map((x: any) => ({
+        sku_code: String(x.sku_code || ""),
+        sku_name: String(x.sku_name || ""),
+        unit_code: x.unit_code || null,
+        out_qty: x.out_qty == null ? null : Number(x.out_qty),
+        over_qty: x.over_qty == null ? null : Number(x.over_qty),
+        source_file: x.source_file || null,
+        review_note: x.review_note || null,
+      }));
+      return json({ version, items });
     }
 
-    if (body.action === "policy_generate") {
-      if (String(user.role || "").toLowerCase() !== "admin") return json({ error: "Somente ADM pode gerar revisão da Política de Estoque" }, 403);
+    if (body.action === "policy_prepare") {
+      if (String(user.role || "").toLowerCase() !== "admin") return json({ error: "Somente ADM pode preparar uma nova Política de Estoque" }, 403);
       const code = String(body.code || "").trim();
       const reviewStart = String(body.review_start || ""), reviewEnd = String(body.review_end || "");
       const effectiveStart = String(body.effective_start || ""), effectiveEnd = String(body.effective_end || "");
       if (!/^R[12]\/\d{4}$/.test(code) || !/^\d{4}-\d{2}-\d{2}$/.test(reviewStart) || !/^\d{4}-\d{2}-\d{2}$/.test(reviewEnd) || !/^\d{4}-\d{2}-\d{2}$/.test(effectiveStart) || !/^\d{4}-\d{2}-\d{2}$/.test(effectiveEnd)) return json({ error: "Período da revisão inválido" }, 400);
       const { data: existing } = await db.from("stock_policy_versions").select("id").eq("code", code).maybeSingle();
       if (existing) return json({ error: code + " já existe" }, 409);
-      const firstMonth = reviewStart.slice(0, 7) + "-01", lastMonth = reviewEnd.slice(0, 7) + "-01";
-      const { data: monthRows, error: monthError } = await db.from("abc_months").select("reference_month,days_worked,status").gte("reference_month", firstMonth).lte("reference_month", lastMonth).eq("status", "imported");
-      if (monthError) throw monthError;
-      const monthDays = new Map((monthRows || []).map((x: any) => [String(x.reference_month), Number(x.days_worked || 0)]));
-      const totalDays = [...monthDays.values()].reduce((s, x) => s + (Number.isFinite(x) ? x : 0), 0);
-      if (!totalDays) return json({ error: "Não há meses de Curva ABC importados no período da revisão" }, 409);
-      const salesRows: any[] = [];
-      for (let offset = 0;; offset += 1000) {
-        const { data, error } = await db.from("abc_items").select("reference_month,sku_code,sku_name,curve_class,avg_caixas,avg_hl,avg_pallets").eq("area", "Regulador").gte("reference_month", firstMonth).lte("reference_month", lastMonth).range(offset, offset + 999);
-        if (error) throw error;
-        salesRows.push(...(data || []));
-        if (!data || data.length < 1000) break;
-      }
-      const hist = await policyMetrics(policyPeriodCode(reviewStart));
-      const grouped = new Map<string, any>();
-      for (const r of salesRows) {
-        const sku = String(r.sku_code || "");
-        if (!sku) continue;
-        const g = grouped.get(sku) || { sku_code: sku, sku_name: r.sku_name || "", sum_boxes: 0, n_boxes: 0, sum_hl: 0, n_hl: 0, sum_pallets: 0, n_pallets: 0, curve_class: r.curve_class || null, latest_month: "" };
-        const bx = Number(r.avg_caixas), hl = Number(r.avg_hl), pl = Number(r.avg_pallets);
-        if (r.avg_caixas != null && Number.isFinite(bx)) { g.sum_boxes += bx; g.n_boxes++; }
-        if (r.avg_hl != null && Number.isFinite(hl)) { g.sum_hl += hl; g.n_hl++; }
-        if (r.avg_pallets != null && Number.isFinite(pl)) { g.sum_pallets += pl; g.n_pallets++; }
-        if (String(r.reference_month) >= g.latest_month) { g.latest_month = String(r.reference_month); g.curve_class = r.curve_class || g.curve_class; g.sku_name = r.sku_name || g.sku_name; }
-        grouped.set(sku, g);
-      }
-      const codes = [...grouped.keys()];
-      const catalog = new Map<string, any>();
-      for (let i = 0; i < codes.length; i += 150) {
-        const { data, error } = await db.from("product_catalog").select("sku_code,factor_hecto_commercial,boxes_per_pallet").in("sku_code", codes.slice(i, i + 150));
-        if (error) throw error;
-        for (const x of data || []) catalog.set(String(x.sku_code), x);
-      }
-      const { data: version, error: versionError } = await db.from("stock_policy_versions").insert({ code, review_start: reviewStart, review_end: reviewEnd, effective_start: effectiveStart, effective_end: effectiveEnd, status: "draft", min_days_default: 3, attention_days: 45, critical_days: 30, method_version: "policy-v1", notes: "Mínimo fixo 3 dias; objetivo inicial 5 dias pela puxada D+2.", created_by: user.id }).select("*").single();
+      const { data: base, error: baseError } = await db.from("stock_policy_versions").select("*").eq("status", "approved").order("effective_start", { ascending: false }).limit(1).maybeSingle();
+      if (baseError) throw baseError;
+      if (!base) return json({ error: "Não existe Política vigente para servir de base" }, 409);
+      const { data: version, error: versionError } = await db.from("stock_policy_versions").insert({
+        code, review_start: reviewStart, review_end: reviewEnd, effective_start: effectiveStart, effective_end: effectiveEnd,
+        status: "draft", method_version: "fixed-out-over-v2",
+        notes: "Em preparação. Limites copiados da política vigente para revisão semestral com histórico de vendas.",
+        created_by: user.id
+      }).select("*").single();
       if (versionError) throw versionError;
-      const inserts = [...grouped.values()].map((g: any) => {
-        const m: any = hist.get(g.sku_code);
-        const cat: any = catalog.get(g.sku_code) || {};
-        let avgBoxes = g.n_boxes ? g.sum_boxes / g.n_boxes : null;
-        const avgHl = g.n_hl ? g.sum_hl / g.n_hl : null;
-        const factor = Number(cat.factor_hecto_commercial), boxesPerPallet = Number(cat.boxes_per_pallet);
-        if (avgBoxes == null && avgHl != null && Number.isFinite(factor) && factor > 0) avgBoxes = avgHl / factor;
-        let avgPallets = g.n_pallets ? g.sum_pallets / g.n_pallets : null;
-        if (avgPallets == null && avgBoxes != null && Number.isFinite(boxesPerPallet) && boxesPerPallet > 0) avgPallets = avgBoxes / boxesPerPallet;
-        const historicalP75 = Number(m?.legacy_p75_days);
-        let maxDays = Number.isFinite(historicalP75) ? Math.min(30, Math.max(7, historicalP75)) : 7;
-        maxDays = roundHalf(maxDays);
-        const flags: string[] = [];
-        if ((m?.out_count || 0) > 0) flags.push("HIST_OUT");
-        if ((m?.over_count || 0) > 0) flags.push("HIST_OVER");
-        if ((m?.critical_months || 0) > 0) flags.push("VALIDADE_30");
-        if ((m?.attention_months || 0) > 0) flags.push("VALIDADE_45");
-        if ((m?.age_nok_months || 0) > 0) flags.push("STOCK_AGE_NOK");
-        if (!Number.isFinite(historicalP75) || historicalP75 < 7) flags.push("MAX_BASE_7D");
-        if (Number.isFinite(historicalP75) && historicalP75 > 30) flags.push("MAX_CAP_30D");
-        const basis = m ? `P75 histórico ${Number(m.legacy_p75_days || 0).toFixed(1)}d · proposta limitada entre 7 e 30d · OUT ${m.out_count || 0} · OVER ${m.over_count || 0} · Age NOK ${m.age_nok_months || 0} mês(es)` : "Sem histórico OOR consolidado; máximo provisório em 7 dias (objetivo 5d + 2d D+2), sujeito à revisão.";
-        return { version_id: version.id, sku_code: g.sku_code, sku_name: g.sku_name, curve_class: ["A","B","C"].includes(g.curve_class) ? g.curve_class : null, avg_daily_boxes: avgBoxes, avg_daily_hl: avgHl, avg_daily_pallets: avgPallets, min_days: 3, objective_days: 5, max_days: maxDays, objective_suggested: 5, max_suggested: maxDays, suggestion_basis: basis, review_flags: flags, updated_by: user.id };
-      });
+      const baseItems = await policyItems(base.id);
+      const inserts = baseItems.map((x: any) => ({
+        version_id: version.id, sku_code: x.sku_code, sku_name: x.sku_name, unit_code: x.unit_code,
+        out_qty: x.out_qty, over_qty: x.over_qty, source_file: x.source_file, review_note: null, updated_by: user.id
+      }));
       for (let i = 0; i < inserts.length; i += 250) {
         const { error } = await db.from("stock_policy_items").insert(inserts.slice(i, i + 250));
         if (error) throw error;
       }
-      await db.from("stock_policy_audit_log").insert({ version_id: version.id, action: "GENERATE", details: { code, skus: inserts.length, review_start: reviewStart, review_end: reviewEnd, source_months: monthRows?.length || 0 }, user_id: user.id });
+      await db.from("stock_policy_audit_log").insert({ version_id: version.id, action: "GENERATE", details: { code, base_version_id: base.id, items: inserts.length }, user_id: user.id });
       return json({ ok: true, version_id: version.id, code, items: inserts.length });
     }
 
     if (body.action === "policy_edit") {
-      if (String(user.role || "").toLowerCase() !== "admin") return json({ error: "Somente ADM pode revisar parâmetros" }, 403);
-      const versionId = String(body.version_id || ""), sku = String(body.sku_code || "");
+      if (String(user.role || "").toLowerCase() !== "admin") return json({ error: "Somente ADM pode revisar a Política de Estoque" }, 403);
+      const versionId = String(body.version_id || ""), sku = String(body.sku_code || "").trim();
       const version = await policyVersionById(versionId);
-      if (!version || version.status !== "draft") return json({ error: "Somente versões em rascunho podem ser editadas" }, 409);
-      const objective = Number(body.objective_days), max = Number(body.max_days);
-      if (!Number.isFinite(objective) || objective < 3) return json({ error: "Objetivo deve ser pelo menos 3 dias" }, 400);
-      if (!Number.isFinite(max) || max < objective) return json({ error: "Máximo deve ser maior ou igual ao objetivo" }, 400);
+      if (!version || version.status !== "draft") return json({ error: "Somente a próxima política em preparação pode ser editada" }, 409);
+      const outQty = Number(body.out_qty), overQty = Number(body.over_qty);
+      if (!Number.isFinite(outQty) || outQty < 0) return json({ error: "OUT deve ser maior ou igual a zero" }, 400);
+      if (!Number.isFinite(overQty) || overQty <= outQty) return json({ error: "OVER deve ser maior que OUT" }, 400);
       const { data: currentItem, error: itemError } = await db.from("stock_policy_items").select("*").eq("version_id", versionId).eq("sku_code", sku).maybeSingle();
       if (itemError) throw itemError;
-      if (!currentItem) return json({ error: "SKU não encontrado na revisão" }, 404);
-      const avg = Number(currentItem.avg_daily_pallets);
-      const patch = { objective_days: objective, max_days: max, review_note: String(body.review_note || "").slice(0, 500), updated_by: user.id, updated_at: new Date().toISOString() };
+      if (!currentItem) return json({ error: "SKU não encontrado na política" }, 404);
+      const patch = {
+        out_qty: outQty, over_qty: overQty,
+        review_note: String(body.review_note || "").slice(0, 500),
+        updated_by: user.id, updated_at: new Date().toISOString()
+      };
       const { error } = await db.from("stock_policy_items").update(patch).eq("version_id", versionId).eq("sku_code", sku);
       if (error) throw error;
-      await db.from("stock_policy_audit_log").insert({ version_id: versionId, sku_code: sku, action: "EDIT", details: { before: { objective_days: currentItem.objective_days, max_days: currentItem.max_days }, after: { objective_days: objective, max_days: max }, note: patch.review_note }, user_id: user.id });
+      await db.from("stock_policy_audit_log").insert({
+        version_id: versionId, sku_code: sku, action: "EDIT",
+        details: { before: { out_qty: currentItem.out_qty, over_qty: currentItem.over_qty }, after: { out_qty: outQty, over_qty: overQty }, note: patch.review_note },
+        user_id: user.id
+      });
       return json({ ok: true });
     }
 
@@ -348,11 +298,77 @@ Deno.serve(async (req: Request) => {
       const versionId = String(body.version_id || "");
       const version = await policyVersionById(versionId);
       if (!version || version.status !== "draft") return json({ error: "A versão não está disponível para aprovação" }, 409);
+      const items = await policyItems(versionId);
+      if (!items.length || items.some((x: any) => x.out_qty == null || x.over_qty == null || Number(x.over_qty) <= Number(x.out_qty))) return json({ error: "Existem SKUs sem limites OUT/OVER válidos" }, 409);
       await db.from("stock_policy_versions").update({ status: "superseded", updated_at: new Date().toISOString() }).eq("status", "approved").neq("id", versionId).lte("effective_start", version.effective_end).gte("effective_end", version.effective_start);
       const { error } = await db.from("stock_policy_versions").update({ status: "approved", approved_by: user.id, approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", versionId);
       if (error) throw error;
       await db.from("stock_policy_audit_log").insert({ version_id: versionId, action: "APPROVE", details: { code: version.code, effective_start: version.effective_start, effective_end: version.effective_end }, user_id: user.id });
       return json({ ok: true });
+    }
+
+    if (body.action === "oor_get") {
+      let referenceDate = String(body.reference_date || "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(referenceDate)) {
+        const { data, error } = await db.from("stock_oor_daily").select("reference_date").order("reference_date", { ascending: false }).limit(1).maybeSingle();
+        if (error) throw error;
+        referenceDate = String(data?.reference_date || "");
+      }
+      if (!referenceDate) return json({ reference_date: null, rows: [], dates: [], counts: {} });
+      const rows: any[] = [];
+      for (let offset = 0;; offset += 1000) {
+        const { data, error } = await db.from("stock_oor_daily").select("*").eq("reference_date", referenceDate).order("sku_code").range(offset, offset + 999);
+        if (error) throw error;
+        rows.push(...(data || []));
+        if (!data || data.length < 1000) break;
+      }
+      const { data: dateRows, error: dateError } = await db.from("stock_oor_daily").select("reference_date").order("reference_date", { ascending: false }).limit(5000);
+      if (dateError) throw dateError;
+      const dates = [...new Set((dateRows || []).map((x: any) => String(x.reference_date)))].slice(0, 90);
+      const counts: Record<string, number> = { OUT: 0, OVER: 0, OK: 0, SEM_POLITICA: 0 };
+      for (const r of rows) counts[String(r.status || "SEM_POLITICA")] = (counts[String(r.status || "SEM_POLITICA")] || 0) + 1;
+      let policy: any = null;
+      const versionId = rows.find((x: any) => x.policy_version_id)?.policy_version_id;
+      if (versionId) policy = await policyVersionById(String(versionId));
+      return json({ reference_date: referenceDate, rows, dates, counts, policy });
+    }
+
+    if (body.action === "oor_import") {
+      if (!canEdit(user)) return json({ error: "Seu perfil não possui permissão para atualizar o OOR" }, 403);
+      const referenceDate = String(body.reference_date || "");
+      const incoming = Array.isArray(body.rows) ? body.rows : [];
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(referenceDate)) return json({ error: "Data de referência inválida" }, 400);
+      if (!incoming.length || incoming.length > 5000) return json({ error: "Base OOR vazia ou acima do limite" }, 400);
+      const { data: policy, error: policyError } = await db.from("stock_policy_versions").select("*").eq("status", "approved").lte("effective_start", referenceDate).gte("effective_end", referenceDate).order("effective_start", { ascending: false }).limit(1).maybeSingle();
+      if (policyError) throw policyError;
+      if (!policy) return json({ error: "Não existe Política de Estoque vigente para esta data" }, 409);
+      const limits = new Map((await policyItems(policy.id)).map((x: any) => [String(x.sku_code), x]));
+      const prepared = incoming.map((r: any) => {
+        const sku = String(r.sku_code || "").trim(), qty = Number(r.available_qty);
+        if (!/^\d+$/.test(sku) || !Number.isFinite(qty)) throw new Error("SKU ou quantidade inválida na base OOR");
+        const lim: any = limits.get(sku);
+        let status = "SEM_POLITICA";
+        if (lim && lim.out_qty != null && lim.over_qty != null) {
+          if (qty >= Number(lim.over_qty)) status = "OVER";
+          else if (qty <= Number(lim.out_qty)) status = "OUT";
+          else status = "OK";
+        }
+        return {
+          reference_date: referenceDate, sku_code: sku, sku_name: String(r.sku_name || lim?.sku_name || ""),
+          unit_code: r.unit_code || lim?.unit_code || null, available_qty: qty, status,
+          out_qty: lim?.out_qty ?? null, over_qty: lim?.over_qty ?? null, policy_version_id: policy.id,
+          source_file: String(body.source_file || "").slice(0, 240) || null, imported_by: user.id, imported_at: new Date().toISOString()
+        };
+      });
+      const { error: deleteError } = await db.from("stock_oor_daily").delete().eq("reference_date", referenceDate);
+      if (deleteError) throw deleteError;
+      for (let i = 0; i < prepared.length; i += 500) {
+        const { error } = await db.from("stock_oor_daily").insert(prepared.slice(i, i + 500));
+        if (error) throw error;
+      }
+      const counts: Record<string, number> = {};
+      for (const r of prepared) counts[r.status] = (counts[r.status] || 0) + 1;
+      return json({ ok: true, reference_date: referenceDate, rows: prepared.length, counts, policy: { id: policy.id, code: policy.code } });
     }
 
     if (body.action === "edit_row") {
