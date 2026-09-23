@@ -6,9 +6,10 @@ const { AgentApi } = require("./lib/api");
 const { loadAgentToken } = require("./lib/secrets");
 const { parse020501 } = require("./lib/csv020501");
 const promax = require("./lib/promax");
+const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "2.0.0";
+const VERSION = "3.0.0";
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -49,8 +50,24 @@ async function main() {
     return {
       hostname: os.hostname(),
       agent_version: VERSION,
+      updater_version: updater.UPDATER_VERSION,
+      capabilities: ["020501_SYNC","PROMAX_IE_MODE","AUTO_UPDATE_V1"],
       calibration_ready: promax.isConfigured(config, ROOT)
     };
+  }
+
+  let lastUpdateCheck = 0;
+  async function maybeUpdate(force) {
+    if (!force && Date.now() - lastUpdateCheck < 15 * 60 * 1000) return false;
+    lastUpdateCheck = Date.now();
+    try {
+      return await updater.checkForUpdate(api, info(), path.resolve(ROOT, ".."), log);
+    } catch (e) {
+      const message = e && e.message ? e.message : String(e);
+      log("Falha ao verificar atualização: " + message, true);
+      await api.updateState({ ...info(), update_status: "failed", update_error: message }).catch(function(){});
+      return false;
+    }
   }
 
   if (process.argv.indexOf("--check") >= 0) {
@@ -64,6 +81,8 @@ async function main() {
     return;
   }
 
+  if (await maybeUpdate(true)) return;
+
   log("Agente Puxada iniciado em " + os.hostname() + ".");
   let stopping = false;
   process.on("SIGINT", function () { stopping = true; });
@@ -72,6 +91,7 @@ async function main() {
   while (!stopping) {
     let job = null;
     try {
+      if (await maybeUpdate(false)) return;
       const response = await api.poll(info());
       job = response.job;
 
