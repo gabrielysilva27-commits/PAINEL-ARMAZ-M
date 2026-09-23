@@ -65,6 +65,11 @@ function homeReady(value) {
 }
 
 async function isConfigured(config, rootDir) {
+  if (calibrationLocked(rootDir)) {
+    LAST_READINESS_ERROR = "Abrindo uma nova sessão controlada do Promax.";
+    LAST_MISSING_SELECTORS = [];
+    return false;
+  }
   const base = String(config && config.promax && config.promax.url || "https://imperio.promaxcloud.com.br").trim();
   if (!base || !edgePath() || !driverPath(rootDir || __dirname)) {
     LAST_READINESS_ERROR = "Edge, IEDriver ou URL do Promax indisponível.";
@@ -197,6 +202,34 @@ function sessionFile(rootDir) {
   return path.resolve(rootDir, "..", "data", "promax-session.json");
 }
 
+function calibrationLockFile(rootDir) {
+  return path.resolve(rootDir, "..", "data", "promax-calibration.lock");
+}
+
+function calibrationLocked(rootDir) {
+  try {
+    const p = calibrationLockFile(rootDir);
+    const st = fs.statSync(p);
+    if (Date.now() - st.mtimeMs > 2 * 60 * 1000) {
+      try { fs.unlinkSync(p); } catch {}
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function setCalibrationLock(rootDir, enabled) {
+  const p = calibrationLockFile(rootDir);
+  if (!enabled) {
+    try { fs.unlinkSync(p); } catch {}
+    return;
+  }
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify({ pid: process.pid, at: new Date().toISOString() }), "utf8");
+}
+
 function loadSavedSession(rootDir) {
   try {
     const p = sessionFile(rootDir);
@@ -284,7 +317,7 @@ async function createSession(config, rootDir) {
         "se:ieOptions": {
           "ie.edgechromium": true,
           "ie.edgepath": edge,
-          "ie.ignoreprocessmatch": false,
+          "ie.ignoreprocessmatch": true,
           ignoreProtectedModeSettings: true,
           ignoreZoomSetting: true,
           browserAttachTimeout: 30000,
@@ -716,49 +749,43 @@ async function export020501(job, config, rootDir) {
 
 async function openCalibrationBrowser(config, rootDir) {
   const url = String(config.promax && config.promax.url || "https://imperio.promaxcloud.com.br").trim();
-
-  // "Abrir Promax" é uma ação explícita de recuperação. Não reutilize uma
-  // sessão invisível/órfã: encerre as sessões do IEDriver dedicado do agente
-  // e crie uma janela nova e controlada.
-  await startDriver(rootDir);
+  setCalibrationLock(rootDir, true);
   try {
-    const response = await http("GET", driverBase() + "/sessions", null, 3000);
-    const sessions = Array.isArray(response.value) ? response.value : [];
-    for (const session of sessions) {
-      const id = String(session.id || session.sessionId || "");
-      if (!id) continue;
-      try { await http("DELETE", driverBase() + "/session/" + encodeURIComponent(id), null, 8000); } catch {}
-    }
-  } catch {}
+    await startDriver(rootDir);
 
-  SESSION_ID = null;
-  clearSavedSession(rootDir);
-  await sleep(700);
-  await createSession(config, rootDir);
+    // Calibration owns the dedicated IEDriver while this lock exists. Remove
+    // every prior session so no stale/invisible browser can be reused.
+    try {
+      const response = await http("GET", driverBase() + "/sessions", null, 4000);
+      const sessions = Array.isArray(response.value) ? response.value : [];
+      for (const session of sessions) {
+        const id = String(session.id || session.sessionId || "");
+        if (!id) continue;
+        try { await http("DELETE", driverBase() + "/session/" + encodeURIComponent(id), null, 10000); } catch {}
+      }
+    } catch {}
 
-  // Edge IE mode can attach successfully while reusing an existing top-level
-  // Edge process. Force a new top-level WebDriver window for the explicit
-  // "Abrir Promax" action so the user always gets a visible controlled window.
-  try {
-    const before = await handles();
-    const created = await wd("POST", "/window/new", { type: "window" }, 12000);
-    const newHandle = String(created && created.handle || "");
-    if (newHandle) {
-      await waitUntil(async function () {
-        const hs = await handles();
-        return hs.indexOf(newHandle) >= 0;
-      }, 12000, 300);
-      await switchWindow(newHandle);
-    } else if (before.length) {
-      await switchWindow(before[before.length - 1]);
+    SESSION_ID = null;
+    clearSavedSession(rootDir);
+    await sleep(1400);
+
+    try {
+      await createSession(config, rootDir);
+    } catch (e) {
+      throw new Error("Falha ao criar sessão controlada do Edge/IE: " + (e && e.message ? e.message : String(e)));
     }
-  } catch {
-    const hs = await handles();
-    if (hs.length) await switchWindow(hs[hs.length - 1]);
+
+    try {
+      await navigate(url);
+    } catch (e) {
+      throw new Error("Sessão criada, mas não foi possível abrir o Promax: " + (e && e.message ? e.message : String(e)));
+    }
+
+    try { await wd("POST", "/window/maximize", {}, 8000); } catch {}
+    return true;
+  } finally {
+    setCalibrationLock(rootDir, false);
   }
-
-  await navigate(url);
-  try { await wd("POST", "/window/maximize", {}, 8000); } catch {}
 }
 
 module.exports = { isConfigured, readinessError, missingSelectors, openCalibrationBrowser, export020501 };

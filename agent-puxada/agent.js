@@ -9,7 +9,7 @@ const promax = require("./lib/promax");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.6";
+const VERSION = "3.2.7";
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -40,7 +40,32 @@ async function main() {
   let lastReadinessError = null;
 
   if (process.argv.indexOf("--calibrate") >= 0) {
-    await promax.openCalibrationBrowser(config, ROOT);
+    const token = loadAgentToken(ROOT);
+    const api = new AgentApi(config.apiUrl, token);
+    try {
+      log("Abrir Promax: iniciando recuperação da sessão controlada.");
+      await promax.openCalibrationBrowser(config, ROOT);
+      log("Abrir Promax: nova sessão criada e URL do Promax aberta.");
+      await api.updateState({
+        agent_version: VERSION,
+        updater_version: updater.UPDATER_VERSION,
+        capabilities: ["020501_SYNC","PROMAX_IE_MODE","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
+        update_status: "current",
+        update_target_version: VERSION
+      }).catch(function(){});
+    } catch (e) {
+      const message = e && e.message ? e.message : String(e);
+      log("Abrir Promax falhou: " + message, true);
+      await api.updateState({
+        agent_version: VERSION,
+        updater_version: updater.UPDATER_VERSION,
+        capabilities: ["020501_SYNC","PROMAX_IE_MODE","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
+        update_status: "failed",
+        update_target_version: VERSION,
+        update_error: "Abrir Promax: " + message
+      }).catch(function(){});
+      process.exitCode = 2;
+    }
     return;
   }
 
@@ -59,7 +84,7 @@ async function main() {
       hostname: os.hostname(),
       agent_version: VERSION,
       updater_version: updater.UPDATER_VERSION,
-      capabilities: ["020501_SYNC","PROMAX_IE_MODE","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_RESET_ON_OPEN","PROMAX_FORCE_VISIBLE_WINDOW","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
+      capabilities: ["020501_SYNC","PROMAX_IE_MODE","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
       calibration_ready: calibrationReady
     };
   }
