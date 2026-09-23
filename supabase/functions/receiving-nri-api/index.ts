@@ -273,6 +273,17 @@ async function agentUpdateState(node:any,b:any){
   const {data,error}=await db.from("receiving_pull_agent_nodes").update(patch).eq("id",node.id).select("*").single();if(error)throw error;
   return{ok:true,node:{id:data.id,slot_code:data.slot_code,agent_version:data.agent_version,update_status:data.update_status,update_target_version:data.update_target_version}}
 }
+async function agentUpdateFile(node:any,b:any){
+  const version=clean(b.version,40),target=clean(b.target,240).replace(/\\/g,"/");
+  if(!version||!target||target.includes("..")||!target.match(/^(app|driver)\//))throw new Error("Arquivo de atualização inválido.");
+  const {data:release,error:re}=await db.from("receiving_pull_agent_releases").select("version,status").eq("version",version).eq("status","active").maybeSingle();if(re)throw re;
+  if(!release)throw new Error("Versão de atualização não está ativa.");
+  const {data:file,error}=await db.from("receiving_pull_agent_release_files").select("target,sha256,content_base64,content_type").eq("version",version).eq("target",target).maybeSingle();if(error)throw error;
+  if(!file)throw new Error("Arquivo não encontrado na versão "+version+".");
+  await db.from("receiving_pull_agent_nodes").update({last_seen_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq("id",node.id);
+  return{version,target:file.target,sha256:file.sha256,content_type:file.content_type,content_base64:file.content_base64}
+}
+
 
 async function recoverExpiredAgentJob(){
   const now=new Date().toISOString();
@@ -341,7 +352,7 @@ Deno.serve(async(req:Request)=>{
  if(req.method==="OPTIONS")return new Response("ok",{headers:headers(req)});if(req.method!=="POST")return json(req,{error:"Método não permitido."},405);
  try{
   const b=await body(req),a=clean(b.action,60);
-  if(["agent_poll","agent_ping","agent_heartbeat","agent_complete","agent_fail","agent_update_manifest","agent_update_state"].includes(a)){
+  if(["agent_poll","agent_ping","agent_heartbeat","agent_complete","agent_fail","agent_update_manifest","agent_update_state","agent_update_file"].includes(a)){
     const node=await pullAgentAuth(req);if(!node)return json(req,{error:"Agente Puxada não autorizado."},401);
     if(a==="agent_ping"){const updated=await touchAgentNode(node,b);return json(req,{node:{id:updated.id,slot_code:updated.slot_code,display_name:updated.display_name,hostname:updated.hostname,status:updated.status,calibration_ready:updated.calibration_ready},agent:await getAgentStatus()})}
     if(a==="agent_poll")return json(req,{job:await claimAgentJob(node,b),agent:await getAgentStatus()});
@@ -350,6 +361,7 @@ Deno.serve(async(req:Request)=>{
     if(a==="agent_fail")return json(req,{result:await failAgentJob(node,b)});
     if(a==="agent_update_manifest")return json(req,await agentUpdateManifest(node,b));
     if(a==="agent_update_state")return json(req,{result:await agentUpdateState(node,b)});
+    if(a==="agent_update_file")return json(req,await agentUpdateFile(node,b));
   }
 
   if(a==="gate_users"){
