@@ -47,12 +47,16 @@ function restart(launcher,base){
     backup=path.join(base,"data","update-backup",Date.now()+"-"+version);
     fs.mkdirSync(backup,{recursive:true});
 
-    if(files.some(f=>String(f.target||"").startsWith("driver/"))){
+    const changedFiles=files.filter(f=>{
+      const dst=path.join(base,safeTarget(f.target));
+      return !fs.existsSync(dst)||sha256(dst)!==String(f.sha256).toLowerCase();
+    });
+    if(changedFiles.some(f=>String(f.target||"").startsWith("driver/"))){
       try{ childProcess.execFileSync("taskkill.exe",["/IM","IEDriverServer.exe","/F"],{windowsHide:true,stdio:"ignore"}); }catch{}
       await sleep(500);
     }
 
-    for(const file of files){
+    for(const file of changedFiles){
       const rel=safeTarget(file.target), src=path.join(stage,rel), dst=path.join(base,rel), bak=path.join(backup,rel);
       const existed=fs.existsSync(dst);
       if(existed) copyFile(dst,bak);
