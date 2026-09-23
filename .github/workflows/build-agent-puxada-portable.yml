@@ -24,11 +24,15 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install agent dependencies
+      - name: Download IE Driver for Edge IE mode
         shell: pwsh
         run: |
-          Set-Location agent-puxada
-          npm install --omit=dev
+          $url = "https://github.com/SeleniumHQ/selenium/releases/download/selenium-4.14.0/IEDriverServer_Win32_4.14.0.zip"
+          $zip = Join-Path $env:RUNNER_TEMP "iedriver.zip"
+          $out = Join-Path $env:RUNNER_TEMP "iedriver"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $out -Force
+          if (-not (Test-Path "$out\IEDriverServer.exe")) { throw "IEDriverServer.exe nao encontrado no pacote oficial." }
 
       - name: Publish portable launcher
         shell: pwsh
@@ -41,16 +45,36 @@ jobs:
           $dist = Join-Path $PWD "dist\AgentePuxada"
           New-Item -ItemType Directory -Force -Path $dist | Out-Null
           New-Item -ItemType Directory -Force -Path "$dist\runtime" | Out-Null
-          New-Item -ItemType Directory -Force -Path "$dist\app" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$dist\app\lib" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$dist\driver" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$dist\data" | Out-Null
+
           Copy-Item "$env:RUNNER_TEMP\launcher\AgentePuxada.exe" "$dist\AgentePuxada.exe"
           Copy-Item (Get-Command node).Source "$dist\runtime\node.exe"
           Copy-Item "agent-puxada\agent.js" "$dist\app\agent.js"
           Copy-Item "agent-puxada\config.example.json" "$dist\app\config.example.json"
           Copy-Item "agent-puxada\package.json" "$dist\app\package.json"
-          Copy-Item "agent-puxada\lib" "$dist\app\lib" -Recurse
-          Copy-Item "agent-puxada\node_modules" "$dist\app\node_modules" -Recurse
+          Copy-Item "agent-puxada\lib\*" "$dist\app\lib\" -Recurse
+          Copy-Item "$env:RUNNER_TEMP\iedriver\IEDriverServer.exe" "$dist\driver\IEDriverServer.exe"
           Copy-Item "agent-puxada\portable\README-PORTATIL.txt" "$dist\LEIA-ME.txt"
-          New-Item -ItemType Directory -Force -Path "$dist\data" | Out-Null
+
+      - name: Assemble update package
+        shell: pwsh
+        run: |
+          $upd = Join-Path $PWD "dist\AtualizacaoAgentePuxadaV2"
+          New-Item -ItemType Directory -Force -Path "$upd\app\lib" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$upd\driver" | Out-Null
+          Copy-Item "agent-puxada\agent.js" "$upd\app\agent.js"
+          Copy-Item "agent-puxada\config.example.json" "$upd\app\config.example.json"
+          Copy-Item "agent-puxada\package.json" "$upd\app\package.json"
+          Copy-Item "agent-puxada\lib\*" "$upd\app\lib\" -Recurse
+          Copy-Item "$env:RUNNER_TEMP\iedriver\IEDriverServer.exe" "$upd\driver\IEDriverServer.exe"
+          Set-Content "$upd\LEIA-ME-ATUALIZACAO.txt" @"
+          AGENTE PUXADA V2
+          Extraia por cima da pasta atual do AgentePuxada.
+          Nao apague a pasta data: o token protegido permanece no computador.
+          A V2 usa Microsoft Edge em modo IE pelo IEDriver oficial e nao usa Playwright/depuracao remota.
+          "@
 
       - name: Verify package
         shell: pwsh
@@ -62,21 +86,37 @@ jobs:
             "$base\app\agent.js",
             "$base\app\lib\promax.js",
             "$base\app\lib\csv020501.js",
-            "$base\app\node_modules\playwright-core\package.json"
+            "$base\driver\IEDriverServer.exe"
           )
           foreach ($p in $required) {
             if (-not (Test-Path $p)) { throw "Arquivo ausente: $p" }
           }
 
-      - name: Create ZIP
+      - name: Validate JavaScript syntax
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist\AgentePuxada\*" -DestinationPath "AgentePuxada-Portatil-Windows-x64.zip" -CompressionLevel Optimal
+          node --check agent-puxada/agent.js
+          node --check agent-puxada/lib/promax.js
+          node --check agent-puxada/lib/csv020501.js
 
-      - name: Upload artifact
+      - name: Create ZIPs
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist\AgentePuxada\*" -DestinationPath "AgentePuxada-Portatil-Windows-x64-v2.zip" -CompressionLevel Optimal
+          Compress-Archive -Path "dist\AtualizacaoAgentePuxadaV2\*" -DestinationPath "AgentePuxada-Atualizacao-v2.zip" -CompressionLevel Optimal
+
+      - name: Upload full artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AgentePuxada-Portatil-Windows-x64
-          path: AgentePuxada-Portatil-Windows-x64.zip
+          name: AgentePuxada-Portatil-Windows-x64-v2
+          path: AgentePuxada-Portatil-Windows-x64-v2.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload update artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AgentePuxada-Atualizacao-v2
+          path: AgentePuxada-Atualizacao-v2.zip
           if-no-files-found: error
           retention-days: 30
