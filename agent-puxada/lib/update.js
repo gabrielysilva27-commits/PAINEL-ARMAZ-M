@@ -31,10 +31,17 @@ async function sha256File(filePath) {
   });
 }
 
-async function download(url, target) {
-  const response = await fetch(allowedUrl(url), { redirect: "follow" });
-  if (!response.ok) throw new Error("Falha ao baixar atualização: HTTP " + response.status);
-  const buf = Buffer.from(await response.arrayBuffer());
+async function download(file, target, api, version) {
+  let buf;
+  if (file.source === "api" || !file.url) {
+    const response = await api.updateFile({ version: version, target: file.target });
+    if (!response || !response.content_base64) throw new Error("Backend não retornou o arquivo " + file.target + ".");
+    buf = Buffer.from(response.content_base64, "base64");
+  } else {
+    const response = await fetch(allowedUrl(file.url), { redirect: "follow" });
+    if (!response.ok) throw new Error("Falha ao baixar atualização: HTTP " + response.status);
+    buf = Buffer.from(await response.arrayBuffer());
+  }
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, buf);
 }
@@ -57,7 +64,7 @@ async function stageUpdate(manifest, baseDir, api, info, log) {
   for (const file of files) {
     const target = safeTarget(file.target);
     const staged = path.join(stageDir, target);
-    await download(file.url, staged);
+    await download(file, staged, api, version);
     const hash = await sha256File(staged);
     if (hash.toLowerCase() !== String(file.sha256 || "").toLowerCase()) {
       throw new Error("Hash inválido na atualização de " + target + ".");
