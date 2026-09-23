@@ -431,29 +431,43 @@ async function openShortcut(reportCode) {
   const script = [
     "var target=arguments[0];",
     "function n(s){return String(s||'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
-    "function vis(e){if(!e)return false;try{var r=e.getBoundingClientRect();return r.width>0&&r.height>0;}catch(x){return true;}}",
-    "var d=document,best=null,ok=null;",
-    "var inputs=d.querySelectorAll('input[type=text],input:not([type]),textarea');",
-    "for(var i=0;i<inputs.length;i++){var e=inputs[i],meta=n((e.name||'')+' '+(e.id||'')+' '+(e.title||'')+' '+(e.placeholder||'')+' '+(e.getAttribute('aria-label')||''));if(vis(e)&&meta.indexOf('ATALHO')>=0){best=e;break;}}",
-    "if(!best){var labels=d.querySelectorAll('td,th,div,span,font,b,label');for(var j=0;j<labels.length&&!best;j++){var l=labels[j],t=n(l.innerText||l.textContent||l.title||l.getAttribute('aria-label'));if(t.indexOf('ATALHO')<0)continue;var lr=l.getBoundingClientRect(),score=999999;for(var k=0;k<inputs.length;k++){var x=inputs[k];if(!vis(x))continue;var r=x.getBoundingClientRect(),s=Math.abs(r.top-lr.bottom)+Math.max(0,lr.left-r.left);if(s<score){score=s;best=x;}}}}",
-    "var acts=d.querySelectorAll('input,button,a,img');for(var q=0;q<acts.length;q++){var a=acts[q],txt=n(a.value||a.innerText||a.textContent||a.title||a.alt||a.name||a.id);if(vis(a)&&(txt==='OK'||txt.indexOf(' OK ')>=0||txt.indexOf('OK')===0)){ok=a;break;}}",
-    "if(!best||!ok)return false;",
-    "best.focus();best.value=target;",
-    "try{best.fireEvent('onchange');}catch(x){try{var ev=d.createEvent('HTMLEvents');ev.initEvent('change',true,false);best.dispatchEvent(ev);}catch(y){}}",
-    "try{ok.click();}catch(x){try{ok.fireEvent('onclick');}catch(y){return false;}}",
-    "return true;"
+    "function rect(e){try{return e.getBoundingClientRect();}catch(x){return {left:0,right:0,top:0,bottom:0,width:0,height:0};}}",
+    "function vis(e){if(!e)return false;var r=rect(e);var w=(r.width!=null?r.width:(r.right-r.left)),h=(r.height!=null?r.height:(r.bottom-r.top));return w>0&&h>0;}",
+    "function txt(e){return n((e.value||'')+' '+(e.innerText||e.textContent||'')+' '+(e.title||'')+' '+(e.alt||'')+' '+(e.name||'')+' '+(e.id||''));}",
+    "var ins=document.getElementsByTagName('input'),btns=document.getElementsByTagName('button'),ok=null,best=null;",
+    "for(var i=0;i<ins.length;i++){var t=txt(ins[i]);if(vis(ins[i])&&(t==='OK'||t.indexOf('OK ')===0||t.indexOf(' OK')>=0)){ok=ins[i];break;}}",
+    "if(!ok){for(var b=0;b<btns.length;b++){var tb=txt(btns[b]);if(vis(btns[b])&&(tb==='OK'||tb.indexOf('OK ')===0||tb.indexOf(' OK')>=0)){ok=btns[b];break;}}}",
+    "var textInputs=[];for(var j=0;j<ins.length;j++){var tp=n(ins[j].type||'text');if(vis(ins[j])&&(tp==='TEXT'||tp===''))textInputs.push(ins[j]);}",
+    "if(ok){var ro=rect(ok),cyo=(ro.top+ro.bottom)/2,bestScore=999999;for(var k=0;k<textInputs.length;k++){var r=rect(textInputs[k]),cy=(r.top+r.bottom)/2;if(r.right<=ro.left+8&&Math.abs(cy-cyo)<34){var score=(ro.left-r.right)+Math.abs(cy-cyo)*4;if(score<bestScore){bestScore=score;best=textInputs[k];}}}}",
+    "if(!best){var labels=[];var tags=['td','th','div','span','font','b','label'];for(var ti=0;ti<tags.length;ti++){var ns=document.getElementsByTagName(tags[ti]);for(var z=0;z<ns.length;z++)labels.push(ns[z]);}var lab=null;for(var q=0;q<labels.length;q++){if(txt(labels[q]).indexOf('ATALHO')>=0){lab=labels[q];break;}}if(lab){var lr=rect(lab),bs=999999;for(var u=0;u<textInputs.length;u++){var rr=rect(textInputs[u]),sc=Math.abs(rr.top-lr.bottom)+Math.abs(rr.left-lr.left);if(sc<bs){bs=sc;best=textInputs[u];}}}}",
+    "if(!best&&textInputs.length===1)best=textInputs[0];",
+    "if(!best&&textInputs.length>1){for(var p=0;p<textInputs.length;p++){var meta=txt(textInputs[p]);if(meta.indexOf('ATALHO')>=0){best=textInputs[p];break;}}}",
+    "if(!best||!ok){var diag=[];for(var d=0;d<ins.length&&d<12;d++)diag.push('INPUT['+d+'] type='+String(ins[d].type||'')+' value='+String(ins[d].value||'')+' name='+String(ins[d].name||'')+' id='+String(ins[d].id||''));for(var e=0;e<btns.length&&e<8;e++)diag.push('BUTTON['+e+'] '+txt(btns[e]));return {ok:false,diag:diag.join(' | ')};}",
+    "try{best.focus();}catch(x){}best.value=target;",
+    "try{best.fireEvent('onchange');}catch(x){try{var ev=document.createEvent('HTMLEvents');ev.initEvent('change',true,false);best.dispatchEvent(ev);}catch(y){}}",
+    "try{best.fireEvent('onkeyup');}catch(x){}",
+    "try{ok.click();return {ok:true};}catch(x){try{ok.fireEvent('onclick');return {ok:true};}catch(y){try{if(ok.form){ok.form.submit();return {ok:true};}}catch(z){}}}",
+    "return {ok:false,diag:'Encontrou Atalho e OK, mas não conseguiu acionar o botão.'};"
   ].join("");
+
   const hs = await handles();
+  let diagnostics = [];
   for (let i = hs.length - 1; i >= 0; i--) {
     try {
       await switchWindow(hs[i]);
       const found = await findInFrames(async function () {
-        return !!(await execute(script, [reportCode]));
+        const result = await execute(script, [reportCode]);
+        if (result && result.ok) return true;
+        if (result && result.diag) diagnostics.push(result.diag);
+        return false;
       }, 8);
       if (found) return true;
-    } catch {}
+    } catch (e) {
+      diagnostics.push(String(e && e.message || e));
+    }
   }
-  throw new Error("Campo ATALHO/OK não foi localizado na sessão do Promax.");
+  const details = diagnostics.filter(Boolean).slice(0, 4).join(" || ");
+  throw new Error("Campo ATALHO/OK não foi localizado na sessão do Promax." + (details ? " Diagnóstico: " + details : ""));
 }
 
 async function fillReport(job, config) {
