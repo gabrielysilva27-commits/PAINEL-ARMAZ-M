@@ -19,17 +19,26 @@ async function run() {
   const original = process.env["ProgramFiles(x86)"];
   process.env["ProgramFiles(x86)"] = base;
   let page = "LogOff Atalho";
+  let activeWindow = "home";
   const server = http.createServer((req, res) => {
     res.setHeader("Content-Type", "application/json");
     if (req.url === "/status") res.end(JSON.stringify({ value: { ready: true } }));
     else if (req.url === "/sessions") res.end(JSON.stringify({ value: [{ id: "test-session" }] }));
     else if (req.url === "/session/test-session/url") res.end(JSON.stringify({ value: "https://imperio.promaxcloud.com.br" }));
-    else if (req.url === "/session/test-session/execute/sync") res.end(JSON.stringify({ value: page }));
+    else if (req.url === "/session/test-session/window/handles") res.end(JSON.stringify({ value: ["report", "home"] }));
+    else if (req.url === "/session/test-session/window" && req.method === "POST") {
+      let body = "";
+      req.on("data", chunk => { body += chunk; });
+      req.on("end", () => { activeWindow = JSON.parse(body).handle; res.end(JSON.stringify({ value: null })); });
+    }
+    else if (req.url === "/session/test-session/execute/sync") res.end(JSON.stringify({ value: activeWindow === "report" ? "Relatório 02.05.01" : page }));
     else { res.statusCode = 404; res.end(JSON.stringify({ value: { error: "invalid session" } })); }
   });
   try {
     await new Promise(resolve => server.listen(5555, "127.0.0.1", resolve));
     assert.equal(await isConfigured({ promax: { url: "https://imperio.promaxcloud.com.br" } }, app), true, "a sessão viva não depende do PID antigo");
+    activeWindow = "report";
+    assert.equal(await isConfigured({ promax: { url: "https://imperio.promaxcloud.com.br" } }, app), true, "retoma a janela do Promax quando o relatório está em foco");
     page = "Login de Usuário Senha";
     assert.equal(await isConfigured({ promax: { url: "https://imperio.promaxcloud.com.br" } }, app), false, "login não é calibração pronta");
     fs.writeFileSync(path.join(base, "data", "promax-session.json"), JSON.stringify({ session_id: "expired" }));

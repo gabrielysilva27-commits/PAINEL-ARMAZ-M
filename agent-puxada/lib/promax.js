@@ -6,6 +6,7 @@ const childProcess = require("child_process");
 let DRIVER = null;
 let SESSION_ID = null;
 let DRIVER_PORT = 5555;
+let LAST_READINESS_ERROR = "";
 
 function sleep(ms) {
   return new Promise(function (resolve) { setTimeout(resolve, ms); });
@@ -46,25 +47,55 @@ function normalized(value) {
 
 async function isConfigured(config, rootDir) {
   const base = String(config && config.promax && config.promax.url || "https://imperio.promaxcloud.com.br").trim();
-  if (!base || !edgePath() || !driverPath(rootDir || __dirname)) return false;
+  if (!base || !edgePath() || !driverPath(rootDir || __dirname)) {
+    LAST_READINESS_ERROR = "Edge, IEDriver ou URL do Promax indisponível.";
+    return false;
+  }
   try {
     const p = sessionFile(rootDir || __dirname);
     const x = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf8")) : null;
     let id = String(x && x.session_id || "");
-    if (!await driverReady()) return false;
+    if (!await driverReady()) {
+      LAST_READINESS_ERROR = "IEDriver não responde na porta 5555.";
+      return false;
+    }
     let response;
     try { if (!id) throw new Error("Sessão local ausente."); response = await sessionBody(id); }
     catch {
       id = await findExistingSession(config, rootDir);
-      if (!id) return false;
+      if (!id) {
+        LAST_READINESS_ERROR = "Sessão do IEDriver não encontrada; abra o Promax pelo agente.";
+        return false;
+      }
       response = await sessionBody(id);
     }
-    const content = normalized(response && response.value);
-    return content.includes("LOGOFF") && content.includes("ATALHO");
-  } catch {
+    let content = normalized(response && response.value);
+    if (!content.includes("LOGOFF") || !content.includes("ATALHO")) {
+      // Promax can leave the driver focused on the report popup. Check each
+      // window and restore the authenticated home window when found.
+      const handles = await http("GET", driverBase() + "/session/" + encodeURIComponent(id) + "/window/handles", null, 4000);
+      for (const handle of handles.value || []) {
+        try {
+          await http("POST", driverBase() + "/session/" + encodeURIComponent(id) + "/window", { handle }, 4000);
+          const page = await sessionBody(id);
+          const candidate = normalized(page && page.value);
+          if (candidate.includes("LOGOFF") && candidate.includes("ATALHO")) {
+            content = candidate;
+            break;
+          }
+        } catch {}
+      }
+    }
+    const ready = content.includes("LOGOFF") && content.includes("ATALHO");
+    LAST_READINESS_ERROR = ready ? "" : "Sessão conectada, mas a tela inicial logada (LogOff e Atalho) não foi detectada.";
+    return ready;
+  } catch (error) {
+    LAST_READINESS_ERROR = "Falha ao consultar a sessão do Promax: " + (error && error.message || String(error));
     return false;
   }
 }
+
+function readinessError() { return LAST_READINESS_ERROR; }
 
 function sessionBody(id) {
   return http("POST", driverBase() + "/session/" + encodeURIComponent(id) + "/execute/sync", {
@@ -498,4 +529,4 @@ async function openCalibrationBrowser(config, rootDir) {
   await navigate(url);
 }
 
-module.exports = { isConfigured, missingSelectors, openCalibrationBrowser, export020501 };
+module.exports = { isConfigured, readinessError, missingSelectors, openCalibrationBrowser, export020501 };

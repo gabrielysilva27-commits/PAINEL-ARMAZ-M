@@ -9,7 +9,7 @@ const promax = require("./lib/promax");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.1.5";
+const VERSION = "3.1.6";
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -37,6 +37,7 @@ function loadConfig() {
 
 async function main() {
   const config = loadConfig();
+  let lastReadinessError = null;
 
   if (process.argv.indexOf("--calibrate") >= 0) {
     await promax.openCalibrationBrowser(config, ROOT);
@@ -47,12 +48,19 @@ async function main() {
   const api = new AgentApi(config.apiUrl, token);
 
   async function info() {
+    const calibrationReady = await promax.isConfigured(config, ROOT);
+    const readinessError = calibrationReady ? "" : promax.readinessError();
+    if (readinessError !== lastReadinessError) {
+      if (readinessError) log("Promax aguardando: " + readinessError);
+      else log("Sessão do Promax reconhecida e pronta.");
+      lastReadinessError = readinessError;
+    }
     return {
       hostname: os.hostname(),
       agent_version: VERSION,
       updater_version: updater.UPDATER_VERSION,
       capabilities: ["020501_SYNC","PROMAX_IE_MODE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
-      calibration_ready: await promax.isConfigured(config, ROOT)
+      calibration_ready: calibrationReady
     };
   }
 
