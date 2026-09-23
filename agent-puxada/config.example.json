@@ -1,33 +1,12 @@
 {
   "apiUrl": "https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/receiving-nri-api",
   "pollIntervalSeconds": 30,
-  "browser": {
-    "channel": "msedge",
-    "headless": false,
-    "profileDir": "./promax-profile",
-    "downloadDir": "./downloads"
-  },
   "promax": {
-    "url": "",
-    "report": "020501",
-    "dateFormat": "DD/MM/YYYY",
+    "url": "https://imperio.promaxcloud.com.br",
+    "report": "02.05.01",
     "warehouse": "1",
     "deposit": "1",
     "operationFrom": "251",
-    "operationTo": "314",
-    "afterSearchWaitMs": 1200,
-    "selectors": {
-      "reportSearch": "",
-      "reportOpen": "",
-      "dateFrom": "",
-      "dateTo": "",
-      "warehouse": "",
-      "deposit": "",
-      "operationFrom": "",
-      "operationTo": "",
-      "searchButton": "",
-      "exportCsvMenu": "",
-      "exportCsv": ""
-    }
+    "operationTo": "314"
   }
 }
