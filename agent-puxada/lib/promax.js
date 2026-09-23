@@ -40,19 +40,25 @@ function missingSelectors() {
   return [];
 }
 
-function processAlive(pid) {
-  if (!Number.isInteger(Number(pid)) || Number(pid) <= 0) return false;
-  try { process.kill(Number(pid), 0); return true; } catch { return false; }
+function normalized(value) {
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 }
 
-function isConfigured(config, rootDir) {
+async function isConfigured(config, rootDir) {
   const base = String(config && config.promax && config.promax.url || "https://imperio.promaxcloud.com.br").trim();
   if (!base || !edgePath() || !driverPath(rootDir || __dirname)) return false;
   try {
     const p = sessionFile(rootDir || __dirname);
     if (!fs.existsSync(p)) return false;
     const x = JSON.parse(fs.readFileSync(p, "utf8"));
-    return !!String(x && x.session_id || "") && processAlive(x && x.driver_pid);
+    const id = String(x && x.session_id || "");
+    if (!id || !await driverReady()) return false;
+    const response = await http("POST", driverBase() + "/session/" + encodeURIComponent(id) + "/execute/sync", {
+      script: "return document.body ? (document.body.innerText || document.body.textContent || '') : '';",
+      args: []
+    }, 4000);
+    const content = normalized(response && response.value);
+    return content.includes("LOGOFF") && content.includes("ATALHO");
   } catch {
     return false;
   }
@@ -415,7 +421,7 @@ async function ensurePromaxHome(config, rootDir) {
   const baseUrl = String(config.promax && config.promax.url || "https://imperio.promaxcloud.com.br").trim();
   await navigate(baseUrl);
   await waitUntil(async function () {
-    const t = (await bodyText()).toUpperCase();
+    const t = normalized(await bodyText());
     if (t.indexOf("LOGOFF") >= 0 && t.indexOf("ATALHO") >= 0) return true;
     if (t.indexOf("USUARIO") >= 0 && t.indexOf("SENHA") >= 0 && t.indexOf("LOGOFF") < 0) {
       throw new Error("PROMAX_LOGIN_REQUIRED: faca login no Promax no Edge e mantenha a sessao aberta.");

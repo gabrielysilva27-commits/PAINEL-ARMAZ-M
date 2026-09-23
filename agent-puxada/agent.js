@@ -9,7 +9,7 @@ const promax = require("./lib/promax");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.1.2";
+const VERSION = "3.1.3";
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -46,13 +46,13 @@ async function main() {
   const token = loadAgentToken(ROOT);
   const api = new AgentApi(config.apiUrl, token);
 
-  function info() {
+  async function info() {
     return {
       hostname: os.hostname(),
       agent_version: VERSION,
       updater_version: updater.UPDATER_VERSION,
       capabilities: ["020501_SYNC","PROMAX_IE_MODE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
-      calibration_ready: promax.isConfigured(config, ROOT)
+      calibration_ready: await promax.isConfigured(config, ROOT)
     };
   }
 
@@ -62,9 +62,9 @@ async function main() {
     try {
       const result = JSON.parse(fs.readFileSync(updateRecord, "utf8"));
       if (result.status === "failed") {
-        await api.updateState({ ...info(), update_status: "failed", update_target_version: result.version, update_error: result.error }).catch(function(){});
+        await api.updateState({ ...await info(), update_status: "failed", update_target_version: result.version, update_error: result.error }).catch(function(){});
       } else if (result.version === VERSION && !result.reported) {
-        await api.updateState({ ...info(), update_status: "updated", update_target_version: VERSION });
+        await api.updateState({ ...await info(), update_status: "updated", update_target_version: VERSION });
         fs.writeFileSync(updateRecord, JSON.stringify({ ...result, reported: true }, null, 2));
       }
     } catch (e) { log("Estado da atualização: " + e.message, true); }
@@ -73,19 +73,19 @@ async function main() {
     if (!force && Date.now() - lastUpdateCheck < 15 * 60 * 1000) return false;
     lastUpdateCheck = Date.now();
     try {
-      return await updater.checkForUpdate(api, info(), path.resolve(ROOT, ".."), log);
+      return await updater.checkForUpdate(api, await info(), path.resolve(ROOT, ".."), log);
     } catch (e) {
       const message = e && e.message ? e.message : String(e);
       log("Falha ao verificar atualização: " + message, true);
-      await api.updateState({ ...info(), update_status: "failed", update_error: message }).catch(function(){});
+      await api.updateState({ ...await info(), update_status: "failed", update_error: message }).catch(function(){});
       return false;
     }
   }
 
   if (process.argv.indexOf("--check") >= 0) {
-    const response = await api.ping(info());
+    await api.ping(await info());
     log("Conexao com o Painel Armazem OK.");
-    if (!promax.isConfigured(config, ROOT)) {
+    if (!await promax.isConfigured(config, ROOT)) {
       log("Promax aguardando preparacao: Microsoft Edge/IEDriver indisponivel.");
     } else {
       log("Promax pronto para automacao pelo Edge em modo IE.");
@@ -104,7 +104,7 @@ async function main() {
     let job = null;
     try {
       if (await maybeUpdate(false)) return;
-      const response = await api.poll(info());
+      const response = await api.poll(await info());
       job = response.job;
 
       if (!job) {
