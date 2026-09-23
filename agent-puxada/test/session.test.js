@@ -22,6 +22,8 @@ async function run() {
   const server = http.createServer((req, res) => {
     res.setHeader("Content-Type", "application/json");
     if (req.url === "/status") res.end(JSON.stringify({ value: { ready: true } }));
+    else if (req.url === "/sessions") res.end(JSON.stringify({ value: [{ id: "test-session" }] }));
+    else if (req.url === "/session/test-session/url") res.end(JSON.stringify({ value: "https://imperio.promaxcloud.com.br" }));
     else if (req.url === "/session/test-session/execute/sync") res.end(JSON.stringify({ value: page }));
     else { res.statusCode = 404; res.end(JSON.stringify({ value: { error: "invalid session" } })); }
   });
@@ -31,7 +33,9 @@ async function run() {
     page = "Login de Usuário Senha";
     assert.equal(await isConfigured({ promax: { url: "https://imperio.promaxcloud.com.br" } }, app), false, "login não é calibração pronta");
     fs.writeFileSync(path.join(base, "data", "promax-session.json"), JSON.stringify({ session_id: "expired" }));
-    assert.equal(await isConfigured({ promax: { url: "https://imperio.promaxcloud.com.br" } }, app), false, "sessão expirada não é aceita");
+    page = "LogOff Atalho";
+    assert.equal(await isConfigured({ promax: { url: "https://imperio.promaxcloud.com.br" } }, app), true, "sessão existente é recuperada");
+    assert.equal(JSON.parse(fs.readFileSync(path.join(base, "data", "promax-session.json"))).session_id, "test-session");
     console.log("Sessão ativa, login e sessão expirada: OK");
   } finally {
     await new Promise(resolve => server.close(resolve));

@@ -49,19 +49,48 @@ async function isConfigured(config, rootDir) {
   if (!base || !edgePath() || !driverPath(rootDir || __dirname)) return false;
   try {
     const p = sessionFile(rootDir || __dirname);
-    if (!fs.existsSync(p)) return false;
-    const x = JSON.parse(fs.readFileSync(p, "utf8"));
-    const id = String(x && x.session_id || "");
-    if (!id || !await driverReady()) return false;
-    const response = await http("POST", driverBase() + "/session/" + encodeURIComponent(id) + "/execute/sync", {
-      script: "return document.body ? (document.body.innerText || document.body.textContent || '') : '';",
-      args: []
-    }, 4000);
+    const x = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf8")) : null;
+    let id = String(x && x.session_id || "");
+    if (!await driverReady()) return false;
+    let response;
+    try { if (!id) throw new Error("Sessão local ausente."); response = await sessionBody(id); }
+    catch {
+      id = await findExistingSession(config, rootDir);
+      if (!id) return false;
+      response = await sessionBody(id);
+    }
     const content = normalized(response && response.value);
     return content.includes("LOGOFF") && content.includes("ATALHO");
   } catch {
     return false;
   }
+}
+
+function sessionBody(id) {
+  return http("POST", driverBase() + "/session/" + encodeURIComponent(id) + "/execute/sync", {
+      script: "return document.body ? (document.body.innerText || document.body.textContent || '') : '';",
+      args: []
+    }, 4000);
+}
+
+async function findExistingSession(config, rootDir) {
+  try {
+    const response = await http("GET", driverBase() + "/sessions", null, 3000);
+    const sessions = Array.isArray(response.value) ? response.value : [];
+    const host = new URL(String(config.promax && config.promax.url)).hostname;
+    for (const session of sessions) {
+      const id = String(session.id || session.sessionId || "");
+      if (!id) continue;
+      try {
+        const current = await http("GET", driverBase() + "/session/" + encodeURIComponent(id) + "/url", null, 3000);
+        if (new URL(String(current.value || "")).hostname !== host) continue;
+        SESSION_ID = id;
+        saveSession(rootDir, id);
+        return id;
+      } catch {}
+    }
+  } catch {}
+  return "";
 }
 
 async function http(method, url, body, timeoutMs) {
@@ -168,6 +197,7 @@ async function createSession(config, rootDir) {
       clearSavedSession(rootDir);
     }
   }
+  if (await findExistingSession(config, rootDir)) return SESSION_ID;
 
   const edge = edgePath();
   if (!edge) throw new Error("Microsoft Edge nao encontrado neste computador.");
@@ -193,7 +223,12 @@ async function createSession(config, rootDir) {
       }
     }
   };
-  const created = await http("POST", driverBase() + "/session", body, 60000);
+  let created;
+  try { created = await http("POST", driverBase() + "/session", body, 60000); }
+  catch (error) {
+    if (await findExistingSession(config, rootDir)) return SESSION_ID;
+    throw error;
+  }
   SESSION_ID = created && created.value && created.value.sessionId || created && created.sessionId;
   if (!SESSION_ID) throw new Error("IEDriver nao retornou uma sessao valida.");
   saveSession(rootDir, SESSION_ID);
