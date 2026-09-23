@@ -7,6 +7,16 @@ let DRIVER = null;
 let SESSION_ID = null;
 let DRIVER_PORT = 5555;
 let LAST_READINESS_ERROR = "";
+// Promax renders its home and reports in nested frames; document.body on the
+// outer frameset does not contain the visible LogOff/Atalho controls.
+const PAGE_TEXT_SCRIPT = [
+  "function collect(w,depth){",
+  "if(depth>6)return '';var result='';",
+  "try{var d=w.document;result=(d.title||'')+' '+(d.body?(d.body.innerText||d.body.textContent||''):'');}catch(e){}",
+  "try{for(var i=0;i<w.frames.length;i++)result+=' '+collect(w.frames[i],depth+1);}catch(e){}",
+  "return result;}",
+  "return collect(window,0);"
+].join("");
 
 function sleep(ms) {
   return new Promise(function (resolve) { setTimeout(resolve, ms); });
@@ -99,7 +109,7 @@ function readinessError() { return LAST_READINESS_ERROR; }
 
 function sessionBody(id) {
   return http("POST", driverBase() + "/session/" + encodeURIComponent(id) + "/execute/sync", {
-      script: "return document.body ? (document.body.innerText || document.body.textContent || '') : '';",
+      script: PAGE_TEXT_SCRIPT,
       args: []
     }, 4000);
 }
@@ -287,7 +297,7 @@ async function switchWindow(handle) {
 }
 
 async function bodyText() {
-  return String(await execute("return document.body ? (document.body.innerText || document.body.textContent || '') : '';") || "");
+  return String(await execute(PAGE_TEXT_SCRIPT) || "");
 }
 
 async function waitUntil(check, timeoutMs, intervalMs) {
@@ -313,10 +323,7 @@ async function switchToWindowContaining(expected) {
     for (let i = hs.length - 1; i >= 0; i--) {
       try {
         await switchWindow(hs[i]);
-        const info = await execute(
-          "return {title:document.title||'', text:document.body?(document.body.innerText||document.body.textContent||''):''};"
-        );
-        const hay = String((info && info.title || "") + " " + (info && info.text || "")).toUpperCase();
+        const hay = String(await execute(PAGE_TEXT_SCRIPT) || "").toUpperCase();
         if (hay.indexOf(wanted) >= 0) return hs[i];
       } catch {}
     }

@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
+const vm = require("node:vm");
 const { isConfigured } = require("../lib/promax");
 
 async function run() {
@@ -19,6 +20,7 @@ async function run() {
   const original = process.env["ProgramFiles(x86)"];
   process.env["ProgramFiles(x86)"] = base;
   let page = "LogOff Atalho";
+  let nestedFrame = false;
   let activeWindow = "home";
   const server = http.createServer((req, res) => {
     res.setHeader("Content-Type", "application/json");
@@ -31,7 +33,16 @@ async function run() {
       req.on("data", chunk => { body += chunk; });
       req.on("end", () => { activeWindow = JSON.parse(body).handle; res.end(JSON.stringify({ value: null })); });
     }
-    else if (req.url === "/session/test-session/execute/sync") res.end(JSON.stringify({ value: activeWindow === "report" ? "Relatório 02.05.01" : page }));
+    else if (req.url === "/session/test-session/execute/sync") {
+      let body = "";
+      req.on("data", chunk => { body += chunk; });
+      req.on("end", () => {
+        const top = { document: { title: "Promax", body: { innerText: nestedFrame ? "" : page } }, frames: [] };
+        if (nestedFrame) top.frames.push({ document: { title: "Início", body: { innerText: page } }, frames: [] });
+        const text = vm.runInNewContext("(function(){" + JSON.parse(body).script + "})()", { window: top });
+        res.end(JSON.stringify({ value: activeWindow === "report" ? "Relatório 02.05.01" : text }));
+      });
+    }
     else { res.statusCode = 404; res.end(JSON.stringify({ value: { error: "invalid session" } })); }
   });
   try {
@@ -39,6 +50,8 @@ async function run() {
     assert.equal(await isConfigured({ promax: { url: "https://imperio.promaxcloud.com.br" } }, app), true, "a sessão viva não depende do PID antigo");
     activeWindow = "report";
     assert.equal(await isConfigured({ promax: { url: "https://imperio.promaxcloud.com.br" } }, app), true, "retoma a janela do Promax quando o relatório está em foco");
+    nestedFrame = true;
+    assert.equal(await isConfigured({ promax: { url: "https://imperio.promaxcloud.com.br" } }, app), true, "encontra LogOff e Atalho dentro do quadro do Promax");
     page = "Login de Usuário Senha";
     assert.equal(await isConfigured({ promax: { url: "https://imperio.promaxcloud.com.br" } }, app), false, "login não é calibração pronta");
     fs.writeFileSync(path.join(base, "data", "promax-session.json"), JSON.stringify({ session_id: "expired" }));
