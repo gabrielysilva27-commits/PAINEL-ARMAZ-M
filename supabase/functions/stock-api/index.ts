@@ -472,6 +472,22 @@ Deno.serve(async (req: Request) => {
       };
       const { error: summaryUpsertError } = await db.from("stock_oor_daily_summary").upsert(summaryPayload, { onConflict: "reference_date" });
       if (summaryUpsertError) throw summaryUpsertError;
+      const monthStart = referenceDate.slice(0, 7) + "-01";
+      const monthDate = new Date(monthStart + "T00:00:00Z");
+      monthDate.setUTCMonth(monthDate.getUTCMonth() + 1);
+      const nextMonth = monthDate.toISOString().slice(0, 10);
+      const { data: monthRows, error: monthRowsError } = await db.from("stock_oor_daily_summary")
+        .select("out_count,over_count,ok_count,total_count")
+        .gte("reference_date", monthStart).lt("reference_date", nextMonth);
+      if (monthRowsError) throw monthRowsError;
+      const monthTotals = (monthRows || []).reduce((a: any, x: any) => {
+        a.out_count += Number(x.out_count || 0); a.over_count += Number(x.over_count || 0);
+        a.ok_count += Number(x.ok_count || 0); a.total_count += Number(x.total_count || 0); return a;
+      }, { out_count: 0, over_count: 0, ok_count: 0, total_count: 0 });
+      const { error: monthUpsertError } = await db.from("stock_oor_monthly_summary").upsert({
+        reference_month: monthStart, ...monthTotals, source: "AGENTE_OOR", updated_at: new Date().toISOString()
+      }, { onConflict: "reference_month" });
+      if (monthUpsertError) throw monthUpsertError;
       return json({ ok: true, reference_date: referenceDate, rows: prepared.length, counts, policy: { id: policy.id, code: policy.code } });
     }
 
