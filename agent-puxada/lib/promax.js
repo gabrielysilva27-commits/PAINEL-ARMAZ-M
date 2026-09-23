@@ -78,36 +78,30 @@ async function isConfigured(config, rootDir) {
       LAST_READINESS_ERROR = "IEDriver não responde na porta 5555.";
       return false;
     }
-    let response;
-    try { if (!id) throw new Error("Sessão local ausente."); response = await sessionBody(id); }
-    catch {
+    try {
+      if (!id) throw new Error("Sessão local ausente.");
+      SESSION_ID = id;
+      await wd("GET", "/url", null, 2500);
+    } catch {
       id = await findExistingSession(config, rootDir);
       if (!id) {
         LAST_READINESS_ERROR = "Sessão do IEDriver não encontrada; abra o Promax pelo agente.";
         return false;
       }
-      response = await sessionBody(id);
+      SESSION_ID = id;
     }
-    let content = response && response.value;
-    if (!homeReady(content)) {
-      // Promax can leave the driver focused on the report popup. Check each
-      // window and restore the authenticated home window when found.
-      const handles = await http("GET", driverBase() + "/session/" + encodeURIComponent(id) + "/window/handles", null, 4000);
-      for (const handle of handles.value || []) {
-        try {
-          await http("POST", driverBase() + "/session/" + encodeURIComponent(id) + "/window", { handle }, 4000);
-          const page = await sessionBody(id);
-          const candidate = page && page.value;
-          if (homeReady(candidate)) {
-            content = candidate;
-            break;
-          }
-        } catch {}
-      }
+    const hs = await handles();
+    for (const handle of hs) {
+      try {
+        await switchWindow(handle);
+        if (await findHomeInFrames()) {
+          LAST_READINESS_ERROR = "";
+          return true;
+        }
+      } catch {}
     }
-    const ready = homeReady(content);
-    LAST_READINESS_ERROR = ready ? "" : "Sessão conectada, mas a tela inicial logada (LogOff e Atalho) não foi detectada.";
-    return ready;
+    LAST_READINESS_ERROR = "Sessão conectada, mas a tela inicial logada (LogOff e Atalho) não foi detectada nos quadros do Promax.";
+    return false;
   } catch (error) {
     LAST_READINESS_ERROR = "Falha ao consultar a sessão do Promax: " + (error && error.message || String(error));
     return false;
@@ -309,6 +303,53 @@ async function bodyText() {
   return String(await execute(PAGE_TEXT_SCRIPT) || "");
 }
 
+async function topFrame() {
+  return wd("POST", "/frame", { id: null }, 7000);
+}
+
+async function parentFrame() {
+  return wd("POST", "/frame/parent", {}, 7000);
+}
+
+async function frameElements() {
+  try {
+    return await wd("POST", "/elements", { using: "css selector", value: "frame,iframe" }, 7000) || [];
+  } catch {
+    return [];
+  }
+}
+
+async function findInFrames(check, maxDepth) {
+  await topFrame();
+  const limit = Number(maxDepth || 8);
+  async function visit(depth) {
+    try { if (await check()) return true; } catch {}
+    if (depth >= limit) return false;
+    const frames = await frameElements();
+    for (const frame of frames) {
+      try { await wd("POST", "/frame", { id: frame }, 7000); }
+      catch { continue; }
+      if (await visit(depth + 1)) return true;
+      try { await parentFrame(); } catch { await topFrame(); }
+    }
+    return false;
+  }
+  return visit(0);
+}
+
+async function findTextInFrames(text) {
+  const wanted = normalized(text);
+  return findInFrames(async function () {
+    return normalized(await bodyText()).indexOf(wanted) >= 0;
+  }, 8);
+}
+
+async function findHomeInFrames() {
+  return findInFrames(async function () {
+    return homeReady(await bodyText());
+  }, 8);
+}
+
 async function waitUntil(check, timeoutMs, intervalMs) {
   const until = Date.now() + (timeoutMs || 30000);
   let lastErr = null;
@@ -326,14 +367,12 @@ async function waitUntil(check, timeoutMs, intervalMs) {
 }
 
 async function switchToWindowContaining(expected) {
-  const wanted = normalized(expected);
   return waitUntil(async function () {
     const hs = await handles();
     for (let i = hs.length - 1; i >= 0; i--) {
       try {
         await switchWindow(hs[i]);
-        const hay = normalized(await execute(PAGE_TEXT_SCRIPT));
-        if (hay.indexOf(wanted) >= 0) return hs[i];
+        if (await findTextInFrames(expected)) return hs[i];
       } catch {}
     }
     return null;
@@ -341,6 +380,7 @@ async function switchToWindowContaining(expected) {
 }
 
 async function openShortcut(reportCode) {
+  if (!await findTextInFrames("Atalho")) throw new Error("Campo ATALHO não encontrado nos quadros do Promax.");
   const script = [
     "var target=arguments[0];",
     "function n(s){return String(s||'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
@@ -363,6 +403,11 @@ async function openShortcut(reportCode) {
 }
 
 async function fillReport(job, config) {
+  const reportFrame = await findInFrames(async function () {
+    const t = normalized(await bodyText());
+    return t.indexOf("PERIODO") >= 0 && t.indexOf("ARMAZEM") >= 0 && t.indexOf("OPERACAO") >= 0;
+  }, 8);
+  if (!reportFrame) throw new Error("Formulário 02.05.01 não encontrado nos quadros do Promax.");
   const script = [
     "var vals=arguments[0];",
     "function n(s){return String(s||'').replace(/[ÁÀÂÃÄ]/gi,'A').replace(/[ÉÈÊË]/gi,'E').replace(/[ÍÌÎÏ]/gi,'I').replace(/[ÓÒÔÕÖ]/gi,'O').replace(/[ÚÙÛÜ]/gi,'U').replace(/Ç/gi,'C').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
@@ -391,6 +436,11 @@ async function fillReport(job, config) {
 }
 
 async function csvDescriptor() {
+  const csvFrame = await findInFrames(async function () {
+    const t = normalized(await bodyText());
+    return t.indexOf("CSV") >= 0;
+  }, 8);
+  if (!csvFrame) return null;
   const script = [
     "function n(s){return String(s||'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
     "function docs(w,depth,out){if(depth>8)return;try{if(w.document)out.push(w.document);}catch(e){}try{for(var i=0;i<w.frames.length;i++)docs(w.frames[i],depth+1,out);}catch(e){}}",
@@ -403,6 +453,11 @@ async function csvDescriptor() {
 }
 
 async function clickCsv() {
+  const csvFrame = await findInFrames(async function () {
+    const t = normalized(await bodyText());
+    return t.indexOf("CSV") >= 0;
+  }, 8);
+  if (!csvFrame) throw new Error("Botão CSV não encontrado nos quadros do Promax.");
   return execute([
     "function n(s){return String(s||'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
     "function docs(w,depth,out){if(depth>8)return;try{if(w.document)out.push(w.document);}catch(e){}try{for(var i=0;i<w.frames.length;i++)docs(w.frames[i],depth+1,out);}catch(e){}}",
@@ -508,12 +563,12 @@ async function ensurePromaxHome(config, rootDir) {
   const baseUrl = String(config.promax && config.promax.url || "https://imperio.promaxcloud.com.br").trim();
   await navigate(baseUrl);
   await waitUntil(async function () {
-    const t = await bodyText();
-    if (homeReady(t)) return true;
-    const normalizedText = normalized(t);
-    if (normalizedText.indexOf("USUARIO") >= 0 && normalizedText.indexOf("SENHA") >= 0 && !homeReady(t)) {
-      throw new Error("PROMAX_LOGIN_REQUIRED: faca login no Promax no Edge e mantenha a sessao aberta.");
-    }
+    if (await findHomeInFrames()) return true;
+    const login = await findInFrames(async function () {
+      const t = normalized(await bodyText());
+      return t.indexOf("USUARIO") >= 0 && t.indexOf("SENHA") >= 0;
+    }, 8);
+    if (login) throw new Error("PROMAX_LOGIN_REQUIRED: faca login no Promax no Edge e mantenha a sessao aberta.");
     return false;
   }, 25000, 500);
 }
@@ -525,8 +580,10 @@ async function export020501(job, config, rootDir) {
   await openShortcut(report);
   await switchToWindowContaining("Movimentação do Estoque");
   await waitUntil(async function () {
-    const t = normalized(await bodyText());
-    return t.indexOf("PERIODO") >= 0 && t.indexOf("ARMAZEM") >= 0 && t.indexOf("OPERACAO") >= 0;
+    return findInFrames(async function () {
+      const t = normalized(await bodyText());
+      return t.indexOf("PERIODO") >= 0 && t.indexOf("ARMAZEM") >= 0 && t.indexOf("OPERACAO") >= 0;
+    }, 8);
   }, 20000, 400);
 
   await fillReport(job, config);

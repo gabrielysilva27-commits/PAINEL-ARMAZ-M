@@ -9,7 +9,7 @@ const promax = require("./lib/promax");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.1.8";
+const VERSION = "3.1.9";
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -59,7 +59,7 @@ async function main() {
       hostname: os.hostname(),
       agent_version: VERSION,
       updater_version: updater.UPDATER_VERSION,
-      capabilities: ["020501_SYNC","PROMAX_IE_MODE","PROMAX_NESTED_FRAMES_V2","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
+      capabilities: ["020501_SYNC","PROMAX_IE_MODE","PROMAX_WEBDRIVER_FRAMES","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
       calibration_ready: calibrationReady
     };
   }
