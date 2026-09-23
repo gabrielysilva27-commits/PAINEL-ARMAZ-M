@@ -1,8 +1,8 @@
 {
   "name": "agente-puxada-promax",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
-  "description": "Agente local do Painel Armazem para sincronizar o relatorio 02.05.01 do Promax via Microsoft Edge em modo IE.",
+  "description": "Agente local autoatualizável do Painel Armazém para automações de Puxada/Promax via Microsoft Edge em modo IE.",
   "main": "agent.js",
   "scripts": {
     "start": "node agent.js",
