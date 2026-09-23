@@ -139,6 +139,7 @@ function parse020501(filePath) {
     name: findColumn(headers, ["DESCRICAO"]),
     unit: findColumn(headers, ["UNIDADE", "UND"]),
     op: findColumn(headers, ["CODIGO OPERACAO", "OPERACAO"]),
+    opType: findColumn(headers, ["TIPO OPERACAO", "TIPO OP"], false),
     qty: findColumn(headers, ["QTDE ENTRADA", "QTD ENTRADA", "QUANTIDADE ENTRADA"]),
     date: findColumn(headers, ["DATA", "DT ENTRADA"], false)
   };
@@ -151,8 +152,10 @@ function parse020501(filePath) {
     const supplier = normalizeDigits(row[ix.supplier]);
     const invoice = normalizeDigits(row[ix.invoice]);
     const sku = normalizeDigits(row[ix.sku]);
+    const opType = ix.opType >= 0 ? String(row[ix.opType] == null ? "" : row[ix.opType]).trim() : "+";
 
     if (supplier === "0" || invoice === "0" || sku === "0") continue;
+    if (opType && opType !== "+") continue;
 
     validRows++;
     const key = supplier + "|" + invoice + "|" + sku;
