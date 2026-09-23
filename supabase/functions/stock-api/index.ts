@@ -350,29 +350,32 @@ Deno.serve(async (req: Request) => {
       const pct = (n: number, d: number) => d > 0 ? Number((n / d).toFixed(6)) : 0;
       const decorate = (x: any) => ({
         ...x,
-        out_pct: pct(x.out_count, x.total_count),
-        over_pct: pct(x.over_count, x.total_count),
-        ok_pct: pct(x.ok_count, x.total_count),
+        out_pct: pct(Number(x.out_count || 0), Number(x.total_count || 0)),
+        over_pct: pct(Number(x.over_count || 0), Number(x.total_count || 0)),
+        ok_pct: pct(Number(x.ok_count || 0), Number(x.total_count || 0)),
       });
       const daily = decorate(all.find((x: any) => x.reference_date === referenceDate));
       const month = referenceDate.slice(0, 7);
-      const accumulatedRows = all.filter((x: any) => x.reference_date.slice(0, 7) === month && x.reference_date <= referenceDate);
-      const sumRows = (rows: any[]) => rows.reduce((a: any, x: any) => {
-        a.out_count += x.out_count; a.over_count += x.over_count; a.ok_count += x.ok_count; a.total_count += x.total_count; return a;
-      }, { out_count: 0, over_count: 0, ok_count: 0, total_count: 0 });
-      const acc = sumRows(accumulatedRows);
-      const accumulated = decorate({ month, through_date: referenceDate, days: accumulatedRows.length, ...acc });
+      const monthDaily = all.filter((x: any) => x.reference_date.slice(0, 7) === month);
 
-      const monthlyMap = new Map<string, any[]>();
-      for (const row of all) {
-        const key = row.reference_date.slice(0, 7);
-        if (!monthlyMap.has(key)) monthlyMap.set(key, []);
-        monthlyMap.get(key)!.push(row);
-      }
-      const monthly = [...monthlyMap.entries()].map(([key, rows]: any) => {
-        const s = sumRows(rows);
-        return decorate({ month: key, days: rows.length, ...s });
-      });
+      const { data: monthlyRows, error: monthlyError } = await db.from("stock_oor_monthly_summary")
+        .select("reference_month,out_count,over_count,ok_count,total_count,source")
+        .order("reference_month", { ascending: true });
+      if (monthlyError) throw monthlyError;
+      const monthly = (monthlyRows || []).map((r: any) => decorate({
+        month: String(r.reference_month).slice(0, 7),
+        out_count: Number(r.out_count || 0),
+        over_count: Number(r.over_count || 0),
+        ok_count: Number(r.ok_count || 0),
+        total_count: Number(r.total_count || 0),
+        source: r.source || null,
+        days: all.filter((x: any) => x.reference_date.slice(0, 7) === String(r.reference_month).slice(0, 7)).length,
+      }));
+      const currentMonth = monthly.find((x: any) => x.month === month);
+      const accumulated = currentMonth ? {
+        ...currentMonth,
+        through_date: monthDaily.length ? monthDaily[monthDaily.length - 1].reference_date : referenceDate,
+      } : null;
 
       let policy: any = null;
       const { data: policyRow, error: policyError } = await db.from("stock_policy_versions").select("*")
@@ -387,12 +390,12 @@ Deno.serve(async (req: Request) => {
         daily,
         accumulated,
         monthly,
-        month_daily: accumulatedRows.map(decorate),
+        month_daily: monthDaily.map(decorate),
         policy,
         formula: {
-          daily: "status_no_dia / total_de_observacoes_do_dia",
-          accumulated: "status_acumulado / total_de_observacoes_acumuladas",
-          monthly: "status_no_mes / total_de_observacoes_do_mes"
+          daily: "COUNTIFS(status,status_escolhido,data,dia) / COUNTIFS(data,dia)",
+          accumulated: "COUNTIF(status,status_escolhido) / COUNT(data) no arquivo mensal",
+          monthly: "mesmo cálculo do acumulado de cada arquivo mensal"
         }
       });
     }
