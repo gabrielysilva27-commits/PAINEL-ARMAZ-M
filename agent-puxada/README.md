@@ -1,4 +1,4 @@
-# Agente Puxada - Promax V2
+# Agente Puxada - Promax V3
 
 O Agente Puxada sincroniza automaticamente o relatório **02.05.01** do Promax com o Painel Armazém.
 
@@ -75,4 +75,10 @@ Logs:
 - app\logs\agent.log
 - app\logs\iedriver.log
 
-Versão do agente: 2.0.0
+Versão do agente: 3.0.0
+
+## Atualização automática
+
+A partir da V3, o agente consulta o backend do Painel a cada inicialização e periodicamente. Quando existe uma versão nova, baixa somente os arquivos publicados para aquela versão, valida SHA-256, aplica em staging e executa um health check local antes de efetivar. Se o health check falhar, restaura automaticamente os arquivos anteriores e reinicia a versão conhecida como boa.
+
+A pasta `data` nunca é substituída pelo atualizador, preservando token, identidade ADM/PUXADA e estado local. O painel ADM mostra versão instalada, versão publicada e estado da atualização.
