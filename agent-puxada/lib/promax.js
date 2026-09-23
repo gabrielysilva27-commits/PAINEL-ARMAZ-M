@@ -377,7 +377,10 @@ function sendAltS() {
   fs.writeFileSync(vbs, [
     "On Error Resume Next",
     "Set sh = CreateObject(\"WScript.Shell\")",
-    "WScript.Sleep 800",
+    "WScript.Sleep 500",
+    "ok = sh.AppActivate(\"Movimentação do Estoque\")",
+    "If Not ok Then ok = sh.AppActivate(\"Microsoft Edge\")",
+    "WScript.Sleep 500",
     "sh.SendKeys \"%s\"",
     "WScript.Sleep 300"
   ].join("\r\n"), "utf8");
