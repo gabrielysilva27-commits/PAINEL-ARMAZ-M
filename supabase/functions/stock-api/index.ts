@@ -138,6 +138,30 @@ async function policyItems(versionId: string) {
   }
   return rows;
 }
+async function activePullSkus30d() {
+  const { data: latest, error: latestError } = await db.from("receiving_system_020501")
+    .select("report_date").not("report_date", "is", null)
+    .order("report_date", { ascending: false }).limit(1).maybeSingle();
+  if (latestError) throw latestError;
+  const end = String(latest?.report_date || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    return { available: false, start: null, end: null, skus: new Set<string>() };
+  }
+  const d = new Date(end + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - 29);
+  const start = d.toISOString().slice(0, 10);
+  const skus = new Set<string>();
+  for (let offset = 0;; offset += 1000) {
+    const { data, error } = await db.from("receiving_system_020501")
+      .select("sku_code,system_qty")
+      .gte("report_date", start).lte("report_date", end).gt("system_qty", 0)
+      .range(offset, offset + 999);
+    if (error) throw error;
+    for (const x of (data || [])) skus.add(String(x.sku_code || "").trim());
+    if (!data || data.length < 1000) break;
+  }
+  return { available: skus.size > 0, start, end, skus };
+}
 async function policyMetrics(periodCode: string) {
   const { data, error } = await db.from("stock_policy_oor_metrics").select("*").eq("period_code", periodCode);
   if (error) throw error;
@@ -224,7 +248,17 @@ Deno.serve(async (req: Request) => {
         version = data;
       }
       if (!version) return json({ version: null, items: [] });
-      const items = (await policyItems(version.id)).map((x: any) => ({
+      const allPolicyItems = await policyItems(version.id);
+      const activity = await activePullSkus30d();
+      const today = todayBR();
+      const applyActivity = activity.available
+        && version.status === "approved"
+        && String(version.effective_start || "") <= today
+        && String(version.effective_end || "") >= today;
+      const visiblePolicyItems = applyActivity
+        ? allPolicyItems.filter((x: any) => activity.skus.has(String(x.sku_code || "").trim()))
+        : allPolicyItems;
+      const items = visiblePolicyItems.map((x: any) => ({
         sku_code: String(x.sku_code || ""),
         sku_name: String(x.sku_name || ""),
         unit_code: x.unit_code || null,
@@ -248,7 +282,18 @@ Deno.serve(async (req: Request) => {
         suggestion_basis: x.suggestion_basis || null,
         review_note: x.review_note || null,
       }));
-      return json({ version, items });
+      return json({
+        version,
+        items,
+        activity: applyActivity ? {
+          rule: "PUXADA_30D",
+          window_start: activity.start,
+          window_end: activity.end,
+          active_count: visiblePolicyItems.length,
+          excluded_count: Math.max(0, allPolicyItems.length - visiblePolicyItems.length),
+          total_policy_count: allPolicyItems.length
+        } : null
+      });
     }
 
     if (body.action === "policy_prepare") {
@@ -393,7 +438,7 @@ Deno.serve(async (req: Request) => {
         month_daily: monthDaily.map(decorate),
         policy,
         formula: {
-          daily: "Comparação em HL: OUT quando disponível HL < mínimo HL; OVER quando disponível HL > máximo HL; sem demanda-base não gera OVER automático",
+          daily: "Somente SKUs com puxada nos últimos 30 dias entram no OOR; comparação em HL: OUT abaixo do mínimo, OVER acima do máximo e demais OK",
           accumulated: "soma das classificações diárias / soma do total de SKUs da PE em cada dia",
           monthly: "mesma memória oficial aplicada ao acumulado dos dias do mês"
         }
@@ -409,12 +454,17 @@ Deno.serve(async (req: Request) => {
       }
       if (!referenceDate) return json({ reference_date: null, rows: [], dates: [], counts: {} });
 
-      const { data: detailRows, error: detailError } = await db.from("stock_oor_daily_detail")
+      const { data: detailRowsRaw, error: detailError } = await db.from("stock_oor_daily_detail")
         .select("reference_date,sku_code,status,available_qty,avg_sales_qty,min_days,max_days,real_days,curve_class")
         .eq("reference_date", referenceDate).order("sku_code");
       if (detailError) throw detailError;
+      const activity = await activePullSkus30d();
+      const applyActivity = activity.available && referenceDate >= String(activity.end || "");
+      const detailRows = applyActivity
+        ? (detailRowsRaw || []).filter((x: any) => activity.skus.has(String(x.sku_code || "").trim()))
+        : (detailRowsRaw || []);
 
-      const skuCodes = [...new Set((detailRows || []).map((x: any) => String(x.sku_code)))];
+      const skuCodes = [...new Set(detailRows.map((x: any) => String(x.sku_code)))];
       const skuMap = new Map<string, any>();
       for (let i = 0; i < skuCodes.length; i += 200) {
         const slice = skuCodes.slice(i, i + 200);
@@ -463,7 +513,13 @@ Deno.serve(async (req: Request) => {
       const { data: policy, error: policyError } = await db.from("stock_policy_versions").select("*").eq("status", "approved").lte("effective_start", referenceDate).gte("effective_end", referenceDate).order("effective_start", { ascending: false }).limit(1).maybeSingle();
       if (policyError) throw policyError;
       if (!policy) return json({ error: "Não existe Política de Estoque vigente para esta data" }, 409);
-      const policyRows = await policyItems(policy.id);
+      const allPolicyRows = await policyItems(policy.id);
+      const activity = await activePullSkus30d();
+      const applyActivity = activity.available && referenceDate >= String(activity.end || "");
+      const policyRows = applyActivity
+        ? allPolicyRows.filter((x: any) => activity.skus.has(String(x.sku_code || "").trim()))
+        : allPolicyRows;
+      if (!policyRows.length) return json({ error: "Nenhum SKU ativo encontrado para a regra de puxada dos últimos 30 dias" }, 409);
       const limits = new Map(policyRows.map((x: any) => [String(x.sku_code), x]));
 
       // Memória oficial DPO:
