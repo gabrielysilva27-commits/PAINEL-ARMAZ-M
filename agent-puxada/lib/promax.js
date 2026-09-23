@@ -107,13 +107,13 @@ async function isConfigured(config, rootDir) {
         if (urlLooksPromax(await currentUrl(), config)) usablePromaxWindow = true;
       } catch {}
     }
-    if (loginDetected) {
-      LAST_READINESS_ERROR = "Sessão do Promax encontrada, mas a tela de login ainda está aberta.";
-      return false;
-    }
     if (usablePromaxWindow) {
       LAST_READINESS_ERROR = "";
       return true;
+    }
+    if (loginDetected) {
+      LAST_READINESS_ERROR = "Sessão do Promax encontrada, mas somente a tela de login está disponível.";
+      return false;
     }
     LAST_READINESS_ERROR = "Sessão conectada, mas nenhuma janela navegável do Promax foi encontrada.";
     return false;
@@ -625,21 +625,41 @@ async function browserDownload(rootDir) {
 async function ensurePromaxHome(config, rootDir) {
   await createSession(config, rootDir);
   const baseUrl = String(config.promax && config.promax.url || "https://imperio.promaxcloud.com.br").trim();
-  await navigate(baseUrl);
-  await sleep(1200);
-  const hs = await handles();
-  let usable = false;
-  for (const handle of hs) {
-    try {
-      await switchWindow(handle);
-      if (await findHomeInFrames()) return true;
-      if (await findLoginInFrames()) throw new Error("PROMAX_LOGIN_REQUIRED: faça login no Promax no Edge e mantenha a sessão aberta.");
-      if (urlLooksPromax(await currentUrl(), config)) usable = true;
-    } catch (e) {
-      if (String(e && e.message || e).indexOf("PROMAX_LOGIN_REQUIRED") >= 0) throw e;
+
+  async function inspectWindows() {
+    const hs = await handles();
+    let loginDetected = false;
+    for (const handle of hs) {
+      try {
+        await switchWindow(handle);
+        if (await findHomeInFrames()) return { ready: true, handle };
+        const login = await findLoginInFrames();
+        if (login) {
+          loginDetected = true;
+          continue;
+        }
+        if (urlLooksPromax(await currentUrl(), config)) return { ready: true, handle };
+      } catch {}
     }
+    return { ready: false, loginDetected };
   }
-  if (usable) return true;
+
+  let state = await inspectWindows();
+  if (state.ready) return true;
+
+  // Só navega para a URL base quando não existe uma janela Promax utilizável.
+  // Isso evita transformar uma janela autenticada em uma tela de login.
+  try {
+    await topFrame();
+    await navigate(baseUrl);
+    await sleep(1200);
+  } catch {}
+
+  state = await inspectWindows();
+  if (state.ready) return true;
+  if (state.loginDetected) {
+    throw new Error("PROMAX_LOGIN_REQUIRED: a sessão controlada pelo agente está na tela de login.");
+  }
   throw new Error("Sessão do Promax conectada, mas a aplicação não ficou navegável.");
 }
 
