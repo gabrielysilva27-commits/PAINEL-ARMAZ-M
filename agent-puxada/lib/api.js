@@ -49,6 +49,10 @@ class AgentApi {
   updateState(payload) {
     return this.call("agent_update_state", payload);
   }
+
+  updateFile(payload) {
+    return this.call("agent_update_file", payload);
+  }
 }
 
 module.exports = { AgentApi: AgentApi };
