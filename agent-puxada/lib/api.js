@@ -41,6 +41,14 @@ class AgentApi {
   fail(payload) {
     return this.call("agent_fail", payload);
   }
+
+  updateManifest(info) {
+    return this.call("agent_update_manifest", info);
+  }
+
+  updateState(payload) {
+    return this.call("agent_update_state", payload);
+  }
 }
 
 module.exports = { AgentApi: AgentApi };
