@@ -34,10 +34,10 @@
   function maxCell(x){
     const unit=x.unit_code||'';
     if(x.avg_daily_qty>0&&x.max_days!=null){
-      const extra=x.policy_source==='NOVO_SKU_RECENTE'?'SKU novo · máximo inicial':'P75 histórico limitado a 7–30d';
-      return level(nf.format(x.max_days)+' dias',x.max_qty,x.max_hl,unit,extra);
+      return level(nf.format(x.max_days)+' dias',x.max_qty,x.max_hl,unit,'histórico da planilha · sem teto artificial');
     }
-    return level('Sem demanda',0,0,unit,'estoque positivo = OVER');
+    if(x.avg_daily_qty>0) return level('Pendente','—','—',unit,'demanda existente · revisar máximo');
+    return level('Sem demanda',0,0,unit,'sem máximo artificial · não gera OVER automático');
   }
   function render(){
     const root=view();if(!root)return;const d=S.data;
@@ -45,12 +45,12 @@
     const v=d.version,rows=filtered(),maxVals=d.items.map(x=>Number(x.max_days)).filter(Number.isFinite),minMax=maxVals.length?Math.min(...maxVals):null,maxMax=maxVals.length?Math.max(...maxVals):null;
     root.innerHTML='<div class="policy-v4">'+
       '<section class="policy-head"><div><div class="policy-titleline"><strong>'+esc(v.code)+'</strong><span class="policy-state '+esc(v.status)+'">'+esc(statusLabel(v.status))+'</span></div><small>Base '+dt(v.review_start)+' a '+dt(v.review_end)+' · Vigência '+dt(v.effective_start)+' a '+dt(v.effective_end)+'</small></div><label>Versão<select id="policyVersion">'+S.versions.map(x=>'<option value="'+esc(x.id)+'" '+(x.id===v.id?'selected':'')+'>'+esc(x.code)+' · '+esc(statusLabel(x.status))+'</option>').join('')+'</select></label></section>'+
-      '<section class="policy-rules"><div><small>Mínimo</small><strong>3 dias</strong><span>estoque de segurança</span></div><div><small>Objetivo</small><strong>5 dias</strong><span>ponto de puxada D+2</span></div><div><small>Máximo</small><strong>'+esc(minMax==null?'—':nf.format(minMax)+'–'+nf.format(maxMax)+' dias')+'</strong><span>P75 histórico com limite de 7 a 30 dias</span></div><div><small>SKUs</small><strong>'+d.items.length+'</strong><span>política fixa no semestre</span></div></section>'+
+      '<section class="policy-rules"><div><small>Mínimo</small><strong>3 dias</strong><span>estoque de segurança</span></div><div><small>Objetivo</small><strong>5 dias</strong><span>ponto de puxada D+2</span></div><div><small>Máximo</small><strong>'+esc(minMax==null?'—':nf.format(minMax)+'–'+nf.format(maxMax)+' dias')+'</strong><span>máximo histórico da planilha · cálculo em HL</span></div><div><small>SKUs</small><strong>'+d.items.length+'</strong><span>política fixa no semestre</span></div></section>'+
       '<section class="policy-tools"><input id="policySearch" value="'+esc(S.query)+'" placeholder="Buscar SKU ou produto"><span>'+rows.length+' SKUs</span></section>'+
       '<section class="policy-table"><table><thead><tr><th>SKU</th><th>Produto</th><th>Unidade</th><th>Venda média / dia</th><th>Mínimo</th><th>Objetivo</th><th>Máximo</th></tr></thead><tbody>'+
       (rows.length?rows.map(x=>'<tr><td><strong>'+esc(x.sku_code)+'</strong></td><td>'+esc(x.sku_name||'')+'</td><td>'+esc(x.unit_code||'—')+'</td><td><div class="policy-sales"><strong>'+esc(q(x.avg_daily_qty,x.unit_code||''))+'</strong><small>'+esc(hl(x.avg_daily_hl))+'/dia</small></div></td><td>'+level(nf.format(x.min_days||3)+' dias',x.min_qty,x.min_hl,x.unit_code||'')+'</td><td>'+level(nf.format(x.objective_days||5)+' dias',x.objective_qty,x.objective_hl,x.unit_code||'')+'</td><td>'+maxCell(x)+'</td></tr>').join(''):'<tr><td colspan="7" class="empty-row">Nenhum SKU encontrado.</td></tr>')+
       '</tbody></table></section>'+
-      '<p class="policy-foot">Esta política fica congelada durante a vigência. O OOR diário apenas compara o disponível com o Mínimo e o Máximo definidos aqui.</p>'+
+      '<p class="policy-foot">Esta política fica congelada durante a vigência. O OOR diário compara o disponível em HL com o mínimo e o máximo definidos aqui. SKUs sem demanda-base não recebem máximo artificial.</p>'+
       '</div>';
     $('policyVersion').onchange=async e=>{S.versionId=e.target.value;await load();};
     $('policySearch').oninput=e=>{S.query=e.target.value;render();};
