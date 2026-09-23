@@ -62,6 +62,6 @@
     if($('pageSubtitle'))$('pageSubtitle').textContent='Política semestral fixa em dias, quantidade operacional e HL.';
     await load();
   }
-  function install(){view();if(!$('stockPolicyCss')){const l=document.createElement('link');l.id='stockPolicyCss';l.rel='stylesheet';l.href='stock-policy.css?v=20260923-5';document.head.appendChild(l);}window.__stockPolicy={open,reload:load};}
+  function install(){view();if(!$('stockPolicyCss')){const l=document.createElement('link');l.id='stockPolicyCss';l.rel='stylesheet';l.href='stock-policy.css?v=20260923-6';document.head.appendChild(l);}window.__stockPolicy={open,reload:load};}
   install();
 })();
