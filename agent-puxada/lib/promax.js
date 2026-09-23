@@ -40,9 +40,22 @@ function missingSelectors() {
   return [];
 }
 
+function processAlive(pid) {
+  if (!Number.isInteger(Number(pid)) || Number(pid) <= 0) return false;
+  try { process.kill(Number(pid), 0); return true; } catch { return false; }
+}
+
 function isConfigured(config, rootDir) {
   const base = String(config && config.promax && config.promax.url || "https://imperio.promaxcloud.com.br").trim();
-  return !!base && !!edgePath() && !!driverPath(rootDir || __dirname);
+  if (!base || !edgePath() || !driverPath(rootDir || __dirname)) return false;
+  try {
+    const p = sessionFile(rootDir || __dirname);
+    if (!fs.existsSync(p)) return false;
+    const x = JSON.parse(fs.readFileSync(p, "utf8"));
+    return !!String(x && x.session_id || "") && processAlive(x && x.driver_pid);
+  } catch {
+    return false;
+  }
 }
 
 async function http(method, url, body, timeoutMs) {
@@ -92,7 +105,7 @@ function saveSession(rootDir, id) {
   try {
     const p = sessionFile(rootDir);
     fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(p, JSON.stringify({ session_id: id, port: DRIVER_PORT, saved_at: new Date().toISOString() }), "utf8");
+    fs.writeFileSync(p, JSON.stringify({ session_id: id, port: DRIVER_PORT, driver_pid: DRIVER && DRIVER.pid || null, saved_at: new Date().toISOString() }), "utf8");
   } catch {}
 }
 
