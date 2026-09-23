@@ -61,7 +61,7 @@
           '<div id="adminPinSelected" class="admin-pin-selected"></div>'+
           '<div class="admin-actions"><button class="primary" id="adminPinAction">Gerar / redefinir PIN</button><button id="adminPinMissing">Gerar pendentes do grupo</button><button id="adminPinOpenForklift">Abrir tela dos empilhadores</button></div>'+
           '<div id="adminPinUnifiedIssued"></div>'+
-        '</section>'+'<section class="admin-card"><p class="eyebrow">PUXADA · PROMAX</p><h2>Agente Puxada</h2><p>Um único agente lógico pode rodar em dois computadores. O primeiro PC que pegar uma sincronização bloqueia a tarefa para o outro, evitando duplicidade.</p><div id="adminAgentStatus" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div><div id="adminAgentNodes" class="admin-pin-list"></div><div id="adminAgentIssued"></div><label style="display:grid;gap:6px;margin-top:12px;font-size:11px;font-weight:700">Intervalo automático<select id="adminAgentInterval"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select></label><div class="admin-actions"><button id="adminAgentSaveInterval">Salvar intervalo</button></div><p style="font-size:10px;color:var(--muted)">Instale a mesma pasta <strong>agent-puxada</strong> nos dois PCs, mas use o token específico de cada computador.</p></section>'+
+        '</section>'+'<section class="admin-card"><p class="eyebrow">PUXADA · PROMAX</p><h2>Agente Puxada</h2><p>Um único agente lógico pode rodar em dois computadores. O primeiro PC que pegar uma sincronização bloqueia a tarefa para o outro, evitando duplicidade.</p><div id="adminAgentStatus" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div><div id="adminAgentNodes" class="admin-pin-list"></div><div id="adminAgentIssued"></div><label style="display:grid;gap:6px;margin-top:12px;font-size:11px;font-weight:700">Intervalo automático<select id="adminAgentInterval"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select></label><div class="admin-actions"><button id="adminAgentSaveInterval">Salvar intervalo</button></div><p style="font-size:10px;color:var(--muted)">Após a instalação inicial, o agente se atualiza automaticamente. Cada PC mantém seu próprio token; novas automações são distribuídas pelo atualizador sem reinstalação manual.</p></section>'+
       '</div></div>';
   }
 
@@ -208,16 +208,28 @@
       else if(a.status==='error')overall='Com falha';
       else if(a.token_ready)overall='Aguardando um computador ficar disponível';
       else overall='Não instalado';
-      $('adminAgentStatus').innerHTML='<div class="admin-pin-item"><div><strong>'+esc(overall)+'</strong><small>1 agente · 2 computadores · última sincronização '+esc(adminDt(a.last_sync_completed_at))+' · intervalo '+esc(a.sync_interval_minutes||10)+' min</small></div></div>';
+      $('adminAgentStatus').innerHTML='<div class="admin-pin-item"><div><strong>'+esc(overall)+'</strong><small>1 agente · 2 computadores · última sincronização '+esc(adminDt(a.last_sync_completed_at))+' · intervalo '+esc(a.sync_interval_minutes||10)+' min</small><small>Versão publicada: '+esc(a.latest_agent_version||'—')+' · atualização automática</small></div></div>';
       $('adminAgentNodes').innerHTML=nodes.map(x=>{
         let status='Offline';
         if(!x.token_ready)status='Token pendente';
-        else if(!x.calibration_ready)status='Aguardando calibração';
+        else if(!x.calibration_ready)status='Aguardando Promax';
         else if(x.status==='syncing')status='Sincronizando';
         else if(x.status==='error')status='Erro';
         else if(x.online)status='Online / disponível';
-        const meta=(x.hostname?('PC: '+x.hostname+' · '):'')+'Último contato: '+adminDt(x.last_seen_at)+(x.last_sync_completed_at?' · Última sync: '+adminDt(x.last_sync_completed_at):'');
-        return '<div class="admin-pin-item"><div><strong>'+esc(x.display_name)+'</strong><small>'+esc(status)+'</small><small>'+esc(meta)+'</small>'+(x.last_error?'<small style="color:#b43e45">'+esc(x.last_error)+'</small>':'')+'</div><button data-agent-node="'+esc(x.id)+'" data-ready="'+(x.token_ready?'1':'0')+'">'+(x.token_ready?'Resetar token':'Gerar token')+'</button></div>';
+        const version=x.agent_version||'—',target=x.update_target_version||a.latest_agent_version||'—';
+        let upd='Atualizador não instalado';
+        if(x.updater_version){
+          if(x.update_status==='downloading')upd='Baixando '+target;
+          else if(x.update_status==='staged'||x.update_status==='applying')upd='Aplicando '+target;
+          else if(x.update_status==='failed')upd='Falha ao atualizar para '+target;
+          else if(x.update_status==='manual_required')upd='Atualização manual necessária';
+          else if(a.latest_agent_version&&version===a.latest_agent_version)upd='Atualizado';
+          else if(x.update_status==='available')upd='Atualização '+target+' disponível';
+          else upd='Auto-update ativo';
+        }
+        const meta=(x.hostname?('PC: '+x.hostname+' · '):'')+'Versão: '+version+' · '+upd+' · Último contato: '+adminDt(x.last_seen_at)+(x.last_sync_completed_at?' · Última sync: '+adminDt(x.last_sync_completed_at):'');
+        const err=x.update_error||x.last_error;
+        return '<div class="admin-pin-item"><div><strong>'+esc(x.display_name)+'</strong><small>'+esc(status)+'</small><small>'+esc(meta)+'</small>'+(err?'<small style="color:#b43e45">'+esc(err)+'</small>':'')+'</div><button data-agent-node="'+esc(x.id)+'" data-ready="'+(x.token_ready?'1':'0')+'">'+(x.token_ready?'Resetar token':'Gerar token')+'</button></div>';
       }).join('');
       $('adminAgentNodes').querySelectorAll('[data-agent-node]').forEach(b=>b.onclick=()=>issueAgentToken(b.dataset.agentNode,b.dataset.ready==='1'));
       $('adminAgentInterval').value=String(a.sync_interval_minutes||10);
