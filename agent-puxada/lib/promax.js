@@ -1003,85 +1003,89 @@ function captureExcelWorkbook(rootDir, validateCsv) {
   fs.mkdirSync(dir, { recursive: true });
   const token = Date.now().toString();
   const target = path.join(dir, "020501_excel_" + token + ".csv.inf");
-  const ps = path.join(os.tmpdir(), "agente-puxada-excel-" + token + ".ps1");
-  const quotePs = function (value) { return "'" + String(value).replace(/'/g, "''") + "'"; };
-  const script = [
-    "$ErrorActionPreference='Stop'",
-    "$target=" + quotePs(target),
-    "$deadline=(Get-Date).AddSeconds(18)",
-    "do {",
-    "  $excel=$null",
-    "  try { $excel=[Runtime.InteropServices.Marshal]::GetActiveObject('Excel.Application') } catch {}",
-    "  if($excel){",
-    "    $best=$null; $bestScore=-1",
-    "    foreach($wb in @($excel.Workbooks)){",
-    "      foreach($ws in @($wb.Worksheets)){",
-    "        try {",
-    "          $used=$ws.UsedRange",
-    "          $rows=[Math]::Min([int]$used.Rows.Count,5000)",
-    "          $cols=[Math]::Min([int]$used.Columns.Count,80)",
-    "          if($rows -lt 2 -or $cols -lt 2){ continue }",
-    "          $sample=New-Object System.Text.StringBuilder",
-    "          $rmax=[Math]::Min($rows,25); $cmax=[Math]::Min($cols,30)",
-    "          for($r=1;$r -le $rmax;$r++){",
-    "            for($c=1;$c -le $cmax;$c++){",
-    "              $v=[string]$used.Cells.Item($r,$c).Text",
-    "              if($v){ [void]$sample.Append(' ').Append($v) }",
-    "            }",
-    "          }",
-    "          $n=$sample.ToString().Normalize([Text.NormalizationForm]::FormD) -replace '[\\u0300-\\u036f]',''",
-    "          $n=$n.ToUpperInvariant()",
-    "          $score=0",
-    "          if($n -match 'FORNEC'){ $score++ }",
-    "          if($n -match 'DOCUM|DOCUMENTO'){ $score++ }",
-    "          if($n -match 'ITEM'){ $score++ }",
-    "          if($n -match 'DESCRI|PRODUTO'){ $score++ }",
-    "          if($n -match 'UNIDADE|UNID|UND'){ $score++ }",
-    "          if($n -match 'OPER'){ $score++ }",
-    "          if($n -match 'QTDE|QTD|QUANTIDADE'){ $score++ }",
-    "          if($score -gt $bestScore){",
-    "            $bestScore=$score",
-    "            $best=[pscustomobject]@{Sheet=$ws; Rows=$rows; Cols=$cols; Workbook=[string]$wb.Name; SheetName=[string]$ws.Name}",
-    "          }",
-    "        } catch {}",
-    "      }",
-    "    }",
-    "    if($best -and $bestScore -ge 5){",
-    "      $enc=New-Object System.Text.UTF8Encoding($true)",
-    "      $sw=New-Object System.IO.StreamWriter($target,$false,$enc)",
-    "      try {",
-    "        for($r=1;$r -le $best.Rows;$r++){",
-    "          $vals=New-Object System.Collections.Generic.List[string]",
-    "          for($c=1;$c -le $best.Cols;$c++){",
-    "            $cell=$best.Sheet.Cells.Item($r,$c)",
-    "            $v=[string]$cell.Text",
-    "            if(($v -match '^#+$' -or $v -eq '') -and $null -ne $cell.Value2){ $v=[string]$cell.Value2 }",
-    "            $vals.Add(('\"'+$v.Replace('\"','\"\"')+'\"'))",
-    "          }",
-    "          $sw.WriteLine(($vals -join ';'))",
-    "        }",
-    "      } finally { $sw.Dispose() }",
-    "      Write-Output ('excel-captured;workbook='+$best.Workbook+';sheet='+$best.SheetName+';rows='+$best.Rows+';cols='+$best.Cols+';score='+$bestScore)",
-    "      exit 0",
-    "    }",
-    "  }",
-    "  Start-Sleep -Milliseconds 750",
-    "} while((Get-Date) -lt $deadline)",
-    "Write-Output 'excel-workbook-not-found'",
-    "exit 3"
-  ].join("\\r\\n");
-  fs.writeFileSync(ps, "\uFEFF" + script, "utf8");
+  const vbs = path.join(os.tmpdir(), "agente-puxada-excel-" + token + ".vbs");
+  const q = function (value) { return '"' + String(value).replace(/"/g, '""') + '"'; };
+  const lines = [
+    "Option Explicit",
+    "On Error Resume Next",
+    "Dim target: target=" + q(target),
+    "Dim xl, deadline, wb, ws, used, r, c, rows, cols, rmax, cmax, sample, score, bestScore, bestRows, bestCols, bestBook, bestName, bestSheet, v, line, stm",
+    "Set xl=Nothing",
+    "deadline=DateAdd(\"s\",18,Now)",
+    "Do",
+    "  Err.Clear",
+    "  Set xl=GetObject(, \"Excel.Application\")",
+    "  If Err.Number=0 Then Exit Do",
+    "  Set xl=Nothing",
+    "  WScript.Sleep 750",
+    "Loop While Now < deadline",
+    "If xl Is Nothing Then WScript.Echo \"excel-not-running\": WScript.Quit 3",
+    "bestScore=-1",
+    "For Each wb In xl.Workbooks",
+    "  For Each ws In wb.Worksheets",
+    "    Err.Clear",
+    "    Set used=ws.UsedRange",
+    "    If Err.Number=0 Then",
+    "      rows=used.Rows.Count: cols=used.Columns.Count",
+    "      If rows>5000 Then rows=5000",
+    "      If cols>80 Then cols=80",
+    "      If rows>=2 And cols>=2 Then",
+    "        rmax=rows: If rmax>25 Then rmax=25",
+    "        cmax=cols: If cmax>30 Then cmax=30",
+    "        sample=\"\"",
+    "        For r=1 To rmax",
+    "          For c=1 To cmax",
+    "            v=CStr(used.Cells(r,c).Text)",
+    "            If Len(v)>0 Then sample=sample & \" \" & UCase(v)",
+    "          Next",
+    "        Next",
+    "        score=0",
+    "        If InStr(sample,\"FORNEC\")>0 Then score=score+1",
+    "        If InStr(sample,\"DOCUM\")>0 Or InStr(sample,\"DOCUMENTO\")>0 Then score=score+1",
+    "        If InStr(sample,\"ITEM\")>0 Then score=score+1",
+    "        If InStr(sample,\"DESCRI\")>0 Or InStr(sample,\"PRODUTO\")>0 Then score=score+1",
+    "        If InStr(sample,\"UNIDADE\")>0 Or InStr(sample,\"UNID\")>0 Or InStr(sample,\"UND\")>0 Then score=score+1",
+    "        If InStr(sample,\"OPER\")>0 Then score=score+1",
+    "        If InStr(sample,\"QTDE\")>0 Or InStr(sample,\"QTD\")>0 Or InStr(sample,\"QUANTIDADE\")>0 Then score=score+1",
+    "        If score>bestScore Then",
+    "          bestScore=score: bestRows=rows: bestCols=cols: bestBook=CStr(wb.Name): bestName=CStr(ws.Name): Set bestSheet=ws",
+    "        End If",
+    "      End If",
+    "    End If",
+    "  Next",
+    "Next",
+    "If bestScore<5 Or bestSheet Is Nothing Then WScript.Echo \"excel-report-sheet-not-found;score=\" & bestScore: WScript.Quit 4",
+    "Set stm=CreateObject(\"ADODB.Stream\")",
+    "If Err.Number<>0 Then WScript.Echo \"excel-adodb-unavailable\": WScript.Quit 5",
+    "stm.Type=2: stm.Charset=\"utf-8\": stm.Open",
+    "For r=1 To bestRows",
+    "  line=\"\"",
+    "  For c=1 To bestCols",
+    "    v=CStr(bestSheet.Cells(r,c).Text)",
+    "    If (Len(v)=0 Or (Len(v)>0 And Len(Replace(v,\"#\",\"\"))=0)) And Not IsEmpty(bestSheet.Cells(r,c).Value2) Then v=CStr(bestSheet.Cells(r,c).Value2)",
+    "    v=Replace(v,Chr(34),Chr(34)&Chr(34))",
+    "    If c>1 Then line=line & \";\"",
+    "    line=line & Chr(34) & v & Chr(34)",
+    "  Next",
+    "  stm.WriteText line & vbCrLf",
+    "Next",
+    "stm.SaveToFile target,2",
+    "stm.Close",
+    "If Err.Number<>0 Then WScript.Echo \"excel-save-error:\" & Err.Number & \":\" & Err.Description: WScript.Quit 6",
+    "WScript.Echo \"excel-captured;workbook=\" & bestBook & \";sheet=\" & bestName & \";rows=\" & bestRows & \";cols=\" & bestCols & \";score=\" & bestScore",
+    "WScript.Quit 0"
+  ];
+  fs.writeFileSync(vbs, lines.join("\r\n"), "utf8");
 
   let diagnostic = "";
   try {
-    diagnostic = String(childProcess.execFileSync("powershell.exe",
-      ["-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File",ps],
+    diagnostic = String(childProcess.execFileSync("cscript.exe", ["//B","//nologo",vbs],
       { encoding:"utf8", windowsHide:true, timeout:23000, maxBuffer:262144 }) || "").trim();
   } catch (error) {
     diagnostic = String(error && error.stdout || "").trim();
     if (!diagnostic) diagnostic = "excel-com-error: " + String(error && (error.code || error.status || error.message) || "erro");
   }
-  try { fs.rmSync(ps, { force: true }); } catch {}
+  try { fs.rmSync(vbs, { force: true }); } catch {}
 
   if (!fs.existsSync(target)) return { path: "", diagnostic: diagnostic || "excel-workbook-not-found" };
   try {
@@ -1192,7 +1196,8 @@ public static class CsvMouse {
   fs.writeFileSync(report,JSON.stringify(['launching-helper']),'utf8');
   let helper;
   try {
-    helper=childProcess.spawn('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',ps],
+    const psExe=path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
+    helper=childProcess.spawn(psExe,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',ps],
       {windowsHide:true,stdio:'ignore'});
     helper.on('error',error=>fs.appendFileSync(stderr,'spawn: '+String(error.code||error.message)));
     helper.on('exit',code=>fs.appendFileSync(stderr,' exit='+String(code)));
