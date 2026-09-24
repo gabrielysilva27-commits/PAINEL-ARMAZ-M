@@ -9,7 +9,7 @@ const promax = require("./lib/promax");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.7";
+const VERSION = "3.2.38";
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -49,7 +49,7 @@ async function main() {
       await api.updateState({
         agent_version: VERSION,
         updater_version: updater.UPDATER_VERSION,
-        capabilities: ["020501_SYNC","PROMAX_IE_MODE","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
+        capabilities: ["020501_SYNC","PROMAX_IE_MODE","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
         update_status: "current",
         update_target_version: VERSION
       }).catch(function(){});
@@ -59,7 +59,7 @@ async function main() {
       await api.updateState({
         agent_version: VERSION,
         updater_version: updater.UPDATER_VERSION,
-        capabilities: ["020501_SYNC","PROMAX_IE_MODE","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
+        capabilities: ["020501_SYNC","PROMAX_IE_MODE","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
         update_status: "failed",
         update_target_version: VERSION,
         update_error: "Abrir Promax: " + message
@@ -84,8 +84,9 @@ async function main() {
       hostname: os.hostname(),
       agent_version: VERSION,
       updater_version: updater.UPDATER_VERSION,
-      capabilities: ["020501_SYNC","PROMAX_IE_MODE","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
-      calibration_ready: calibrationReady
+      capabilities: ["020501_SYNC","PROMAX_IE_MODE","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
+      calibration_ready: calibrationReady,
+      readiness_error: readinessError
     };
   }
 
@@ -103,7 +104,7 @@ async function main() {
     } catch (e) { log("Estado da atualização: " + e.message, true); }
   }
   async function maybeUpdate(force) {
-    if (!force && Date.now() - lastUpdateCheck < 15 * 60 * 1000) return false;
+    if (!force && Date.now() - lastUpdateCheck < 2 * 60 * 1000) return false;
     lastUpdateCheck = Date.now();
     try {
       return await updater.checkForUpdate(api, await info(), path.resolve(ROOT, ".."), log);
@@ -116,13 +117,11 @@ async function main() {
   }
 
   if (process.argv.indexOf("--check") >= 0) {
-    await api.ping(await info());
+    // Update health checks validate the agent and API. Browser readiness is
+    // evaluated by the normal polling loop and must not block installation.
+    await api.updateState({hostname:os.hostname(),agent_version:VERSION,
+      updater_version:updater.UPDATER_VERSION,update_status:"current",update_target_version:VERSION});
     log("Conexao com o Painel Armazem OK.");
-    if (!await promax.isConfigured(config, ROOT)) {
-      log("Promax aguardando preparacao: Microsoft Edge/IEDriver indisponivel.");
-    } else {
-      log("Promax pronto para automacao pelo Edge em modo IE.");
-    }
     return;
   }
 
@@ -157,7 +156,7 @@ async function main() {
       }, 60000);
 
       try {
-        const csvPath = await promax.export020501(job, config, ROOT);
+        const csvPath = await promax.export020501(job, config, ROOT, parse020501);
         log("CSV exportado: " + csvPath);
 
         const parsed = parse020501(csvPath);
