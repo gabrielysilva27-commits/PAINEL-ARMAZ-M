@@ -2,6 +2,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const childProcess = require("child_process");
+const net = require("net");
 
 let DRIVER = null;
 let SESSION_ID = null;
@@ -51,6 +52,58 @@ function driverPath(rootDir) {
   return "";
 }
 
+function driverPortFile(rootDir) {
+  return path.resolve(rootDir || __dirname, "..", "data", "promax-driver-port.json");
+}
+
+function loadDriverPort(rootDir) {
+  try {
+    const state = JSON.parse(fs.readFileSync(driverPortFile(rootDir), "utf8"));
+    const port = Number(state && state.port);
+    if (Number.isInteger(port) && port > 0 && port < 65536) DRIVER_PORT = port;
+  } catch {}
+  return DRIVER_PORT;
+}
+
+function saveDriverPort(rootDir) {
+  try {
+    const file = driverPortFile(rootDir);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ port: DRIVER_PORT, saved_at: new Date().toISOString() }), "utf8");
+  } catch {}
+}
+
+function findAvailablePort() {
+  return new Promise(function (resolve, reject) {
+    const server = net.createServer();
+    server.unref();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", function () {
+      const address = server.address();
+      const port = address && typeof address === "object" ? address.port : 0;
+      server.close(function (error) {
+        if (error) return reject(error);
+        if (!port) return reject(new Error("Não foi possível reservar uma porta local para o IEDriver."));
+        resolve(port);
+      });
+    });
+  });
+}
+
+function driverLogTail(logFile) {
+  try {
+    return fs.readFileSync(logFile, "utf8")
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .slice(-12)
+      .join(" | ")
+      .replace(/\s+/g, " ")
+      .slice(-750);
+  } catch {
+    return "";
+  }
+}
+
 function missingSelectors() {
   return [];
 }
@@ -65,11 +118,16 @@ function homeReady(value) {
 }
 
 async function isConfigured(config, rootDir) {
+  if (!fs.existsSync(path.resolve(rootDir||__dirname,'..','data','promax-native-session.json'))) {
+    LAST_READINESS_ERROR='Abra o Promax pelo agente para ativar o clique nativo do CSV e faça login na nova janela.';
+    return false;
+  }
   if (calibrationLocked(rootDir)) {
     LAST_READINESS_ERROR = "Abrindo uma nova sessão controlada do Promax.";
     LAST_MISSING_SELECTORS = [];
     return false;
   }
+  loadDriverPort(rootDir || __dirname);
   const base = String(config && config.promax && config.promax.url || "https://imperio.promaxcloud.com.br").trim();
   if (!base || !edgePath() || !driverPath(rootDir || __dirname)) {
     LAST_READINESS_ERROR = "Edge, IEDriver ou URL do Promax indisponível.";
@@ -80,7 +138,7 @@ async function isConfigured(config, rootDir) {
     const x = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf8")) : null;
     let id = String(x && x.session_id || "");
     if (!await driverReady()) {
-      LAST_READINESS_ERROR = "IEDriver não responde na porta 5555.";
+      LAST_READINESS_ERROR = "IEDriver não responde na porta " + DRIVER_PORT + ".";
       return false;
     }
     try {
@@ -263,24 +321,44 @@ async function driverReady() {
 }
 
 async function startDriver(rootDir) {
+  loadDriverPort(rootDir || __dirname);
   if (await driverReady()) return;
   const exe = driverPath(rootDir);
   if (!exe) throw new Error("IEDriverServer.exe nao encontrado. Atualize o Agente Puxada.");
   const logDir = path.join(rootDir, "logs");
   fs.mkdirSync(logDir, { recursive: true });
-  const out = fs.openSync(path.join(logDir, "iedriver.log"), "a");
-  DRIVER = childProcess.spawn(exe, ["--port=" + DRIVER_PORT], {
+  const logFile = path.resolve(logDir, "iedriver.log");
+
+  // Older agent versions left a detached IEDriverServer listening on 5555.
+  // If that server cannot answer /status, do not start another process on the
+  // same port. Pick a free local port and persist it so the background agent
+  // and the calibration process share the same driver after a restart.
+  DRIVER_PORT = await findAvailablePort();
+  let spawnError = null;
+  let exitResult = null;
+  DRIVER = childProcess.spawn(exe, [
+    "--port=" + DRIVER_PORT,
+    "--log-level=DEBUG",
+    "--log-file=" + logFile
+  ], {
     cwd: path.dirname(exe),
     windowsHide: true,
     detached: true,
-    stdio: ["ignore", out, out]
+    stdio: "ignore"
   });
+  DRIVER.once("error", function (error) { spawnError = error; });
+  DRIVER.once("exit", function (code, signal) { exitResult = { code: code, signal: signal }; });
   DRIVER.unref();
   for (let i = 0; i < 40; i++) {
-    if (await driverReady()) return;
+    if (spawnError) throw new Error("Não foi possível iniciar o IEDriver: " + spawnError.message + ". " + driverLogTail(logFile));
+    if (exitResult) throw new Error("IEDriver encerrou durante a inicialização (código " + exitResult.code + (exitResult.signal ? ", sinal " + exitResult.signal : "") + "). " + driverLogTail(logFile));
+    if (await driverReady()) {
+      saveDriverPort(rootDir || __dirname);
+      return;
+    }
     await sleep(250);
   }
-  throw new Error("IEDriver nao iniciou. Consulte logs\\iedriver.log.");
+  throw new Error("IEDriver não respondeu na porta " + DRIVER_PORT + " durante a inicialização. " + driverLogTail(logFile));
 }
 
 async function wd(method, suffix, body, timeoutMs) {
@@ -321,8 +399,8 @@ async function createSession(config, rootDir) {
           ignoreProtectedModeSettings: true,
           ignoreZoomSetting: true,
           browserAttachTimeout: 30000,
-          requireWindowFocus: false,
-          nativeEvents: false,
+          requireWindowFocus: true,
+          nativeEvents: true,
           initialBrowserUrl: baseUrl
         }
       }
@@ -337,6 +415,9 @@ async function createSession(config, rootDir) {
   SESSION_ID = created && created.value && created.value.sessionId || created && created.sessionId;
   if (!SESSION_ID) throw new Error("IEDriver nao retornou uma sessao valida.");
   saveSession(rootDir, SESSION_ID);
+  const nativeMarker=path.resolve(rootDir,'..','data','promax-native-session.json');
+  fs.mkdirSync(path.dirname(nativeMarker),{recursive:true});
+  fs.writeFileSync(nativeMarker,JSON.stringify({session_id:SESSION_ID,nativeEvents:true}));
   return SESSION_ID;
 }
 
@@ -517,6 +598,11 @@ async function fillReport(job, config) {
     "function n(s){return String(s||'').replace(/[ÁÀÂÃÄ]/gi,'A').replace(/[ÉÈÊË]/gi,'E').replace(/[ÍÌÎÏ]/gi,'I').replace(/[ÓÒÔÕÖ]/gi,'O').replace(/[ÚÙÛÜ]/gi,'U').replace(/Ç/gi,'C').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
     "function fire(e,name){try{e.fireEvent('on'+name);}catch(x){try{var ev=document.createEvent('HTMLEvents');ev.initEvent(name,true,false);e.dispatchEvent(ev);}catch(y){}}}",
     "function setv(e,v){try{e.focus();}catch(x){}e.value=String(v);fire(e,'change');fire(e,'keyup');fire(e,'blur');}",
+    "function optionText(o){return n(o&&(o.text||o.innerText||o.value)||'');}",
+    "function classLabel(s){var m=n((s.name||'')+' '+(s.id||'')+' '+(s.className||''));if(m.indexOf('CLASSIFICACAO')>=0)return true;var p=s;for(var d=0;p&&d<5;d++,p=p.parentNode){if(String(p.tagName||'').toUpperCase()==='TR'&&n(p.innerText||p.textContent||'').indexOf('CLASSIFICACAO')>=0)return true;}return false;}",
+    "var selects=document.getElementsByTagName('select'),cls=null,clsIndex=-1,depositCandidates=[];for(var si=0;si<selects.length;si++){var ss=selects[si],oi=-1,exact=-1;for(var sj=0;sj<ss.options.length;sj++){var ot=optionText(ss.options[sj]);if(ot==='DEPOSITO')exact=sj;if(ot.indexOf('DEPOSITO')>=0&&oi<0)oi=sj;}var foundIndex=exact>=0?exact:oi;if(foundIndex>=0){depositCandidates.push({select:ss,index:foundIndex});if(classLabel(ss)){cls=ss;clsIndex=foundIndex;break;}}}if(!cls&&depositCandidates.length===1){cls=depositCandidates[0].select;clsIndex=depositCandidates[0].index;}",
+    "if(!cls||clsIndex<0)return {ok:false,stage:'classification',diag:'Menu Classificação com opção Depósito não encontrado; menus='+selects.length+' candidatos='+depositCandidates.length};",
+    "var currentOption=cls.options[cls.selectedIndex];if(optionText(currentOption).indexOf('DEPOSITO')<0){cls.selectedIndex=clsIndex;fire(cls,'change');fire(cls,'blur');return {ok:false,stage:'classification_changed',diag:'Classificação selecionada como Depósito; aguardando atualização do formulário.'};}",
     "function eligible(e){var tp=n(e.type||'text');return tp==='TEXT'||tp===''||tp==='NUMBER'||tp==='TEL'||tp==='SEARCH';}",
     "var all=document.getElementsByTagName('input'),txt=[];for(var i=0;i<all.length;i++)if(eligible(all[i]))txt.push(all[i]);",
     "var dateIdx=-1;for(var j=0;j<txt.length;j++){var v=String(txt[j].value||'');if(/^\\d{1,2}\\/\\d{1,2}\\/\\d{4}$/.test(v)){dateIdx=j;break;}}",
@@ -530,21 +616,31 @@ async function fillReport(job, config) {
     "function meta(e){return n((e.value||'')+' '+(e.innerText||e.textContent||'')+' '+(e.title||'')+' '+(e.alt||'')+' '+(e.name||'')+' '+(e.id||'')+' '+(e.src||'')+' '+(e.href||''));}",
     "var view=null,tags=['input','button','a','img'];for(var ti=0;ti<tags.length&&!view;ti++){var ns=document.getElementsByTagName(tags[ti]);for(var ni=0;ni<ns.length;ni++){var m=meta(ns[ni]);if(m.indexOf('VISUALIZAR')>=0){view=ns[ni];break;}}}",
     "if(!view)return {ok:false,stage:'action',diag:'Filtros preenchidos; botão Visualizar não encontrado.'};",
+    "var finalClass=cls.options[cls.selectedIndex];if(optionText(finalClass).indexOf('DEPOSITO')<0)return {ok:false,stage:'classification',diag:'Classificação não permaneceu em Depósito antes de Visualizar.'};",
     "try{view.click();return {ok:true,stage:'clicked'};}catch(x){try{view.fireEvent('onclick');return {ok:true,stage:'clicked'};}catch(y){try{if(view.form){view.form.submit();return {ok:true,stage:'submitted'};}}catch(z){}}}",
     "return {ok:false,stage:'action',diag:'Visualizar localizado, mas não foi possível acionar.'};"
   ].join("");
 
   const hs = await handles();
   let diagnostics = [];
+  let classificationChanged = false;
   for (let i = hs.length - 1; i >= 0; i--) {
     try {
       await switchWindow(hs[i]);
       const found = await findInFrames(async function () {
         const result = await execute(script, [vals]);
         if (result && result.ok) return true;
+        if (result && result.stage === "classification_changed") {
+          classificationChanged = true;
+          return true;
+        }
         if (result && result.diag) diagnostics.push(result.stage + ": " + result.diag);
         return false;
       }, 8);
+      if (classificationChanged) {
+        await sleep(700);
+        return false;
+      }
       if (found) return true;
     } catch (e) {
       diagnostics.push(String(e && e.message || e));
@@ -553,13 +649,29 @@ async function fillReport(job, config) {
   throw new Error("Não foi possível executar os filtros do 02.05.01. " + diagnostics.filter(Boolean).slice(0,6).join(" || "));
 }
 
-async function csvDescriptor() {
-  const script = [
+function csvControlScript(mode) {
+  return [
     "function n(s){return String(s||'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
-    "var a=document.querySelectorAll('a,input,button,img');",
-    "for(var i=0;i<a.length;i++){var e=a[i],t=n(e.value||e.innerText||e.textContent||e.title||e.alt||e.name||e.id);if(t==='CSV'||t.indexOf('CSV')===0){return {tag:e.tagName||'',href:e.href||e.getAttribute('href')||'',onclick:e.getAttribute('onclick')||'',html:e.outerHTML||''};}}",
+    "function attr(e,k){try{return e.getAttribute(k)||'';}catch(x){return '';}}",
+    "function hasCsv(e){var v=[e.value,e.innerText,e.textContent,e.title,e.alt,e.name,e.id,attr(e,'aria-label'),attr(e,'title')];for(var j=0;j<v.length;j++){var t=n(v[j]);if(/(^|[^A-Z0-9])CSV([^A-Z0-9]|$)/.test(t))return true;}return false;}",
+    "function handler(e){return e.onclick||e.onmouseup||e.onmousedown||attr(e,'onclick')||attr(e,'onmouseup')||attr(e,'onmousedown');}",
+    "function target(e){var p=e;for(var d=0;p&&d<5;d++,p=p.parentNode){var tag=String(p.tagName||'').toUpperCase();if(tag==='A'||tag==='INPUT'||tag==='BUTTON'||p.href||attr(p,'href')||handler(p))return p;}return null;}",
+    "function visible(e){try{var r=e.getBoundingClientRect();if((r.right-r.left)<=0||(r.bottom-r.top)<=0)return false;}catch(x){}try{var s=e.currentStyle;if(s&&(s.display==='none'||s.visibility==='hidden'))return false;}catch(y){}return true;}",
+    "var tags=['input','button','a','img','object','embed','span','td','div','label','font'],matches=[];",
+    "function add(e){if(!hasCsv(e))return;var c=target(e);if(!c||!visible(c))return;for(var k=0;k<matches.length;k++)if(matches[k]===c)return;matches.push(c);}",
+    "for(var ti=0;ti<tags.length;ti++){var a=document.getElementsByTagName(tags[ti]);for(var i=0;i<a.length;i++)add(a[i]);}",
+    "try{if(document.all)for(var ai=0;ai<document.all.length;ai++)add(document.all[ai]);}catch(x){}",
+    "for(var mi=0;mi<matches.length;mi++){var e=matches[mi],tag=String(e.tagName||'').toUpperCase(),href=e.href||attr(e,'href'),onclick=attr(e,'onclick')||attr(e,'onmouseup')||attr(e,'onmousedown');",
+    mode === "focus"
+      ? "try{if(!e.focus)return null;try{e.scrollIntoView(false);}catch(y){}e.focus();return {ok:true,tag:tag,href:href,onclick:onclick,html:e.outerHTML||'',element:e};}catch(x){return null;}"
+      : "return {tag:tag,href:href,onclick:onclick,html:e.outerHTML||''};",
+    "}",
     "return null;"
   ].join("");
+}
+
+async function csvDescriptor() {
+  const script = csvControlScript("describe");
   const hs = await handles();
   for (let i = hs.length - 1; i >= 0; i--) {
     try {
@@ -576,26 +688,72 @@ async function csvDescriptor() {
 }
 
 async function clickCsv() {
-  const script = [
-    "function n(s){return String(s||'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'').toUpperCase();}",
-    "var a=document.querySelectorAll('a,input,button,img');for(var i=0;i<a.length;i++){var e=a[i],t=n(e.value||e.innerText||e.textContent||e.title||e.alt||e.name||e.id);if(t==='CSV'||t.indexOf('CSV')===0){try{e.click();}catch(x){try{e.fireEvent('onclick');}catch(y){return false;}}return true;}}return false;"
-  ].join("");
+  const script = csvControlScript("focus");
   const hs = await handles();
   for (let i = hs.length - 1; i >= 0; i--) {
     try {
       await switchWindow(hs[i]);
+      let clicked = null;
       const found = await findInFrames(async function () {
-        return !!(await execute(script));
+        const result = await execute(script);
+        if (result && result.ok) clicked = result;
+        return !!clicked;
       }, 8);
-      if (found) return true;
+      if (found) {
+        clicked.activation = "tecla Enter no botão CSV em foco";
+        return clicked;
+      }
     } catch {}
   }
   throw new Error("Botão CSV não encontrado nos quadros do Promax.");
 }
 
 async function cookieHeader() {
-  const list = await wd("GET", "/cookie", null, 10000) || [];
-  return list.map(function (c) { return c.name + "=" + c.value; }).join("; ");
+  let result;
+  try { result = await wd("GET", "/cookie", null, 10000); }
+  catch { result = null; }
+  if (typeof result === "string") {
+    try { result = JSON.parse(result); }
+    catch {
+      if (/^[^;=\s]+=[^;]*(?:;\s*[^;=\s]+=[^;]*)*$/.test(result)) return result;
+      result = null;
+    }
+  }
+  const list = Array.isArray(result) ? result
+    : result && Array.isArray(result.cookies) ? result.cookies
+    : result && Array.isArray(result.value) ? result.value
+    : result && result.name && result.value != null ? [result]
+    : null;
+  if (!list) return String(await execute("return document.cookie||'';") || "");
+  return list.filter(function (c) { return c && c.name && c.value != null; })
+    .map(function (c) { return c.name + "=" + c.value; }).join("; ");
+}
+
+function wininetCookieHeader(url) {
+  if (process.platform !== "win32") return "";
+  const script = path.join(os.tmpdir(), "agente-puxada-ie-cookies.ps1");
+  fs.writeFileSync(script, [
+    "$ErrorActionPreference='Stop'",
+    "$u=[Console]::In.ReadToEnd().Trim()",
+    "Add-Type -TypeDefinition @'",
+    "using System; using System.Text; using System.Runtime.InteropServices;",
+    "public static class AgentIeCookies {",
+    "  [DllImport(\"wininet.dll\", CharSet=CharSet.Unicode, SetLastError=true, EntryPoint=\"InternetGetCookieExW\")]",
+    "  public static extern bool Get(string url, string name, StringBuilder data, ref uint size, uint flags, IntPtr reserved);",
+    "}",
+    "'@",
+    "$size=[uint32]0",
+    "[void][AgentIeCookies]::Get($u,$null,$null,[ref]$size,8192,[IntPtr]::Zero)",
+    "if($size -gt 0 -and $size -lt 65536){",
+    "  $data=New-Object -TypeName System.Text.StringBuilder -ArgumentList ([int]$size+1)",
+    "  if([AgentIeCookies]::Get($u,$null,$data,[ref]$size,8192,[IntPtr]::Zero)){[Console]::Out.Write($data.ToString())}",
+    "}"
+  ].join("\r\n"), "utf8");
+  try {
+    const result = childProcess.spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script],
+      { input: url, encoding: "utf8", timeout: 9000, windowsHide: true, maxBuffer: 131072 });
+    return result.status === 0 ? String(result.stdout || "").trim() : "";
+  } catch { return ""; }
 }
 
 async function directDownload(href, rootDir) {
@@ -624,9 +782,132 @@ async function directDownload(href, rootDir) {
   return target;
 }
 
+const CSV_FORM_SCRIPT = [
+  "var f=document.all&&document.all.form1;",
+  "if(!f||!f.elements)return {ok:false,reason:'form1 não encontrado no quadro CSV'};",
+  "var opcao=document.all.opcao,opcaorelat=document.all.opcaorelat;",
+  "if(!opcao||!opcaorelat)return {ok:false,reason:'campos opcao/opcaorelat não encontrados'};",
+  "opcao.value='88';opcaorelat.value='3';",
+  "var fields=[];for(var i=0;i<f.elements.length;i++){var e=f.elements[i],name=String(e.name||''),type=String(e.type||'').toLowerCase();if(!name||e.disabled||type==='button'||type==='submit'||type==='reset'||type==='file')continue;if((type==='checkbox'||type==='radio')&&!e.checked)continue;if(type==='select-multiple'){for(var j=0;j<e.options.length;j++)if(e.options[j].selected)fields.push([name,String(e.options[j].value)]);}else fields.push([name,String(e.value==null?'':e.value)]);}",
+  "return {ok:true,action:String(f.action||document.location.href),referer:String(document.location.href),method:String(f.method||'POST'),enctype:String(f.enctype||''),fields:fields};"
+].join("");
+
+const CSV_BROWSER_DOWNLOAD_SCRIPT = [
+  "var form=arguments[0],done=function(r){window.__codexCsvJob=r;};window.__codexCsvJob={pending:true};",
+  "var params=[];for(var i=0;i<form.fields.length;i++)params.push(encodeURIComponent(form.fields[i][0])+'='+encodeURIComponent(form.fields[i][1]));",
+  "var method=String(form.method||'POST').toUpperCase(),url=String(form.action);",
+  "if(method==='GET')url+=(url.indexOf('?')<0?'?':'&')+params.join('&');",
+  "var x=new XMLHttpRequest();x.open(method,url,true);x.responseType='arraybuffer';x.timeout=30000;",
+  "if(method==='POST')x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');",
+  "x.onerror=function(){done({error:'XHR_NETWORK'});};x.ontimeout=function(){done({error:'XHR_TIMEOUT'});};",
+  "x.onload=function(){try{var bytes=new Uint8Array(x.response),chunks=[];for(var j=0;j<bytes.length;j+=8192){var end=Math.min(j+8192,bytes.length),s='';for(var k=j;k<end;k++)s+=String.fromCharCode(bytes[k]);chunks.push(s);}done({status:x.status,type:x.getResponseHeader('Content-Type')||'',base64:btoa(chunks.join(''))});}catch(e){done({error:'XHR_DECODE: '+String(e.message||e)});}};",
+  "try{x.send(method==='POST'?params.join('&'):null);}catch(e){done({error:'XHR_SEND: '+String(e.message||e)});}return {started:true};"
+].join("");
+
+async function browserFormResponse(form) {
+  const started = await execute(CSV_BROWSER_DOWNLOAD_SCRIPT, [form]);
+  if (!started || !started.started) throw new Error("CSV_BROWSER_EXPORT: navegador não iniciou a exportação.");
+  const result = await waitUntil(async function () {
+    const state = await execute("return window.__codexCsvJob||{error:'XHR_STATE_MISSING'};");
+    return state && !state.pending ? state : null;
+  }, 40000, 600);
+  if (!result || result.error) throw new Error("CSV_BROWSER_EXPORT: " + String(result && result.error || "resposta vazia"));
+  return {
+    response: { ok: result.status >= 200 && result.status < 300, status: result.status,
+      headers: { get: function () { return result.type || ""; } } },
+    bytes: Buffer.from(result.base64 || "", "base64")
+  };
+}
+
+async function directFormDownload(form, rootDir, validateCsv) {
+  if (!form || !form.ok) throw new Error("CSV_FORM_INVALID: " + String(form && form.reason || "formulário indisponível"));
+  const referer = new URL(form.referer);
+  const url = new URL(form.action, referer);
+  if (url.protocol !== "https:" || url.origin !== referer.origin) throw new Error("CSV_FORM_INVALID: destino de exportação fora do Promax.");
+  const method = String(form.method || "POST").toUpperCase();
+  const enctype = String(form.enctype || "application/x-www-form-urlencoded").toLowerCase();
+  if (method !== "GET" && method !== "POST") throw new Error("CSV_FORM_INVALID: método " + method + ".");
+  if (method === "POST" && enctype.indexOf("application/x-www-form-urlencoded") < 0) throw new Error("CSV_FORM_INVALID: codificação " + enctype + ".");
+  const params = new URLSearchParams();
+  for (const field of form.fields || []) params.append(String(field[0]), String(field[1]));
+  if (method === "GET") {
+    for (const [name, value] of params) url.searchParams.append(name, value);
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(function () { controller.abort(); }, 18000);
+  let response;
+  let bytes;
+  let cookieSource = "nenhum";
+  try {
+    const wininetCookies = wininetCookieHeader(referer.toString());
+    const sessionCookies = wininetCookies || await cookieHeader();
+    cookieSource = wininetCookies ? "WinINet" : sessionCookies ? "driver" : "nenhum";
+    response = await fetch(url.toString(), {
+      method,
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        Cookie: sessionCookies,
+        Referer: referer.toString(),
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Edg/131 Safari/537.36",
+        ...(method === "POST" ? { "Content-Type": "application/x-www-form-urlencoded" } : {})
+      },
+      ...(method === "POST" ? { body: params.toString() } : {})
+    });
+    bytes = Buffer.from(await response.arrayBuffer());
+  } catch (error) {
+    throw new Error("CSV_FORM_NETWORK: " + String(error && error.message || error));
+  } finally {
+    clearTimeout(timer);
+  }
+  const contentType = String(response.headers.get("content-type") || "");
+  if (!response.ok) throw new Error("CSV_FORM_HTTP: HTTP " + response.status + "; tipo=" + contentType + ".");
+  if (bytes.length < 50) throw new Error("CSV_FORM_EMPTY: resposta de " + bytes.length + " bytes; tipo=" + contentType + ".");
+  const head = bytes.subarray(0, Math.min(bytes.length, 350)).toString("latin1");
+  if (/html/i.test(contentType) || /^\s*(?:<!doctype|<html)/i.test(head)) {
+    const safeText = head.replace(/https?:\/\/[^\s<>"']+/gi, "[URL]")
+      .replace(/<[^>]*>/g, " ").replace(/\b[A-Za-z0-9_-]{18,}\b/g, "[valor]")
+      .replace(/\s+/g, " ").trim().slice(0, 170);
+    const responsePath = new URL(response.url || url.toString()).pathname;
+    const fieldNames = (form.fields || []).map(function (x) { return String(x[0]); }).slice(0, 25).join(",");
+    throw new Error("CSV_FORM_HTML: HTTP " + response.status + "; cookies=" + cookieSource + "; destino=" + responsePath +
+      "; bytes=" + bytes.length + "; campos=" + fieldNames + "; texto=" + safeText + ".");
+  }
+  const dir = path.join(rootDir, "downloads");
+  fs.mkdirSync(dir, { recursive: true });
+  const target = path.join(dir, "020501_" + Date.now() + ".csv.inf");
+  fs.writeFileSync(target, bytes);
+  try {
+    if (typeof validateCsv === "function") validateCsv(target);
+  } catch (error) {
+    fs.rmSync(target, { force: true });
+    throw new Error("CSV_FORM_FORMAT: " + (error && error.message ? error.message : String(error)) + "; tipo=" + contentType + "; bytes=" + bytes.length + ".");
+  }
+  return target;
+}
+
 function downloadDirs() {
-  const list = [path.join(os.homedir(), "Downloads")];
-  if (process.env.OneDrive) list.push(path.join(process.env.OneDrive, "Downloads"));
+  const home = os.homedir();
+  const list = [
+    path.join(home, "Downloads"),
+    path.join(home, "Documents", "Downloads"),
+    path.join(home, "Documents"),
+    path.join(home, "Desktop"),
+    path.resolve(__dirname, "..", "downloads")
+  ];
+  const cloudDirs = [process.env.OneDrive, process.env.OneDriveCommercial].filter(Boolean);
+  for (const cloudDir of cloudDirs) list.push(path.join(cloudDir, "Downloads"), cloudDir);
+  const edgeUserData = path.join(process.env.LOCALAPPDATA || path.join(home, "AppData", "Local"), "Microsoft", "Edge", "User Data");
+  try {
+    const profiles = fs.readdirSync(edgeUserData).filter(name => name === "Default" || /^Profile \d+$/.test(name));
+    for (const profile of profiles) {
+      try {
+        const prefs = JSON.parse(fs.readFileSync(path.join(edgeUserData, profile, "Preferences"), "utf8"));
+        const configured = prefs && prefs.download && prefs.download.default_directory;
+        if (configured) list.push(String(configured).replace(/%([^%]+)%/g, function (_, name) { return process.env[name] || _; }));
+      } catch {}
+    }
+  } catch {}
   return list.filter(function (p, i, a) { return p && a.indexOf(p) === i && fs.existsSync(p); });
 }
 
@@ -636,7 +917,7 @@ function newestCandidate(sinceMs) {
     let names = [];
     try { names = fs.readdirSync(dir); } catch { continue; }
     for (const name of names) {
-      if (!/\.inf$|\.csv$/i.test(name) || name.toLowerCase().indexOf("02.05.01") < 0) continue;
+      if (!/\.inf$|\.csv$/i.test(name)) continue;
       const full = path.join(dir, name);
       let st;
       try { st = fs.statSync(full); } catch { continue; }
@@ -647,13 +928,33 @@ function newestCandidate(sinceMs) {
   return found;
 }
 
+function recentDownloadNames(sinceMs) {
+  const found = [];
+  for (const dir of downloadDirs()) {
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch { continue; }
+    for (const name of names) {
+      if (!/\.inf$|\.csv$/i.test(name)) continue;
+      try {
+        const st = fs.statSync(path.join(dir, name));
+        if (st.isFile() && st.mtimeMs >= sinceMs - 2000) found.push(name);
+      } catch {}
+    }
+  }
+  return Array.from(new Set(found)).slice(0, 6);
+}
+
 function sendAltS() {
   const vbs = path.join(os.tmpdir(), "agente-puxada-save.vbs");
   fs.writeFileSync(vbs, [
     "On Error Resume Next",
     "Set sh = CreateObject(\"WScript.Shell\")",
     "WScript.Sleep 500",
-    "ok = sh.AppActivate(\"Movimentação do Estoque\")",
+    "ok = sh.AppActivate(\"Salvar como\")",
+    "If Not ok Then ok = sh.AppActivate(\"Save As\")",
+    "If Not ok Then ok = sh.AppActivate(\"Download de Arquivo\")",
+    "If Not ok Then ok = sh.AppActivate(\"File Download\")",
+    "If Not ok Then ok = sh.AppActivate(\"Movimentação do Estoque\")",
     "If Not ok Then ok = sh.AppActivate(\"Microsoft Edge\")",
     "WScript.Sleep 500",
     "sh.SendKeys \"%s\"",
@@ -662,21 +963,232 @@ function sendAltS() {
   childProcess.execFileSync("wscript.exe", [vbs], { windowsHide: true, timeout: 5000 });
 }
 
-async function browserDownload(rootDir) {
+function sendEnter() {
+  const vbs = path.join(os.tmpdir(), "agente-puxada-csv-enter.vbs");
+  fs.writeFileSync(vbs, [
+    "On Error Resume Next",
+    "Set sh = CreateObject(\"WScript.Shell\")",
+    "WScript.Sleep 300",
+    "ok = sh.AppActivate(\"Movimentação do Estoque\")",
+    "If Not ok Then ok = sh.AppActivate(\"Microsoft Edge\")",
+    "WScript.Sleep 250",
+    "sh.SendKeys \"{ENTER}\"",
+    "WScript.Sleep 250"
+  ].join("\r\n"), "utf8");
+  childProcess.execFileSync("wscript.exe", [vbs], { windowsHide: true, timeout: 5000 });
+}
+
+function clickCsvPhysical() {
+  const vbs = path.join(os.tmpdir(), "agente-puxada-click-csv.vbs");
+  fs.writeFileSync(vbs, [
+    "On Error Resume Next",
+    "Set sh = CreateObject(\"WScript.Shell\")",
+    "ok = sh.AppActivate(\"Movimenta\")",
+    "If Not ok Then ok = sh.AppActivate(\"Promax\")",
+    "If Not ok Then ok = sh.AppActivate(\"Microsoft Edge\")",
+    "If Not ok Then WScript.Quit 2",
+    "WScript.Sleep 300",
+    "sh.SendKeys \"%c\"",
+    "WScript.Sleep 350",
+    "WScript.Echo \"alt-c-sent\""
+  ].join("\r\n"), "utf8");
+  try {
+    return String(childProcess.execFileSync("cscript.exe", ["//nologo", vbs],
+      { encoding: "utf8", windowsHide: true, timeout: 5000 }) || "").trim() || "sem resposta";
+  } catch (error) {
+    return "falhou: " + (error && error.status != null ? "código " + error.status : String(error && error.code || "processo"));
+  }
+}
+
+function startNativeCsv(rootDir) {
+  const token=Date.now().toString();
+  const ps=path.join(os.tmpdir(),'agente-csv-'+token+'.ps1');
+  const report=path.join(os.tmpdir(),'agente-csv-'+token+'.json');
+  const vbs=path.join(os.tmpdir(),'agente-csv-'+token+'.vbs');
+  const dir=path.join(rootDir,'downloads');fs.mkdirSync(dir,{recursive:true});
+  const target=path.join(dir,'020501_'+token+'.csv.inf');
+  const quote=s=>"'"+s.replace(/'/g,"''")+"'";
+  const script=String.raw`
+$ErrorActionPreference='Stop'
+$steps=New-Object System.Collections.Generic.List[string]
+function Log([string]$s){$steps.Add($s);ConvertTo-Json -InputObject @($steps.ToArray()) -Compress | Set-Content -LiteralPath $out -Encoding UTF8}
+try {
+ Log 'helper-boot'
+ Add-Type -AssemblyName UIAutomationClient
+ Add-Type -AssemblyName UIAutomationTypes
+ Add-Type -TypeDefinition @'
+using System;using System.Runtime.InteropServices;
+public static class CsvMouse {
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+[DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
+[DllImport("user32.dll")] public static extern void mouse_event(uint f,uint x,uint y,uint d,UIntPtr e);
+}
+'@
+ [void][CsvMouse]::SetProcessDPIAware()
+ $root=[System.Windows.Automation.AutomationElement]::RootElement
+ $button=[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Button)
+ function Windows {return $root.FindAll([System.Windows.Automation.TreeScope]::Children,[System.Windows.Automation.Condition]::TrueCondition)}
+ function Click($b,$w) {
+   [void][CsvMouse]::SetForegroundWindow([IntPtr]$w.Current.NativeWindowHandle)
+   Start-Sleep -Milliseconds 200
+   $r=$b.Current.BoundingRectangle
+   if($b.Current.IsOffscreen -or $r.Width -lt 2){throw 'control-offscreen'}
+   [void][CsvMouse]::SetCursorPos([int]($r.Left+$r.Width/2),[int]($r.Top+$r.Height/2))
+   [CsvMouse]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
+   Start-Sleep -Milliseconds 90
+   [CsvMouse]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
+ }
+ Log 'helper-started'
+ $clicked=$false
+ foreach($w in (Windows)) {
+   if($w.Current.Name -notmatch 'Movimenta|Promax'){continue}
+   $bs=$w.FindAll([System.Windows.Automation.TreeScope]::Descendants,$button)
+   foreach($b in $bs){if($b.Current.Name -match '^\s*C\s*S\s*V\s*$'){Click $b $w;Log 'csv-clicked';$clicked=$true;break}}
+   if($clicked){break}
+ }
+ if(!$clicked){Log 'csv-button-not-found';exit}
+ $saved=$false
+ for($i=0;$i -lt 24;$i++){
+   Start-Sleep -Milliseconds 800
+   foreach($w in (Windows)){
+     $title=$w.Current.Name
+     if($title -notmatch 'Movimenta|Promax|Salvar|Save|Download|Microsoft Edge'){continue}
+     $bs=$w.FindAll([System.Windows.Automation.TreeScope]::Descendants,$button)
+     if($i -eq 3){Log ('buttons: '+((@($bs | ForEach-Object {$_.Current.Name}) | Select-Object -First 30)-join '|'))}
+     if($title -match 'Salvar como|Save As'){
+       $edits=$w.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Edit))
+       $filled=$false
+       foreach($e in $edits){if($e.Current.AutomationId -eq '1001' -or $e.Current.Name -match 'Nome do arquivo|File name'){$vp=$e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern);$vp.SetValue($target);$filled=$true;break}}
+       if(!$filled){Log 'save-filename-not-found';continue}
+       foreach($b in $bs){if($b.Current.Name -match '^&?(Salvar|Save)$'){Click $b $w;Log 'save-as-confirmed';$saved=$true;break}}
+     }elseif($title -match 'Download|Arquivo|File'){
+       foreach($b in $bs){if($b.Current.Name -match '^&?(Salvar|Save)$'){Click $b $w;Log 'download-save-clicked';break}}
+     }
+     if($saved){break}
+   }
+   if($saved -or (Test-Path -LiteralPath $target)){break}
+ }
+ Log 'helper-finished'
+}catch{Log ('helper-error: '+$_.Exception.GetType().Name+': '+$_.Exception.Message)}
+`;
+  fs.writeFileSync(ps,'\uFEFF$out='+quote(report)+'\r\n$target='+quote(target)+'\r\n'+script,'utf8');
+  const exe=path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
+  const stderr=report+'.stderr';
+  const fd=fs.openSync(stderr,'a');
+  fs.writeFileSync(report,JSON.stringify(['launching-helper']),'utf8');
+  let helper;
+  try {
+    helper=childProcess.spawn(exe,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',ps],
+      {windowsHide:true,stdio:['ignore',fd,fd]});
+    helper.on('error',error=>fs.appendFileSync(stderr,'spawn: '+String(error.code||error.message)));
+    helper.on('exit',code=>fs.appendFileSync(stderr,' exit='+String(code)));
+  } catch(error) { fs.appendFileSync(stderr,'launch: '+String(error.code||error.message)); }
+  finally { fs.closeSync(fd); }
+  return {target,report,diagnostic:function(){
+    let status='',error='';
+    try{status=fs.readFileSync(report,'utf8').replace(/^\uFEFF/,'').slice(0,1300);}catch{}
+    try{error=fs.readFileSync(stderr,'utf8').slice(0,1200);}catch{}
+    if(helper && helper.exitCode===null)helper.kill();
+    return status+'; '+error;
+  }};
+}
+
+async function clickCsvWebDriver() {
+  const element=await wd('POST','/element',{using:'css selector',value:'button[name="GerExecl"]'},10000);
+  const id=element && (element['element-6066-11e4-a52e-4f735466cecf']||element.ELEMENT);
+  if(!id)throw new Error('CSV_WEBDRIVER_ELEMENT: referência indisponível');
+  await wd('POST','/element/'+encodeURIComponent(id)+'/click',{},20000);
+}
+function saveCsvDialog(target) {
+  const file=path.join(os.tmpdir(),'agente-csv-save-dialog.vbs');
+  const keys=target.replace(/[+^%~(){}\[\]]/g,c=>'{'+c+'}').replace(/"/g,'""');
+  const lines=[
+    'On Error Resume Next',
+    'Set sh=CreateObject("WScript.Shell")',
+    'saved=False',
+    'For i=1 To 12',
+    ' ok=sh.AppActivate("Salvar como")',
+    ' If Not ok Then ok=sh.AppActivate("Save As")',
+    ' If ok Then',
+    '  WScript.Sleep 200',
+    '  sh.SendKeys "%n"',
+    '  sh.SendKeys "^a"',
+    '  sh.SendKeys "'+keys+'"',
+    '  sh.SendKeys "{ENTER}"',
+    '  WScript.Echo "save-as-confirmed"',
+    '  WScript.Quit 0',
+    ' End If',
+    ' ok=sh.AppActivate("Download de Arquivo")',
+    ' If Not ok Then ok=sh.AppActivate("File Download")',
+    ' If ok Then',
+    '  sh.SendKeys "%s"',
+    '  saved=True',
+    ' End If',
+    ' WScript.Sleep 600',
+    'Next',
+    'If saved Then WScript.Echo "download-save-sent" Else WScript.Echo "no-save-dialog"'
+  ];
+  fs.writeFileSync(file,lines.join('\r\n'),'utf8');
+  try{return String(childProcess.execFileSync('cscript.exe',['//B','//nologo',file],{encoding:'utf8',windowsHide:true,timeout:12000})).trim();}
+  catch(e){return 'save-dialog-error: '+String(e.code||e.status);}
+}
+
+async function browserDownload(rootDir, validateCsv) {
   const since = Date.now();
-  await clickCsv();
-  await sleep(800);
-  sendAltS();
+  const control = await clickCsv();
+  const dirNative=path.join(rootDir,'downloads');fs.mkdirSync(dirNative,{recursive:true});
+  const targetNative=path.join(dirNative,'020501_'+Date.now()+'.csv.inf');
+  let legacyActivation='';
+  try {
+    legacyActivation=String(await execute("var e=document.getElementsByName('GerExecl')[0];if(!e)return 'elemento ausente';try{var fn=(typeof Excel==='function')?Excel:((typeof e.onclick==='function')?function(){return e.onclick();}:null);if(!fn)return 'handler ausente';setTimeout(function(){try{fn.call(e);}catch(x){}},0);return 'Excel()/onclick agendado';}catch(x){return 'erro '+String(x.message||x);}"));
+  } catch (e) {
+    legacyActivation='erro '+String(e&&e.message||e);
+  }
+  await sleep(1800);
+  let saveResult=saveCsvDialog(targetNative);
+  if (!fs.existsSync(targetNative)) {
+    try {
+      await clickCsvWebDriver();
+      await sleep(1500);
+      const retrySave=saveCsvDialog(targetNative);
+      saveResult=legacyActivation+'; fallback WebDriver; '+retrySave;
+    } catch (e) {
+      saveResult=legacyActivation+'; fallback WebDriver falhou: '+String(e&&e.message||e)+'; '+saveResult;
+    }
+  } else {
+    saveResult=legacyActivation+'; '+saveResult;
+  }
+  const native={target:targetNative,diagnostic:function(){return saveResult;}};
+  control.activation='Excel()/onclick direto + fallback WebDriver';
   let previous = null;
   let stable = 0;
+  let lastCandidateError = "";
+  const checked = new Set();
   const candidate = await waitUntil(async function () {
-    const c = newestCandidate(since);
+    const c = fs.existsSync(native.target) ? {path:native.target,size:fs.statSync(native.target).size,mtimeMs:fs.statSync(native.target).mtimeMs} : newestCandidate(since);
     if (!c) return null;
     if (previous && previous.path === c.path && previous.size === c.size) stable++;
     else stable = 0;
     previous = c;
-    return stable >= 2 ? c : null;
-  }, 45000, 700);
+    if (stable < 2) return null;
+    const key = c.path + "|" + c.size;
+    if (checked.has(key)) return null;
+    checked.add(key);
+    try {
+      if (typeof validateCsv === "function") validateCsv(c.path);
+      return c;
+    } catch (error) {
+      lastCandidateError = error && error.message ? error.message : String(error);
+      return null;
+    }
+  }, 45000, 700).catch(function () {
+    const names = recentDownloadNames(since);
+    const detail = names.length ? " Arquivos recentes: " + names.join(", ") + "." : " Nenhum arquivo .csv/.inf novo apareceu nas pastas configuradas do navegador.";
+    const controlDetail = control ? " Controle CSV acionado: " + String(control.tag || "?") + "; ação=" + String(control.activation || "?") + "; elemento=" + String(control.html || "").replace(/\s+/g, " ").slice(0, 350) + "." : "";
+    const reason = lastCandidateError ? " Último arquivo rejeitado: " + lastCandidateError : "";
+    throw new Error("CSV_EXPORT_TIMEOUT: o relatório foi gerado, mas o agente não localizou um CSV válido para importar." + detail + controlDetail + reason + "; Windows=" + native.diagnostic());
+  });
   const dir = path.join(rootDir, "downloads");
   fs.mkdirSync(dir, { recursive: true });
   const target = path.join(dir, "020501_" + Date.now() + ".csv.inf");
@@ -725,26 +1237,101 @@ async function ensurePromaxHome(config, rootDir) {
   throw new Error("Sessão do Promax conectada, mas a aplicação não ficou navegável.");
 }
 
-async function export020501(job, config, rootDir) {
+async function currentReportMatches(job) {
+  const from = formatDate(job.date_from);
+  const to = formatDate(job.date_to);
+  const hs = await handles();
+  for (let i = hs.length - 1; i >= 0; i--) {
+    try {
+      await switchWindow(hs[i]);
+      await topFrame();
+      const text = normalized(await bodyText()).replace(/\s+/g, " ");
+      const flat = text.replace(/[^A-Z0-9/]+/g, " ").replace(/\s+/g, " ");
+      if (text.indexOf("MOVIMENTACAO DO ESTOQUE") < 0) continue;
+      if (text.indexOf("OPCAO") < 0 || text.indexOf("DEPOSITO") < 0) continue;
+      if (text.indexOf(from) < 0 || text.indexOf(to) < 0) continue;
+      if (!/OPERACAO\s+251\s+A\s+314/.test(flat)) continue;
+      return true;
+    } catch {}
+  }
+  return false;
+}
+
+async function captureAuthenticatedCsv(rootDir, validateCsv) {
+  await clickCsv(); // Leaves WebDriver in the frame that owns the export form.
+  const form = await execute(CSV_FORM_SCRIPT);
+  if (!form || !form.ok) throw new Error("CSV_CAPTURE_FORM: formulário indisponível");
+  const action = new URL(form.action, form.referer);
+  if (action.origin !== new URL(form.referer).origin) throw new Error("CSV_CAPTURE_ORIGIN");
+  const result = await execute([
+    "var f=arguments[0],params=[],x,transport='XMLHTTP';",
+    "for(var i=0;i<f.fields.length;i++)params.push(encodeURIComponent(f.fields[i][0])+'='+encodeURIComponent(f.fields[i][1]));",
+    "var method=String(f.method||'GET').toUpperCase(),url=String(f.action),body=params.join('&').replace(/%20/g,'+');",
+    "if(method==='GET')url=url.split('?')[0].split('#')[0]+'?'+body;",
+    "try{x=new XMLHttpRequest();transport='XMLHttpRequest';}catch(e){x=new ActiveXObject('Microsoft.XMLHTTP');}",
+    "try{x.open(method,url,false);if(method==='POST')x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.send(method==='POST'?body:null);}catch(e){return {error:'send',code:e.number||0,transport:transport};}",
+    "var r={status:x.status,type:x.getResponseHeader('Content-Type')||'',transport:transport,method:method};",
+    "try{r.bytes=new VBArray(x.responseBody).toArray();}catch(e){r.text=x.responseText;}",
+    "return r;"
+  ].join(''), [form]);
+  if (!result || result.error) throw new Error("CSV_CAPTURE_TRANSPORT: " + JSON.stringify(result || {}));
+  const bytes = Array.isArray(result.bytes) ? Buffer.from(result.bytes) : Buffer.from(result.text || '', 'utf8');
+  const head = bytes.subarray(0,2048).toString('latin1');
+  if (result.status !== 200 || /<html|<script|<!doctype/i.test(head)) {
+    const reason = /inv.lida|login/i.test(head) ? 'sessão inválida' : 'resposta não CSV';
+    const current = new URL(form.referer);
+    const fields = form.fields || [];
+    const diagnostic = fields.filter(f=>/^(SessionID|SubSessionID|opcao|ppopcao|opcaorelat|call)$/i.test(f[0])).map(f=>/session/i.test(f[0]) ? f[0]+':len='+String(f[1]).length+',urlMatch='+(current.searchParams.get(f[0])===f[1])+',actionMatch='+(action.searchParams.get(f[0])===f[1]) : f[0]+'='+String(f[1]).replace(/[^0-9]/g,''));
+    result.diagnostic=diagnostic.join(';');
+    throw new Error('CSV_CAPTURE_RESPONSE: HTTP '+result.status+'; '+reason+'; bytes='+bytes.length+'; transporte='+result.transport+'; método='+result.method+'; '+result.diagnostic);
+  }
+  const dir=path.join(rootDir,'downloads');fs.mkdirSync(dir,{recursive:true});
+  const target=path.join(dir,'020501_'+Date.now()+'.csv.inf');fs.writeFileSync(target,bytes);
+  if(typeof validateCsv==='function')validateCsv(target);
+  return target;
+}
+
+async function export020501(job, config, rootDir, validateCsv) {
   await ensurePromaxHome(config, rootDir);
-  var report = String(config.promax && config.promax.report || "02.05.01").replace(/\D/g, "");
-  if (report === "020501") report = "02.05.01";
-  await openShortcut(report);
+  const alreadyGenerated = await currentReportMatches(job);
+  if (!alreadyGenerated) {
+    var report = String(config.promax && config.promax.report || "02.05.01").replace(/\D/g, "");
+    if (report === "020501") report = "02.05.01";
+    await openShortcut(report);
 
-  await waitUntil(async function () {
-    return fillReport(job, config);
-  }, 30000, 600);
+    await waitUntil(async function () {
+      return fillReport(job, config);
+    }, 30000, 600);
+  }
 
-  const d = await waitUntil(async function () {
-    return await csvDescriptor();
-  }, 60000, 700);
+  let d;
+  try {
+    d = await waitUntil(async function () {
+      return await csvDescriptor();
+    }, 60000, 700);
+  } catch {
+    throw new Error("CSV_CONTROL_TIMEOUT: o relatório foi gerado, mas o botão CSV não foi localizado na tela de resultados.");
+  }
 
   if (d && d.href && !/^javascript:/i.test(d.href) && d.href !== "#") {
     try {
-      return await directDownload(d.href, rootDir);
-    } catch {}
+      const file = await directDownload(d.href, rootDir);
+      if (typeof validateCsv === "function") validateCsv(file);
+      return file;
+    } catch (error) {
+      try {
+        return await browserDownload(rootDir, validateCsv);
+      } catch (fallbackError) {
+        const directMessage = error && error.message ? error.message : String(error);
+        const fallbackMessage = fallbackError && fallbackError.message ? fallbackError.message : String(fallbackError);
+        throw new Error(fallbackMessage + " Download direto também falhou: " + directMessage);
+      }
+    }
   }
-  return browserDownload(rootDir);
+  if (/Excel\s*\(/i.test(String(d && d.onclick || "") + " " + String(d && d.html || ""))) {
+    return browserDownload(rootDir, validateCsv);
+  }
+  return browserDownload(rootDir, validateCsv);
 }
 
 async function openCalibrationBrowser(config, rootDir) {
@@ -752,27 +1339,22 @@ async function openCalibrationBrowser(config, rootDir) {
   setCalibrationLock(rootDir, true);
   try {
     await startDriver(rootDir);
-
-    // Calibration owns the dedicated IEDriver while this lock exists. Remove
-    // every prior session so no stale/invisible browser can be reused.
-    try {
-      const response = await http("GET", driverBase() + "/sessions", null, 4000);
-      const sessions = Array.isArray(response.value) ? response.value : [];
-      for (const session of sessions) {
-        const id = String(session.id || session.sessionId || "");
-        if (!id) continue;
-        try { await http("DELETE", driverBase() + "/session/" + encodeURIComponent(id), null, 10000); } catch {}
-      }
-    } catch {}
-
-    SESSION_ID = null;
-    clearSavedSession(rootDir);
-    await sleep(1400);
-
+    const nativeMarker=path.resolve(rootDir,'..','data','promax-native-session.json');
+    if(!fs.existsSync(nativeMarker)) {
+      const old=await findExistingSession(config,rootDir);
+      if(old){SESSION_ID=old;await wd('DELETE','',null,15000);}
+      SESSION_ID=null;clearSavedSession(rootDir);
+    }
     try {
       await createSession(config, rootDir);
     } catch (e) {
-      throw new Error("Falha ao criar sessão controlada do Edge/IE: " + (e && e.message ? e.message : String(e)));
+      // Another agent process may have opened the single IEDriver session
+      // between discovery and creation. Reuse it rather than destroying the
+      // user's authenticated Promax window or reporting a false failure.
+      const existing = await findExistingSession(config, rootDir);
+      if (!existing) {
+        throw new Error("Falha ao criar sessão controlada do Edge/IE: " + (e && e.message ? e.message : String(e)));
+      }
     }
 
     try {
