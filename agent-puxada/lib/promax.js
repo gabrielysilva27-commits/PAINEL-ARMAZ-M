@@ -1677,6 +1677,131 @@ async function domReportDownload(rootDir, validateCsv) {
   return target;
 }
 
+
+function parsePlainReportRows(text) {
+  const lines = String(text || "").split(/\r?\n/);
+  const rows = [];
+
+  function digits(v) { return /^\d+$/.test(String(v || "")); }
+  function qty(v) { return /^[0-9][0-9.,/]*$/.test(String(v || "")); }
+  function date(v) { return /^\d{2}\/\d{2}\/\d{4}$/.test(String(v || "")); }
+
+  for (const raw of lines) {
+    const line = String(raw || "").replace(/\u00a0/g, " ").trim();
+    if (!line || line.length < 12) continue;
+    const tokens = line.split(/\s+/);
+    if (tokens.length < 7) continue;
+
+    // Procura a operação do fim para o começo. Isso evita confundir números
+    // presentes na descrição do produto (ex.: 269 ML) com a operação.
+    let opIdx = -1;
+    for (let i = tokens.length - 2; i >= 4; i--) {
+      if (!/^\d{3}$/.test(tokens[i])) continue;
+      const op = Number(tokens[i]);
+      if (op < 251 || op > 314) continue;
+      let hasQty = false;
+      for (let j = i + 1; j < tokens.length; j++) {
+        if (qty(tokens[j])) { hasQty = true; break; }
+      }
+      if (hasQty) { opIdx = i; break; }
+    }
+    if (opIdx < 0) continue;
+
+    // FORNEC / DOCUM / ITEM são numéricos. Aceita no máximo duas colunas
+    // auxiliares antes deles, mas evita confundir depósito/linha com fornecedor.
+    let base = -1;
+    for (let i = 0; i <= Math.min(2, opIdx - 5); i++) {
+      if (digits(tokens[i]) && digits(tokens[i + 1]) && digits(tokens[i + 2]) && String(tokens[i]).length >= 4) {
+        base = i;
+        break;
+      }
+    }
+    if (base < 0) continue;
+
+    const supplier = tokens[base];
+    const invoice = tokens[base + 1];
+    const sku = tokens[base + 2];
+    const unitIdx = opIdx - 1;
+    if (unitIdx <= base + 2) continue;
+    const unit = tokens[unitIdx];
+    const name = tokens.slice(base + 3, unitIdx).join(" ").trim();
+    if (!name) continue;
+
+    let quantity = "";
+    let reportDate = "";
+    for (let j = opIdx + 1; j < tokens.length; j++) {
+      const v = tokens[j];
+      if (!reportDate && date(v)) reportDate = v;
+      if (!quantity && qty(v)) quantity = v;
+    }
+    if (!quantity) continue;
+
+    rows.push({
+      supplier, invoice, sku, name, unit,
+      operation: tokens[opIdx],
+      quantity,
+      date: reportDate
+    });
+  }
+  return rows;
+}
+
+async function textReportDownload(rootDir, validateCsv) {
+  const script = "return document.body ? String(document.body.innerText||document.body.textContent||'') : '';";
+  const hs = await handles();
+  const candidates = [];
+
+  for (let i = hs.length - 1; i >= 0; i--) {
+    try {
+      await switchWindow(hs[i]);
+      await findInFrames(async function () {
+        const text = await execute(script);
+        if (!text || String(text).length < 120) return false;
+        const n = normalized(text).replace(/\s+/g, " ");
+        if (n.indexOf("MOVIMENTACAO DO ESTOQUE") >= 0 ||
+            (n.indexOf("FORNEC") >= 0 && n.indexOf("DOCUM") >= 0 && n.indexOf("ITEM") >= 0)) {
+          candidates.push(String(text));
+        }
+        return false;
+      }, 8);
+    } catch {}
+  }
+
+  if (!candidates.length) throw new Error("TEXT_REPORT_EMPTY: texto do relatório não encontrado.");
+
+  let best = [];
+  let bestText = "";
+  for (const text of candidates) {
+    const rows = parsePlainReportRows(text);
+    if (rows.length > best.length) { best = rows; bestText = text; }
+  }
+  if (!best.length) {
+    const sample = String(bestText || candidates[0] || "").replace(/\s+/g, " ").slice(0, 500);
+    throw new Error("TEXT_REPORT_PARSE_EMPTY: relatório visível, mas nenhuma linha foi reconhecida. amostra=" + sample);
+  }
+
+  function q(v) { return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }
+  const lines = [
+    ["FORNEC","DOCUM","ITEM","DESCRICAO","UNIDADE","OPERACAO","QTDE","DATA"]
+  ];
+  for (const r of best) {
+    lines.push([r.supplier,r.invoice,r.sku,r.name,r.unit,r.operation,r.quantity,r.date]);
+  }
+
+  const dir = path.join(rootDir, "downloads");
+  fs.mkdirSync(dir, { recursive: true });
+  const target = path.join(dir, "020501_text_" + Date.now() + ".csv.inf");
+  fs.writeFileSync(target, "\uFEFF" + lines.map(function (row) { return row.map(q).join(";"); }).join("\r\n"), "utf8");
+
+  try {
+    if (typeof validateCsv === "function") validateCsv(target);
+  } catch (error) {
+    try { fs.rmSync(target, { force: true }); } catch {}
+    throw new Error("TEXT_REPORT_FORMAT: " + (error && error.message ? error.message : String(error)) + "; linhas=" + best.length + ".");
+  }
+  return target;
+}
+
 async function export020501(job, config, rootDir, validateCsv) {
   await ensurePromaxHome(config, rootDir);
   const alreadyGenerated = await currentReportMatches(job);
@@ -1702,8 +1827,14 @@ async function export020501(job, config, rootDir, validateCsv) {
   try {
     return await domReportDownload(rootDir, validateCsv);
   } catch (domError) {
-    // O Promax legado pode bloquear o download automatizado. A leitura do
-    // próprio relatório renderizado evita depender da barra de download.
+    // Nem toda versão do Promax usa uma tabela HTML real.
+  }
+
+  try {
+    return await textReportDownload(rootDir, validateCsv);
+  } catch (textError) {
+    // Relatórios legados também podem ser renderizados como texto fixo. Se a
+    // leitura direta não validar, seguimos para os caminhos de exportação.
   }
 
   if (d && d.href && !/^javascript:/i.test(d.href) && d.href !== "#") {
