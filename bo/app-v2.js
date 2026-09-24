@@ -31,7 +31,21 @@
 
   $('pinForm').onsubmit=async e=>{e.preventDefault();const b=$('pinButton');b.disabled=true;$('loginError').textContent='';try{const d=await call('pin_login',{conferencer_id:$('conferencerSelect').value,pin:$('pinInput').value},false);token=d.token;conferencer=d.conferencer;sessionStorage.setItem('bo_token',token);$('pinInput').value='';enter();}catch(err){$('loginError').textContent=err.message;}finally{b.disabled=false;}};
   $('logoutButton').onclick=async()=>{try{await call('bo_logout')}catch{}token='';conferencer=null;sessionStorage.removeItem('bo_token');show('loginView');};
-  segmented('shiftOptions',v=>shift=v);segmented('movementOptions',v=>movement=v);segmented('subjectOptions',v=>setSubjectType(v));
+  function updateShiftFlowNotice(){
+    const box=$('shiftFlowNotice');if(!box)return;
+    if(confrontSource){
+      box.classList.remove('hidden','turn-c');
+      box.classList.add('turn-a');
+      box.innerHTML='<strong>Confronto do Turno A</strong><span>Confira a repecagem do B.O. do Turno C. Este registro será o resultado oficial após validação do Controle.</span>';
+    }else if(shift==='C'){
+      box.classList.remove('hidden','turn-a');
+      box.classList.add('turn-c');
+      box.innerHTML='<strong>Turno C · registro de origem</strong><span>Este B.O. ficará visível no histórico e no Controle, mas não entra na PA/Informativo. O Turno A fará a repecagem em “Confrontos Turno C”.</span>';
+    }else{
+      box.classList.add('hidden');box.classList.remove('turn-a','turn-c');box.innerHTML='';
+    }
+  }
+  segmented('shiftOptions',v=>{shift=v;updateShiftFlowNotice();});segmented('movementOptions',v=>movement=v);segmented('subjectOptions',v=>setSubjectType(v));
   $('reasonSelect').onchange=updateInterview;
 
   $('employeeInput').addEventListener('input',()=>{clearTimeout(employeeTimer);$('employeeFunction').value='';const q=$('employeeInput').value.trim();if(q.length<2){$('employeeResults').classList.add('hidden');return;}employeeTimer=setTimeout(async()=>{try{const d=await call('employee_search',{query:q});$('employeeResults').innerHTML=d.employees.map(x=>'<button type="button" class="search-result" data-name="'+escapeHtml(x.employee_name)+'" data-job="'+escapeHtml(x.job_title)+'" data-shift="'+escapeHtml(x.shift||'')+'"><strong>'+escapeHtml(x.employee_name)+'</strong><small>'+escapeHtml(x.job_title)+(x.shift?' · Turno '+escapeHtml(x.shift):'')+'</small></button>').join('')||'<div class="search-result">Nenhum funcionário encontrado.</div>';$('employeeResults').classList.remove('hidden');}catch(e){toast(e.message,true);}},260);});
@@ -60,10 +74,11 @@
     }
     $('shiftOptions').querySelectorAll('button').forEach(b=>{b.disabled=confronting&&b.dataset.value!=='A';});
     $('submitButton').textContent=confronting?'Salvar confronto do Turno A':editing?'Salvar alterações':'Enviar B.O.';
+    updateShiftFlowNotice();
   }
   function resetForm(clearEditing=true){
     if(clearEditing){editingOccurrence=null;confrontSource=null;}
-    $('boForm').reset();shift='';movement='';subjectType='Funcionário';$('shiftOptions').querySelectorAll('button').forEach(x=>x.classList.remove('active'));$('movementOptions').querySelectorAll('button').forEach(x=>x.classList.remove('active'));$('occurrenceDate').value=today();$('occurrenceTime').value=nowTime();$('employeeFunction').value='';$('itemsList').innerHTML='';addItem();$('formError').textContent='';setSubjectType('Funcionário');updateEditingUi();
+    $('boForm').reset();shift='';movement='';subjectType='Funcionário';$('shiftOptions').querySelectorAll('button').forEach(x=>x.classList.remove('active'));$('movementOptions').querySelectorAll('button').forEach(x=>x.classList.remove('active'));$('occurrenceDate').value=today();$('occurrenceTime').value=nowTime();$('employeeFunction').value='';$('itemsList').innerHTML='';addItem();$('formError').textContent='';setSubjectType('Funcionário');updateEditingUi();updateShiftFlowNotice();
   }
   function editOccurrence(row){
     confrontSource=null;editingOccurrence=row;
