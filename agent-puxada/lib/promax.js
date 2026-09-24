@@ -782,6 +782,24 @@ async function directDownload(href, rootDir) {
   return target;
 }
 
+const CSV_EXCEL_FORM_SCRIPT = [
+  "var e=document.getElementsByName('GerExecl')[0],f=(e&&e.form)?e.form:(document.all&&document.all.form1);",
+  "if(!e||!f||!f.elements)return {ok:false,reason:'botão CSV/formulário não encontrado'};",
+  "function snapFields(){var fields=[];for(var i=0;i<f.elements.length;i++){var x=f.elements[i],name=String(x.name||''),type=String(x.type||'').toLowerCase();if(!name||x.disabled||type==='button'||type==='submit'||type==='reset'||type==='file')continue;if((type==='checkbox'||type==='radio')&&!x.checked)continue;if(type==='select-multiple'){for(var j=0;j<x.options.length;j++)if(x.options[j].selected)fields.push([name,String(x.options[j].value)]);}else fields.push([name,String(x.value==null?'':x.value)]);}return fields;}",
+  "var states=[];for(var si=0;si<f.elements.length;si++){var se=f.elements[si];states.push({e:se,value:se.value,checked:se.checked,selectedIndex:se.selectedIndex});}",
+  "var oldAction=String(f.action||''),oldMethod=String(f.method||''),oldTarget=String(f.target||''),oldSubmit=f.submit,oldOpen=window.open,submitCalled=false,opens=[],hooked=false,openHooked=false,callError='';",
+  "try{f.submit=function(){submitCalled=true;};hooked=(f.submit!==oldSubmit);}catch(x){}",
+  "try{window.open=function(){var a=[];for(var i=0;i<arguments.length;i++)a.push(String(arguments[i]==null?'':arguments[i]));opens.push(a);return {focus:function(){},close:function(){},document:{open:function(){},write:function(){},close:function(){}}};};openHooked=true;}catch(x){}",
+  "var excel='';try{excel=(typeof Excel==='function')?String(Excel):String(e.getAttribute('onclick')||'');}catch(x){}",
+  "if(!hooked){try{window.open=oldOpen;}catch(x){}return {ok:false,reason:'não foi possível interceptar form.submit',excel:excel.slice(0,1400)};}",
+  "try{if(typeof Excel==='function')Excel.call(e);else if(typeof e.onclick==='function')e.onclick();else{var code=e.getAttribute('onclick');if(code)(new Function(code)).call(e);}}catch(x){callError=String(x&&x.message||x);}",
+  "var out={ok:true,action:String(f.action||document.location.href),referer:String(document.location.href),method:String(f.method||'POST'),enctype:String(f.enctype||''),target:String(f.target||''),fields:snapFields(),submit_called:submitCalled,opens:opens,excel:excel.slice(0,1400),call_error:callError,submit_hooked:hooked,open_hooked:openHooked};",
+  "try{f.action=oldAction;f.method=oldMethod;f.target=oldTarget;}catch(x){}",
+  "for(var ri=0;ri<states.length;ri++){var st=states[ri];try{st.e.value=st.value;}catch(x){}try{if(typeof st.checked!=='undefined')st.e.checked=st.checked;}catch(x){}try{if(typeof st.selectedIndex==='number')st.e.selectedIndex=st.selectedIndex;}catch(x){}}",
+  "try{f.submit=oldSubmit;}catch(x){}try{window.open=oldOpen;}catch(x){}",
+  "return out;"
+].join("");
+
 const CSV_FORM_SCRIPT = [
   "var f=document.all&&document.all.form1;",
   "if(!f||!f.elements)return {ok:false,reason:'form1 não encontrado no quadro CSV'};",
@@ -1258,33 +1276,62 @@ async function currentReportMatches(job) {
 }
 
 async function captureAuthenticatedCsv(rootDir, validateCsv) {
-  await clickCsv(); // Leaves WebDriver in the frame that owns the export form.
-  const form = await execute(CSV_FORM_SCRIPT);
-  if (!form || !form.ok) throw new Error("CSV_CAPTURE_FORM: formulário indisponível");
+  await clickCsv(); // deixa o WebDriver no frame que possui o botão CSV
+  let probe = null;
+  try { probe = await execute(CSV_EXCEL_FORM_SCRIPT); } catch {}
+  let form = probe && probe.ok ? probe : await execute(CSV_FORM_SCRIPT);
+  if (!form || !form.ok) {
+    const why = probe && (probe.reason || probe.call_error) ? String(probe.reason || probe.call_error) : "formulário indisponível";
+    throw new Error("CSV_CAPTURE_FORM: " + why);
+  }
+
+  // Se o Excel() abriu uma URL explícita, ela é uma pista mais fiel que o action
+  // original do form. Use-a somente quando for http(s) do mesmo host.
+  if (Array.isArray(form.opens) && form.opens.length && form.opens[0] && form.opens[0][0]) {
+    try {
+      const opened = new URL(String(form.opens[0][0]), form.referer);
+      const ref = new URL(form.referer);
+      if (opened.origin === ref.origin && /^https?:$/.test(opened.protocol)) {
+        form.action = opened.toString();
+        form.method = "GET";
+        form.fields = [];
+      }
+    } catch {}
+  }
+
   const action = new URL(form.action, form.referer);
   if (action.origin !== new URL(form.referer).origin) throw new Error("CSV_CAPTURE_ORIGIN");
   const result = await execute([
     "var f=arguments[0],params=[],x,transport='XMLHTTP';",
     "for(var i=0;i<f.fields.length;i++)params.push(encodeURIComponent(f.fields[i][0])+'='+encodeURIComponent(f.fields[i][1]));",
     "var method=String(f.method||'GET').toUpperCase(),url=String(f.action),body=params.join('&').replace(/%20/g,'+');",
-    "if(method==='GET')url=url.split('?')[0].split('#')[0]+'?'+body;",
+    "if(method==='GET'&&body)url+=(url.indexOf('?')<0?'?':'&')+body;",
     "try{x=new XMLHttpRequest();transport='XMLHttpRequest';}catch(e){x=new ActiveXObject('Microsoft.XMLHTTP');}",
     "try{x.open(method,url,false);if(method==='POST')x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.send(method==='POST'?body:null);}catch(e){return {error:'send',code:e.number||0,transport:transport};}",
-    "var r={status:x.status,type:x.getResponseHeader('Content-Type')||'',transport:transport,method:method};",
+    "var r={status:x.status,type:x.getResponseHeader('Content-Type')||'',disposition:x.getResponseHeader('Content-Disposition')||'',transport:transport,method:method,url:url};",
     "try{r.bytes=new VBArray(x.responseBody).toArray();}catch(e){r.text=x.responseText;}",
     "return r;"
   ].join(''), [form]);
   if (!result || result.error) throw new Error("CSV_CAPTURE_TRANSPORT: " + JSON.stringify(result || {}));
+
   const bytes = Array.isArray(result.bytes) ? Buffer.from(result.bytes) : Buffer.from(result.text || '', 'utf8');
-  const head = bytes.subarray(0,2048).toString('latin1');
-  if (result.status !== 200 || /<html|<script|<!doctype/i.test(head)) {
-    const reason = /inv.lida|login/i.test(head) ? 'sessão inválida' : 'resposta não CSV';
+  const raw = bytes.toString('latin1');
+  const head = raw.slice(0, 4096);
+  const looksHtml = /<html|<script|<!doctype|<form/i.test(head);
+  if (result.status !== 200 || looksHtml) {
+    const reason = /inv.lida|login|senha|usuario/i.test(head) ? 'sessão inválida' : 'resposta não CSV';
     const current = new URL(form.referer);
     const fields = form.fields || [];
-    const diagnostic = fields.filter(f=>/^(SessionID|SubSessionID|opcao|ppopcao|opcaorelat|call)$/i.test(f[0])).map(f=>/session/i.test(f[0]) ? f[0]+':len='+String(f[1]).length+',urlMatch='+(current.searchParams.get(f[0])===f[1])+',actionMatch='+(action.searchParams.get(f[0])===f[1]) : f[0]+'='+String(f[1]).replace(/[^0-9]/g,''));
-    result.diagnostic=diagnostic.join(';');
-    throw new Error('CSV_CAPTURE_RESPONSE: HTTP '+result.status+'; '+reason+'; bytes='+bytes.length+'; transporte='+result.transport+'; método='+result.method+'; '+result.diagnostic);
+    const diagnostic = fields.filter(function(f){return /^(SessionID|SubSessionID|opcao|ppopcao|opcaorelat|call)$/i.test(f[0]);})
+      .map(function(f){return /session/i.test(f[0]) ? f[0]+':len='+String(f[1]).length+',urlMatch='+(current.searchParams.get(f[0])===f[1])+',actionMatch='+(action.searchParams.get(f[0])===f[1]) : f[0]+'='+String(f[1]).replace(/[^0-9]/g,'');});
+    const excel = String(form.excel || "").replace(/\s+/g," ").replace(/https?:\/\/[^\s"'<>]+/gi,"[URL]").slice(0,900);
+    let clue = "";
+    const fm = raw.match(/function\s+Excel[\s\S]{0,1000}/i);
+    if (fm) clue = fm[0].replace(/\s+/g," ").replace(/https?:\/\/[^\s"'<>]+/gi,"[URL]").slice(0,900);
+    if (!clue) clue = head.replace(/<[^>]*>/g," ").replace(/\b[A-Za-z0-9_-]{18,}\b/g,"[valor]").replace(/\s+/g," ").trim().slice(0,500);
+    throw new Error("CSV_CAPTURE_RESPONSE: HTTP "+result.status+"; "+reason+"; bytes="+bytes.length+"; tipo="+String(result.type||"")+"; disposition="+String(result.disposition||"")+"; transporte="+result.transport+"; método="+result.method+"; submit="+String(form.submit_called)+"; target="+String(form.target||"")+"; opens="+JSON.stringify(form.opens||[]).slice(0,300)+"; "+diagnostic.join(';')+"; Excel="+excel+"; resposta="+clue);
   }
+
   const dir=path.join(rootDir,'downloads');fs.mkdirSync(dir,{recursive:true});
   const target=path.join(dir,'020501_'+Date.now()+'.csv.inf');fs.writeFileSync(target,bytes);
   if(typeof validateCsv==='function')validateCsv(target);
