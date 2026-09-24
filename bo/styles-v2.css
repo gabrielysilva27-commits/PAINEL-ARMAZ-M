@@ -4,3 +4,9 @@
 .confront-origin{display:block;margin-top:3px;color:#8a8d94;font-size:10px;font-weight:700}
 .confront-items{margin-top:8px;padding:9px 10px;border:1px solid #eceef1;background:#fafbfc;border-radius:9px;color:#60646b;font-size:11px;line-height:1.45}
 .confront-card .history-actions .primary{width:100%}
+
+.shift-flow-notice{margin-top:8px;padding:9px 10px;border-radius:9px;border:1px solid #e0e1e5;background:#f8f8f9;font-size:11px;line-height:1.4}
+.shift-flow-notice strong,.shift-flow-notice span{display:block}
+.shift-flow-notice span{margin-top:2px;color:#6f7075}
+.shift-flow-notice.turn-c{border-color:#efd3a8;background:#fff9ef}.shift-flow-notice.turn-c strong{color:#8c6200}
+.shift-flow-notice.turn-a{border-color:#bcdcca;background:#f1faf5}.shift-flow-notice.turn-a strong{color:#157149}
