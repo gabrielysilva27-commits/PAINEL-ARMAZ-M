@@ -1824,17 +1824,18 @@ async function export020501(job, config, rootDir, validateCsv) {
     throw new Error("CSV_CONTROL_TIMEOUT: o relatório foi gerado, mas o botão CSV não foi localizado na tela de resultados.");
   }
 
+  let domFailure = "";
+  let textFailure = "";
   try {
     return await domReportDownload(rootDir, validateCsv);
   } catch (domError) {
-    // Nem toda versão do Promax usa uma tabela HTML real.
+    domFailure = domError && domError.message ? domError.message : String(domError);
   }
 
   try {
     return await textReportDownload(rootDir, validateCsv);
   } catch (textError) {
-    // Relatórios legados também podem ser renderizados como texto fixo. Se a
-    // leitura direta não validar, seguimos para os caminhos de exportação.
+    textFailure = textError && textError.message ? textError.message : String(textError);
   }
 
   if (d && d.href && !/^javascript:/i.test(d.href) && d.href !== "#") {
@@ -1848,7 +1849,7 @@ async function export020501(job, config, rootDir, validateCsv) {
       } catch (fallbackError) {
         const directMessage = error && error.message ? error.message : String(error);
         const fallbackMessage = fallbackError && fallbackError.message ? fallbackError.message : String(fallbackError);
-        throw new Error(fallbackMessage + " Download direto também falhou: " + directMessage);
+        throw new Error(fallbackMessage + " Leitura DOM: " + domFailure + ". Leitura texto: " + textFailure + ". Download direto também falhou: " + directMessage);
       }
     }
   }
@@ -1864,7 +1865,7 @@ async function export020501(job, config, rootDir, validateCsv) {
     } catch (fallbackError) {
       const captureMessage = captureError && captureError.message ? captureError.message : String(captureError);
       const fallbackMessage = fallbackError && fallbackError.message ? fallbackError.message : String(fallbackError);
-      throw new Error(fallbackMessage + " Captura autenticada também falhou: " + captureMessage);
+      throw new Error(fallbackMessage + " Leitura DOM: " + domFailure + ". Leitura texto: " + textFailure + ". Captura autenticada também falhou: " + captureMessage);
     }
   }
 }
