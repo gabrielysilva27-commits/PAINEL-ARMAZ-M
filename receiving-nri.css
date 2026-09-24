@@ -28,3 +28,121 @@
 @media(max-width:800px){.nri-page-preview{transform-origin:top left}}
 .rxp-import-card{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #dfe3e8;background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:10px}.rxp-import-card strong,.rxp-import-card span{display:block}.rxp-import-card strong{font-size:11px}.rxp-import-card span{font-size:9px;color:var(--muted);margin-top:3px}.rxp-note.warning{border-color:#f1d2a9;background:#fff8ef;color:#73502d}@media(max-width:700px){.rxp-import-card{align-items:stretch;flex-direction:column}.rxp-import-card .rxp-btn{width:100%}}.rxp-agent-card{display:flex;align-items:center;justify-content:space-between;gap:14px;border:1px solid #dfe3e8;background:#fff;border-radius:10px;padding:13px;margin-bottom:10px}.rxp-agent-card .eyebrow{margin-bottom:5px}.rxp-agent-card strong,.rxp-agent-card span{display:block}.rxp-agent-card strong{font-size:12px}.rxp-agent-card span{font-size:9px;color:var(--muted);margin-top:3px}.rxp-agent-card .agent-online strong{color:#247454}.rxp-agent-card .agent-syncing strong{color:#315d9b}.rxp-agent-card .agent-error strong{color:#b43e45}.rxp-agent-card .agent-calibration_required strong{color:#9b6800}@media(max-width:700px){.rxp-agent-card{align-items:stretch;flex-direction:column}.rxp-agent-card .rxp-btn{width:100%}}
 .rxp-row-actions{display:flex;align-items:center;gap:5px;flex-wrap:wrap}.rxp-btn.trash{width:30px;height:30px;padding:0;border-color:#efc6c8;background:#fff7f7;color:#a2262d;display:grid;place-items:center;font-size:13px}.rxp-btn.trash:hover{background:#ffecee;border-color:#e0a7aa}
+
+
+/* Puxada · Físico x Sistema — interface compacta */
+#pullCompareView .rxp-pull-shell{gap:8px}
+#pullCompareView .rxp-pull-kpis{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+#pullCompareView .rxp-pull-kpis .rxp-kpi{
+  min-height:58px;
+  padding:9px 12px;
+  border-radius:12px;
+  border-color:#e8e8eb;
+  background:linear-gradient(180deg,#fff 0%,#fdfdfd 100%);
+}
+#pullCompareView .rxp-pull-kpis .rxp-kpi span{font-size:8px;letter-spacing:.08em}
+#pullCompareView .rxp-pull-kpis .rxp-kpi strong{font-size:18px;margin-top:2px}
+#pullCompareView .rxp-pull-panel{padding:11px 12px 12px;border-radius:13px}
+#pullCompareView .rxp-pull-ops{
+  display:grid;
+  grid-template-columns:minmax(170px,.9fr) 1px minmax(220px,1.15fr) auto;
+  align-items:center;
+  gap:13px;
+  padding:10px 11px;
+  border:1px solid #e4e5e8;
+  border-radius:11px;
+  background:#fbfbfc;
+}
+#pullCompareView .rxp-pull-status{min-width:0}
+#pullCompareView .rxp-pull-label{
+  display:block;
+  margin-bottom:4px;
+  color:#929398;
+  font-size:7.5px;
+  font-weight:800;
+  letter-spacing:.11em;
+}
+#pullCompareView .rxp-pull-status>div{min-width:0}
+#pullCompareView .rxp-pull-status strong{
+  display:inline-block;
+  font:700 11px Montserrat,sans-serif;
+  color:#292a2e;
+}
+#pullCompareView .rxp-pull-status span:not(.rxp-pull-label){
+  display:block;
+  margin-top:2px;
+  color:#7b7d83;
+  font-size:8.5px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#pullCompareView .rxp-pull-status .agent-online strong{color:#247454}
+#pullCompareView .rxp-pull-status .agent-syncing strong{color:#315d9b}
+#pullCompareView .rxp-pull-status .agent-error strong{color:#b43e45}
+#pullCompareView .rxp-pull-status .agent-calibration_required strong{color:#9b6800}
+#pullCompareView .rxp-pull-divider{width:1px;height:35px;background:#e1e2e5}
+#pullCompareView .rxp-pull-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px}
+#pullCompareView .rxp-pull-actions .rxp-btn{white-space:nowrap;padding:8px 11px}
+#pullCompareView .rxp-pull-help{margin:5px 2px 2px}
+#pullCompareView .rxp-pull-help summary{
+  width:max-content;
+  color:#777980;
+  font-size:8.5px;
+  font-weight:700;
+  cursor:pointer;
+  user-select:none;
+}
+#pullCompareView .rxp-pull-help summary:hover{color:var(--orange-dark)}
+#pullCompareView .rxp-pull-help p{
+  margin:5px 0 0;
+  padding:7px 9px;
+  border-left:2px solid #dedfe3;
+  color:#75777d;
+  font-size:8.5px;
+  line-height:1.45;
+}
+#pullCompareView .rxp-pull-toolbar{
+  margin-top:7px;
+  padding:8px;
+  border:1px solid #eeeeef;
+  border-radius:10px;
+  background:#fafafa;
+  align-items:flex-end;
+}
+#pullCompareView .rxp-pull-toolbar label{gap:3px}
+#pullCompareView .rxp-pull-toolbar label>span{
+  color:#86878c;
+  font-size:8px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:.05em;
+}
+#pullCompareView .rxp-pull-toolbar input,
+#pullCompareView .rxp-pull-toolbar select{
+  min-height:34px;
+  padding:7px 9px;
+  border-radius:8px;
+  background:#fff;
+}
+#pullCompareView .rxp-pull-toolbar select{min-width:150px}
+#pullCompareView .rxp-refresh-btn{min-height:34px;padding-inline:12px}
+#pullCompareView .rxp-table-wrap{margin-top:7px}
+#pullCompareView .rxp-table th{padding-top:7px;padding-bottom:7px}
+#pullCompareView .rxp-table td{padding-top:8px;padding-bottom:8px}
+
+@media(max-width:980px){
+  #pullCompareView .rxp-pull-ops{grid-template-columns:1fr 1fr;gap:9px}
+  #pullCompareView .rxp-pull-divider{display:none}
+  #pullCompareView .rxp-pull-actions{grid-column:1/-1;justify-content:flex-start}
+}
+@media(max-width:700px){
+  #pullCompareView .rxp-pull-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+  #pullCompareView .rxp-pull-ops{grid-template-columns:1fr}
+  #pullCompareView .rxp-pull-actions{grid-column:auto}
+  #pullCompareView .rxp-pull-actions .rxp-btn{flex:1}
+  #pullCompareView .rxp-pull-toolbar{align-items:stretch}
+  #pullCompareView .rxp-pull-toolbar label,
+  #pullCompareView .rxp-pull-toolbar .grow{width:100%;min-width:0}
+  #pullCompareView .rxp-pull-toolbar select{min-width:0;width:100%}
+}
