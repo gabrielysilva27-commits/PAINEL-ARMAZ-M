@@ -50,8 +50,8 @@
   }
   async function load020501Status(){
     try{const d=await call('system_020501_status'),s=d.status,last=s.last_import;if(!$('pullImportStatus'))return;
-      $('pullImportStatus').innerHTML=last?'<strong>Base 02.05.01 carregada</strong><span>'+esc(last.source_file)+' · '+last.documents+' NF(s) · '+last.aggregated_rows+' combinações NF/produto · '+fd(last.imported_at)+'</span>':'<strong>Base 02.05.01 ainda não importada</strong><span>Importe o relatório para liberar o cruzamento automático.</span>';
-    }catch(e){if($('pullImportStatus'))$('pullImportStatus').innerHTML='<strong>Falha ao consultar a base</strong><span>'+esc(e.message)+'</span>'}
+      $('pullImportStatus').innerHTML=last?'<strong>Base pronta</strong><span>'+esc(String(last.documents||0))+' NF(s) · '+esc(String(last.aggregated_rows||0))+' combinações · '+esc(dtAgent(last.imported_at))+'</span>':'<strong>Base pendente</strong><span>Importe o 02.05.01 para liberar o cruzamento.</span>';
+    }catch(e){if($('pullImportStatus'))$('pullImportStatus').innerHTML='<strong>Base indisponível</strong><span>'+esc(e.message)+'</span>'}
   }
 
   function dtAgent(v){if(!v)return'—';const d=new Date(v);return Number.isNaN(d.getTime())?'—':d.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
@@ -59,19 +59,19 @@
     if(!$('pullAgentStatus'))return;
     try{
       const d=await call('agent_status'),a=d.agent||{},nodes=a.nodes||[],ready=nodes.filter(x=>x.online&&x.calibration_ready),sync=nodes.find(x=>x.status==='syncing'&&x.online);
-      let title='Offline',detail='Nenhum dos dois computadores está disponível.';
-      if(!a.token_ready){title='Não instalado';detail='Gere os dois tokens no ADM e instale o mesmo Agente Puxada nos PCs Puxada e ADM.'}
-      else if(sync){title='Sincronizando Promax';detail='Executando em '+sync.display_name+(sync.hostname?' · '+sync.hostname:'')+' · período '+(a.last_sync_from||'—')+' até '+(a.last_sync_to||'—')}
-      else if(ready.length){title='Online';detail=ready.length+' PC(s) disponível(is): '+ready.map(x=>x.display_name+(x.hostname?' ('+x.hostname+')':'')).join(' · ')+' · última sincronização '+dtAgent(a.last_sync_completed_at)}
-      else if(nodes.some(x=>x.token_ready&&!x.calibration_ready)){title='Aguardando calibração';detail=nodes.filter(x=>x.token_ready&&!x.calibration_ready).map(x=>x.display_name).join(' · ')+' ainda precisa(m) da calibração do Promax.'}
-      else if(a.status==='error'){title='Agente temporariamente indisponível';detail=a.last_error||'Os computadores tentarão novamente automaticamente.'}
+      let title='Offline',detail='Nenhum computador disponível.';
+      if(!a.token_ready){title='Não instalado';detail='Configure o agente na Administração.'}
+      else if(sync){title='Sincronizando';detail=(sync.display_name||'Computador')+(sync.hostname?' · '+sync.hostname:'')+' · '+(a.last_sync_from||'—')+' → '+(a.last_sync_to||'—')}
+      else if(ready.length){title='Online';detail=ready.map(x=>(x.display_name||'Computador').replace(/^Computador\s+/i,'')+(x.hostname?' · '+x.hostname:'')).join('  •  ')+' · sync '+dtAgent(a.last_sync_completed_at)}
+      else if(nodes.some(x=>x.token_ready&&!x.calibration_ready)){title='Aguardando Promax';detail=nodes.filter(x=>x.token_ready&&!x.calibration_ready).map(x=>(x.display_name||'Computador').replace(/^Computador\s+/i,'')).join(' • ')}
+      else if(a.status==='error'){title='Indisponível';detail=a.last_error||'Nova tentativa automática em breve.'}
       $('pullAgentStatus').innerHTML='<strong>'+esc(title)+'</strong><span>'+esc(detail)+'</span>';
       $('pullAgentStatus').className='agent-'+(a.status||'offline')+(a.online?' online':'');
-      if($('pullAgentSync')){$('pullAgentSync').disabled=!a.token_ready;$('pullAgentSync').textContent=a.status==='syncing'?'Sincronizando...':'Sincronizar Promax agora'}
-    }catch(e){$('pullAgentStatus').innerHTML='<strong>Falha ao consultar agente</strong><span>'+esc(e.message)+'</span>'}
+      if($('pullAgentSync')){$('pullAgentSync').disabled=!a.token_ready;$('pullAgentSync').textContent=a.status==='syncing'?'Sincronizando...':'Sincronizar agora'}
+    }catch(e){$('pullAgentStatus').innerHTML='<strong>Agente indisponível</strong><span>'+esc(e.message)+'</span>'}
   }
   async function requestAgentSync(){
-    const b=$('pullAgentSync');try{b.disabled=true;b.textContent='Solicitando...';const d=await call('agent_request_sync');showToast(d.already_pending?'Já existe uma sincronização pendente.':'Sincronização solicitada ao Agente Puxada. O primeiro PC disponível assumirá a tarefa.');await loadAgentStatus()}catch(e){showToast(e.message,true)}finally{if(b){b.disabled=false;b.textContent='Sincronizar Promax agora'}}
+    const b=$('pullAgentSync');try{b.disabled=true;b.textContent='Solicitando...';const d=await call('agent_request_sync');showToast(d.already_pending?'Já existe uma sincronização pendente.':'Sincronização solicitada.');await loadAgentStatus()}catch(e){showToast(e.message,true)}finally{if(b){b.disabled=false;b.textContent='Sincronizar agora'}}
   }
   function ensureDialogs(root){
     root.insertAdjacentHTML('beforeend',
@@ -100,14 +100,30 @@
       '</div>'+
       '<div class="rxp-note"><strong>Fila de impressão:</strong> após o conferente finalizar no celular, as NRIs ficam aqui aguardando impressão no computador da sala. A impressão exige novamente o PIN do conferente responsável.</div>'+
       '<div class="rxp-table-wrap"><table class="rxp-table"><thead><tr><th>Recebimento</th><th>Chegada</th><th>Placa</th><th>NF / Pedido</th><th>Status</th><th>Portaria</th><th>Conferente</th><th>Folhas NRI</th><th>Ações</th></tr></thead><tbody id="rxpBody"></tbody></table></div><div class="rxp-empty hidden" id="rxpEmpty">Nenhum recebimento encontrado.</div></section></div>';
-    return '<div class="rxp-shell"><section class="rxp-kpis"><article class="rxp-kpi"><span>Aguardando Puxada</span><strong id="pullPending">—</strong></article><article class="rxp-kpi"><span>Sem divergência</span><strong id="pullMatched">—</strong></article><article class="rxp-kpi"><span>Com divergência</span><strong id="pullDivergent">—</strong></article></section><section class="rxp-panel"><div class="rxp-agent-card"><div><p class="eyebrow">AGENTE PUXADA · PROMAX</p><div id="pullAgentStatus"><strong>Consultando agente...</strong><span></span></div></div><button class="rxp-btn primary" id="pullAgentSync">Sincronizar Promax agora</button></div><div class="rxp-import-card"><div id="pullImportStatus"><strong>Contingência · Base 02.05.01</strong><span>Importação manual continua disponível se o agente local estiver indisponível.</span></div><div><input id="pullImportFile" type="file" accept=".xlsx,.xls" class="hidden"><button class="rxp-btn" id="pullImportButton">Importar arquivo manualmente</button></div></div><div class="rxp-note"><strong>Cruzamento automático:</strong> o sistema localiza a NF pela fábrica + nota, soma compra e bonificação do mesmo produto e converte a quantidade do 02.05.01 em paletes usando o cadastro 01.11. Para fábricas sem código conhecido, a busca é somente pela NF.</div><div class="rxp-toolbar"><label class="grow">Buscar<input id="pullSearch" placeholder="Carreta, fábrica, carreteiro, código ou produto"></label><label>Status<select id="pullStatus"><option value="all">Todos</option><option value="pending">Aguardando</option><option value="in_progress">Em cruzamento</option><option value="matched">Sem divergência</option><option value="divergent">Com divergência</option></select></label><button class="rxp-btn" id="pullRefresh">Atualizar</button></div><div class="rxp-table-wrap"><table class="rxp-table"><thead><tr><th>Recebimento</th><th>Conferido em</th><th>Conferente</th><th>Itens</th><th>Status Puxada</th><th>Ação</th></tr></thead><tbody id="pullBody"></tbody></table></div><div class="rxp-empty hidden" id="pullEmpty">Nenhuma conferência concluída.</div></section></div>';
+    return '<div class="rxp-shell rxp-pull-shell">'+
+      '<section class="rxp-kpis rxp-pull-kpis">'+
+        '<article class="rxp-kpi"><span>Aguardando</span><strong id="pullPending">—</strong></article>'+
+        '<article class="rxp-kpi"><span>Sem divergência</span><strong id="pullMatched">—</strong></article>'+
+        '<article class="rxp-kpi"><span>Com divergência</span><strong id="pullDivergent">—</strong></article>'+
+      '</section>'+
+      '<section class="rxp-panel rxp-pull-panel">'+
+        '<div class="rxp-pull-ops">'+
+          '<div class="rxp-pull-status"><span class="rxp-pull-label">PROMAX</span><div id="pullAgentStatus"><strong>Consultando...</strong><span></span></div></div>'+
+          '<div class="rxp-pull-divider"></div>'+
+          '<div class="rxp-pull-status"><span class="rxp-pull-label">BASE 02.05.01</span><div id="pullImportStatus"><strong>Consultando...</strong><span></span></div></div>'+
+          '<div class="rxp-pull-actions"><input id="pullImportFile" type="file" accept=".xlsx,.xls" class="hidden"><button class="rxp-btn" id="pullImportButton">Importar manual</button><button class="rxp-btn primary" id="pullAgentSync">Sincronizar agora</button></div>'+
+        '</div>'+
+        '<details class="rxp-pull-help"><summary>Como funciona o cruzamento?</summary><p>O sistema encontra a NF, soma compra e bonificação do mesmo produto e converte a quantidade do 02.05.01 em paletes usando o cadastro 01.11. Para fábricas sem código conhecido, a busca usa somente a NF.</p></details>'+
+        '<div class="rxp-toolbar rxp-pull-toolbar"><label class="grow"><span>Buscar</span><input id="pullSearch" placeholder="Carreta, fábrica, carreteiro, código ou produto"></label><label><span>Status</span><select id="pullStatus"><option value="all">Todos</option><option value="pending">Aguardando</option><option value="in_progress">Em cruzamento</option><option value="matched">Sem divergência</option><option value="divergent">Com divergência</option></select></label><button class="rxp-btn rxp-refresh-btn" id="pullRefresh">Atualizar</button></div>'+
+        '<div class="rxp-table-wrap"><table class="rxp-table"><thead><tr><th>Recebimento</th><th>Conferido em</th><th>Conferente</th><th>Itens</th><th>Status Puxada</th><th>Ação</th></tr></thead><tbody id="pullBody"></tbody></table></div><div class="rxp-empty hidden" id="pullEmpty">Nenhuma conferência concluída.</div>'+
+      '</section></div>';
   }
   async function open(which='nri'){
     mode=which;const root=$(which==='nri'?'receivingNriView':'pullCompareView');document.querySelectorAll('main > .view').forEach(v=>v.classList.add('hidden'));document.querySelectorAll('.nav-link').forEach(n=>n.classList.remove('active'));root.classList.remove('hidden');document.querySelector('[data-view="'+(which==='nri'?'receiving-nri':'pull-compare')+'"]')?.classList.add('active');document.querySelector(which==='nri'?'.receiving-nav-group':'.pull-nav-group')?.classList.add('open');$('sidebar')?.classList.remove('open');
     $('pageTitle').textContent=which==='nri'?'Recebimento / NRI':'Puxada · Físico × Sistema';$('pageSubtitle').textContent=which==='nri'?'Da entrada da carreta à identificação dos paletes.':'Cruzamento do físico conferido às cegas com a quantidade do sistema.';
     root.innerHTML=shell(which);ensureDialogs(root);
     if(which==='nri'){let t;$('rxpSearch').oninput=()=>{clearTimeout(t);t=setTimeout(loadNri,250)};$('rxpStatus').onchange=loadNri;$('rxpPrintFilter').onchange=loadNri;$('rxpRefresh').onclick=loadNri;$('rxpNew').onclick=()=>openReceiptForm();$('rxpOpenConf').onclick=()=>window.open(CONF_URL,'_blank','noopener,noreferrer');$('rxpPrintPendingCard').onclick=()=>{$('rxpStatus').value='conference_completed';$('rxpPrintFilter').value='pending_print';loadNri()};await loadNri()}
-    else{let t;$('pullSearch').oninput=()=>{clearTimeout(t);t=setTimeout(loadPull,250)};$('pullStatus').onchange=loadPull;$('pullRefresh').onclick=async()=>{await Promise.all([loadAgentStatus(),load020501Status()]);await loadPull()};$('pullAgentSync').onclick=requestAgentSync;$('pullImportButton').onclick=()=>$('pullImportFile').click();$('pullImportFile').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;const b=$('pullImportButton');try{b.disabled=true;b.textContent='Importando...';const x=await import020501File(file);showToast('02.05.01 importado: '+x.documents+' NF(s), '+x.aggregated_rows+' produtos consolidados.');await load020501Status();await loadPull()}catch(err){showToast(err.message,true)}finally{b.disabled=false;b.textContent='Importar arquivo manualmente';e.target.value=''}};await Promise.all([loadAgentStatus(),load020501Status()]);await loadPull()}
+    else{let t;$('pullSearch').oninput=()=>{clearTimeout(t);t=setTimeout(loadPull,250)};$('pullStatus').onchange=loadPull;$('pullRefresh').onclick=async()=>{await Promise.all([loadAgentStatus(),load020501Status()]);await loadPull()};$('pullAgentSync').onclick=requestAgentSync;$('pullImportButton').onclick=()=>$('pullImportFile').click();$('pullImportFile').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;const b=$('pullImportButton');try{b.disabled=true;b.textContent='Importando...';const x=await import020501File(file);showToast('02.05.01 importado: '+x.documents+' NF(s), '+x.aggregated_rows+' produtos consolidados.');await load020501Status();await loadPull()}catch(err){showToast(err.message,true)}finally{b.disabled=false;b.textContent='Importar manual';e.target.value=''}};await Promise.all([loadAgentStatus(),load020501Status()]);await loadPull()}
   }
   async function loadNri(){
     try{
