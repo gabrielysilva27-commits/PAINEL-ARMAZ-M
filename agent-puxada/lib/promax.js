@@ -1383,6 +1383,34 @@ function parseReportTableFromHtml(html) {
   return best;
 }
 
+function htmlExportDiagnostic(html) {
+  const source=String(html||"");
+  const title=(source.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)||[])[1]||"";
+  const body=(source.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)||[])[1]||source;
+  const text=decodeHtmlCell(body).slice(0,360);
+  const forms=[];
+  source.replace(/<form\b([^>]*)>/gi,function(_,attrs){
+    const action=(attrs.match(/\baction\s*=\s*["']([^"']*)["']/i)||[])[1]||"";
+    const method=(attrs.match(/\bmethod\s*=\s*["']([^"']*)["']/i)||[])[1]||"";
+    forms.push((method||"GET")+":"+action);
+    return _;
+  });
+  const refs=[];
+  const re=/\b(?:href|src|action)\s*=\s*["']([^"']+)["']/gi;let m;
+  while((m=re.exec(source))&&refs.length<12){const v=String(m[1]||"");if(/csv|excel|download|arquivo|export|relat|\.inf\b/i.test(v))refs.push(v);}
+  const scriptSnips=[];
+  const sr=/<script\b[^>]*>([\s\S]*?)<\/script>/gi;
+  while((m=sr.exec(source))&&scriptSnips.length<5){
+    const x=String(m[1]||"").replace(/\s+/g," ").trim();
+    if(/csv|excel|download|arquivo|window\.open|location|opcao|relat/i.test(x))scriptSnips.push(x.slice(0,260));
+  }
+  return ("title="+decodeHtmlCell(title).slice(0,100)+"; text="+text+
+    "; forms="+forms.slice(0,5).join("|")+"; refs="+refs.join("|")+"; scripts="+scriptSnips.join(" || "))
+    .replace(/https?:\/\/[^\s"'<>|]+/gi,"[URL]")
+    .replace(/\b[A-Za-z0-9_-]{22,}\b/g,"[valor]")
+    .slice(0,850);
+}
+
 function writeReportHtmlCsv(html, rootDir, validateCsv) {
   const extracted=parseReportTableFromHtml(html);
   if (!extracted) throw new Error("HTML_REPORT_EMPTY: tabela de dados não encontrada na resposta HTML.");
@@ -1453,7 +1481,8 @@ async function captureAuthenticatedCsv(rootDir, validateCsv) {
     }
   }
   if (result.status !== 200 || looksHtml) {
-    const reason = /inv.lida|login|senha|usuario/i.test(head) ? 'sessão inválida' : 'resposta não CSV';
+    const reason = /inv.lida|login|senha|usuario/i.test(head) ? 'possível sessão inválida' : 'resposta não CSV';
+    const htmlDiag = looksHtml ? htmlExportDiagnostic(raw) : "";
     const current = new URL(form.referer);
     const fields = form.fields || [];
     const diagnostic = fields.filter(function(f){return /^(SessionID|SubSessionID|opcao|ppopcao|opcaorelat|call)$/i.test(f[0]);})
@@ -1463,7 +1492,7 @@ async function captureAuthenticatedCsv(rootDir, validateCsv) {
     const fm = raw.match(/function\s+Excel[\s\S]{0,1000}/i);
     if (fm) clue = fm[0].replace(/\s+/g," ").replace(/https?:\/\/[^\s"'<>]+/gi,"[URL]").slice(0,900);
     if (!clue) clue = head.replace(/<[^>]*>/g," ").replace(/\b[A-Za-z0-9_-]{18,}\b/g,"[valor]").replace(/\s+/g," ").trim().slice(0,500);
-    throw new Error("CSV_CAPTURE_RESPONSE: HTTP "+result.status+"; "+reason+"; bytes="+bytes.length+"; tipo="+String(result.type||"")+"; disposition="+String(result.disposition||"")+"; transporte="+result.transport+"; método="+result.method+"; submit="+String(form.submit_called)+"; target="+String(form.target||"")+"; opens="+JSON.stringify(form.opens||[]).slice(0,300)+"; "+diagnostic.join(';')+"; HTML="+String(result.html_parse_error||"não analisado")+"; Excel="+excel+"; resposta="+clue);
+    throw new Error("CSV_HTML_DIAG: "+htmlDiag+"; parse="+String(result.html_parse_error||"não analisado")+"; HTTP="+result.status+"; "+reason+"; bytes="+bytes.length+"; tipo="+String(result.type||"")+"; submit="+String(form.submit_called)+"; "+diagnostic.join(';')+"; Excel="+excel.slice(0,180)+"; resposta="+clue.slice(0,180));
   }
 
   const dir=path.join(rootDir,'downloads');fs.mkdirSync(dir,{recursive:true});
