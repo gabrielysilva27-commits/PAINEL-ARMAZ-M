@@ -1368,10 +1368,21 @@ async function export020501(job, config, rootDir, validateCsv) {
       }
     }
   }
-  if (/Excel\s*\(/i.test(String(d && d.onclick || "") + " " + String(d && d.html || ""))) {
-    return browserDownload(rootDir, validateCsv);
+  // O Promax legado usa onclick=Excel() e abre um fluxo de download nativo do IE/Edge.
+  // Antes de depender de janelas "Salvar como", capturamos a resposta do próprio
+  // formulário autenticado dentro da sessão do Promax. Isso elimina a dependência
+  // do diretório de Downloads e do diálogo nativo do Windows.
+  try {
+    return await captureAuthenticatedCsv(rootDir, validateCsv);
+  } catch (captureError) {
+    try {
+      return await browserDownload(rootDir, validateCsv);
+    } catch (fallbackError) {
+      const captureMessage = captureError && captureError.message ? captureError.message : String(captureError);
+      const fallbackMessage = fallbackError && fallbackError.message ? fallbackError.message : String(fallbackError);
+      throw new Error(fallbackMessage + " Captura autenticada também falhou: " + captureMessage);
+    }
   }
-  return browserDownload(rootDir, validateCsv);
 }
 
 async function openCalibrationBrowser(config, rootDir) {
