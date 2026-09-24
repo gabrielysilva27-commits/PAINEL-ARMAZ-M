@@ -24,3 +24,112 @@
 .shift-flow-notice span{margin-top:2px;color:#6f7075}
 .shift-flow-notice.turn-c{border-color:#efd3a8;background:#fff9ef}.shift-flow-notice.turn-c strong{color:#8c6200}
 .shift-flow-notice.turn-a{border-color:#bcdcca;background:#f1faf5}.shift-flow-notice.turn-a strong{color:#157149}
+
+
+/* iOS/Safari: impedir largura intrínseca dos controles de escapar do card */
+#boForm,
+#boForm .stack,
+#boForm .form-section,
+#boForm .grid,
+#boForm .grid > *,
+#boForm label,
+#boForm .search-box,
+#boForm .items-list,
+#boForm .item-card {
+  min-width: 0;
+  max-width: 100%;
+}
+
+#boForm input,
+#boForm select,
+#boForm textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+}
+
+#boForm input[type="date"],
+#boForm input[type="time"],
+#boForm select {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+@supports (-webkit-touch-callout: none) {
+  #boForm input[type="date"],
+  #boForm input[type="time"],
+  #boForm select {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    inline-size: 100% !important;
+    max-inline-size: 100% !important;
+  }
+}
+
+@media (max-width: 560px) {
+  html, body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .bo-app,
+  #formView,
+  #boForm,
+  #boForm .form-section,
+  #boForm .grid,
+  #boForm .grid > *,
+  #boForm label {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  #boForm {
+    overflow: hidden;
+  }
+
+  #boForm .grid-2,
+  #boForm .grid-3,
+  #boForm .optional-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-auto-columns: minmax(0, 1fr);
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  #boForm .grid-2 > label,
+  #boForm .grid-3 > label,
+  #boForm .optional-grid > label {
+    display: grid;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  #occurrenceDate,
+  #occurrenceTime,
+  #locationSelect {
+    display: block;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    inline-size: 100% !important;
+    max-inline-size: 100% !important;
+  }
+
+  #boForm input::-webkit-date-and-time-value {
+    min-width: 0;
+    text-align: center;
+  }
+}
