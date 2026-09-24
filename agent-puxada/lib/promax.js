@@ -1154,6 +1154,28 @@ function saveCsvDialog(target) {
 
 async function browserDownload(rootDir, validateCsv) {
   const since = Date.now();
+
+  // Primeiro caminho: clique físico real na janela do Promax + UI Automation
+  // para o diálogo/barra de download. Diferente de JS/WebDriver, esse clique é
+  // tratado pelo Edge/IE como gesto real do usuário e não deve ser bloqueado.
+  const physical = startNativeCsv(rootDir);
+  try {
+    const physicalCandidate = await waitUntil(async function () {
+      if (!fs.existsSync(physical.target)) return null;
+      const st = fs.statSync(physical.target);
+      if (!st.isFile() || st.size < 50) return null;
+      try {
+        if (typeof validateCsv === "function") validateCsv(physical.target);
+        return physical.target;
+      } catch {
+        return null;
+      }
+    }, 28000, 700);
+    if (physicalCandidate) return physicalCandidate;
+  } catch {}
+  const physicalDiagnostic = physical.diagnostic();
+
+  // Segundo caminho: acionamento legado pela sessão WebDriver/Excel().
   const control = await clickCsv();
   const dirNative=path.join(rootDir,'downloads');fs.mkdirSync(dirNative,{recursive:true});
   const targetNative=path.join(dirNative,'020501_'+Date.now()+'.csv.inf');
@@ -1178,7 +1200,8 @@ async function browserDownload(rootDir, validateCsv) {
     saveResult=legacyActivation+'; '+saveResult;
   }
   const native={target:targetNative,diagnostic:function(){return saveResult;}};
-  control.activation='Excel()/onclick direto + fallback WebDriver';
+  control.activation='clique físico UIAutomation + Excel()/onclick + fallback WebDriver';
+
   let previous = null;
   let stable = 0;
   let lastCandidateError = "";
@@ -1205,8 +1228,9 @@ async function browserDownload(rootDir, validateCsv) {
     const detail = names.length ? " Arquivos recentes: " + names.join(", ") + "." : " Nenhum arquivo .csv/.inf novo apareceu nas pastas configuradas do navegador.";
     const controlDetail = control ? " Controle CSV acionado: " + String(control.tag || "?") + "; ação=" + String(control.activation || "?") + "; elemento=" + String(control.html || "").replace(/\s+/g, " ").slice(0, 350) + "." : "";
     const reason = lastCandidateError ? " Último arquivo rejeitado: " + lastCandidateError : "";
-    throw new Error("CSV_EXPORT_TIMEOUT: o relatório foi gerado, mas o agente não localizou um CSV válido para importar." + detail + controlDetail + reason + "; Windows=" + native.diagnostic());
+    throw new Error("CSV_EXPORT_TIMEOUT: o relatório foi gerado, mas o agente não localizou um CSV válido para importar." + detail + controlDetail + reason + "; UIAutomation=" + physicalDiagnostic + "; Windows=" + native.diagnostic());
   });
+
   const dir = path.join(rootDir, "downloads");
   fs.mkdirSync(dir, { recursive: true });
   const target = path.join(dir, "020501_" + Date.now() + ".csv.inf");
