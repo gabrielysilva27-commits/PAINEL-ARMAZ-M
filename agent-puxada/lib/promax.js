@@ -1091,18 +1091,17 @@ public static class CsvMouse {
 }catch{Log ('helper-error: '+$_.Exception.GetType().Name+': '+$_.Exception.Message)}
 `;
   fs.writeFileSync(ps,'\uFEFF$out='+quote(report)+'\r\n$target='+quote(target)+'\r\n'+script,'utf8');
-  const exe=path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
   const stderr=report+'.stderr';
-  const fd=fs.openSync(stderr,'a');
   fs.writeFileSync(report,JSON.stringify(['launching-helper']),'utf8');
   let helper;
   try {
-    helper=childProcess.spawn(exe,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',ps],
-      {windowsHide:true,stdio:['ignore',fd,fd]});
+    helper=childProcess.spawn('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',ps],
+      {windowsHide:true,stdio:'ignore'});
     helper.on('error',error=>fs.appendFileSync(stderr,'spawn: '+String(error.code||error.message)));
     helper.on('exit',code=>fs.appendFileSync(stderr,' exit='+String(code)));
-  } catch(error) { fs.appendFileSync(stderr,'launch: '+String(error.code||error.message)); }
-  finally { fs.closeSync(fd); }
+  } catch(error) {
+    fs.appendFileSync(stderr,'launch: '+String(error.code||error.message||error));
+  }
   return {target,report,diagnostic:function(){
     let status='',error='';
     try{status=fs.readFileSync(report,'utf8').replace(/^\uFEFF/,'').slice(0,1300);}catch{}
@@ -1154,10 +1153,31 @@ function saveCsvDialog(target) {
 
 async function browserDownload(rootDir, validateCsv) {
   const since = Date.now();
+  const dirNative=path.join(rootDir,'downloads');fs.mkdirSync(dirNative,{recursive:true});
 
-  // Primeiro caminho: clique físico real na janela do Promax + UI Automation
-  // para o diálogo/barra de download. Diferente de JS/WebDriver, esse clique é
-  // tratado pelo Edge/IE como gesto real do usuário e não deve ser bloqueado.
+  // 1) O próprio botão do Promax declara accessKey=C. Use Alt+C via WScript.Shell
+  // como gesto de teclado real e, em seguida, Alt+S/Salvar para o fluxo legado.
+  const targetHotkey=path.join(dirNative,'020501_'+Date.now()+'_hotkey.csv.inf');
+  let hotkeyDiag=clickCsvPhysical();
+  await sleep(1200);
+  let hotkeySave=saveCsvDialog(targetHotkey);
+  try { sendAltS(); hotkeySave += '; alt-s-sent'; } catch (e) { hotkeySave += '; alt-s-error='+String(e&&e.message||e); }
+
+  try {
+    const byHotkey = await waitUntil(async function () {
+      const c = fs.existsSync(targetHotkey)
+        ? {path:targetHotkey,size:fs.statSync(targetHotkey).size,mtimeMs:fs.statSync(targetHotkey).mtimeMs}
+        : newestCandidate(since);
+      if (!c || c.size < 50) return null;
+      try {
+        if (typeof validateCsv === "function") validateCsv(c.path);
+        return c.path;
+      } catch { return null; }
+    }, 15000, 600);
+    if (byHotkey) return byHotkey;
+  } catch {}
+
+  // 2) Clique físico por UI Automation + captura de Salvar/Save As.
   const physical = startNativeCsv(rootDir);
   try {
     const physicalCandidate = await waitUntil(async function () {
@@ -1175,9 +1195,8 @@ async function browserDownload(rootDir, validateCsv) {
   } catch {}
   const physicalDiagnostic = physical.diagnostic();
 
-  // Segundo caminho: acionamento legado pela sessão WebDriver/Excel().
+  // 3) Acionamento legado pela sessão WebDriver/Excel().
   const control = await clickCsv();
-  const dirNative=path.join(rootDir,'downloads');fs.mkdirSync(dirNative,{recursive:true});
   const targetNative=path.join(dirNative,'020501_'+Date.now()+'.csv.inf');
   let legacyActivation='';
   try {
@@ -1200,7 +1219,7 @@ async function browserDownload(rootDir, validateCsv) {
     saveResult=legacyActivation+'; '+saveResult;
   }
   const native={target:targetNative,diagnostic:function(){return saveResult;}};
-  control.activation='clique físico UIAutomation + Excel()/onclick + fallback WebDriver';
+  control.activation='Alt+C físico + UIAutomation + Excel()/onclick + fallback WebDriver';
 
   let previous = null;
   let stable = 0;
@@ -1228,12 +1247,10 @@ async function browserDownload(rootDir, validateCsv) {
     const detail = names.length ? " Arquivos recentes: " + names.join(", ") + "." : " Nenhum arquivo .csv/.inf novo apareceu nas pastas configuradas do navegador.";
     const controlDetail = control ? " Controle CSV acionado: " + String(control.tag || "?") + "; ação=" + String(control.activation || "?") + "; elemento=" + String(control.html || "").replace(/\s+/g, " ").slice(0, 350) + "." : "";
     const reason = lastCandidateError ? " Último arquivo rejeitado: " + lastCandidateError : "";
-    throw new Error("CSV_EXPORT_TIMEOUT: o relatório foi gerado, mas o agente não localizou um CSV válido para importar." + detail + controlDetail + reason + "; UIAutomation=" + physicalDiagnostic + "; Windows=" + native.diagnostic());
+    throw new Error("CSV_EXPORT_TIMEOUT: o relatório foi gerado, mas o agente não localizou um CSV válido para importar." + detail + controlDetail + reason + "; Hotkey="+hotkeyDiag+" / "+hotkeySave+"; UIAutomation=" + physicalDiagnostic + "; Windows=" + native.diagnostic());
   });
 
-  const dir = path.join(rootDir, "downloads");
-  fs.mkdirSync(dir, { recursive: true });
-  const target = path.join(dir, "020501_" + Date.now() + ".csv.inf");
+  const target = path.join(dirNative, "020501_" + Date.now() + ".csv.inf");
   fs.copyFileSync(candidate.path, target);
   return target;
 }
