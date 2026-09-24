@@ -24,7 +24,7 @@
       <p class="muted">Selecione seu nome e informe seu PIN pessoal.</p>
       <form id="pinForm" class="stack">
         <label>Conferente<select id="conferencerSelect" required><option value="">Carregando...</option></select></label>
-        <label>PIN<input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="one-time-code" placeholder="4 dígitos" required /></label>
+        <label>PIN<input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="6 dígitos" required /></label>
         <p id="loginError" class="error"></p>
         <button class="primary" type="submit" id="pinButton">Entrar</button>
       </form>
@@ -136,6 +136,6 @@
   </template>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="app-v2.js?v=20260922-2"></script>
+  <script src="app-v2.js?v=20260924-1"></script>
 </body>
 </html>
