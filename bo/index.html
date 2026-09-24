@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles-v2.css?v=20260924-1" />
+  <link rel="stylesheet" href="styles-v2.css?v=20260924-2" />
 </head>
 <body>
   <main class="bo-app">
@@ -39,7 +39,7 @@
       <div id="editingBanner" class="editing-banner hidden"><div><strong id="editingTitle">Editando B.O.</strong><span id="editingSubtitle"></span></div><button id="cancelEditButton" class="secondary" type="button">Cancelar edição</button></div>
       <form id="boForm" class="bo-card stack">
         <section class="form-section">
-          <h2>1. Dados da ocorrência</h2>
+          <h2>Dados da ocorrência</h2>
           <div class="grid grid-2">
             <label>Data<input id="occurrenceDate" type="date" required /></label>
             <label>Hora<input id="occurrenceTime" type="time" required /></label>
@@ -57,7 +57,7 @@
         </section>
 
         <section class="form-section">
-          <h2>2. Origem e motivo</h2>
+          <h2>Origem e motivo</h2>
           <div>
             <span class="field-title">Ocorrência atribuída a</span>
             <div class="segmented segmented-3" id="subjectOptions"><button type="button" data-value="Funcionário">Funcionário</button><button type="button" data-value="Armazém">Armazém</button><button type="button" data-value="Fábrica">Fábrica</button></div>
@@ -74,12 +74,12 @@
         </section>
 
         <section class="form-section">
-          <div class="section-heading"><div><h2>3. Produtos do B.O.</h2><p class="muted">Adicione todos os produtos desta ocorrência.</p></div><button class="secondary" id="addProductButton" type="button">+ Adicionar produto</button></div>
+          <div class="section-heading"><div><h2>Produtos do B.O.</h2><p class="muted">Adicione todos os produtos desta ocorrência.</p></div><button class="secondary" id="addProductButton" type="button">+ Adicionar produto</button></div>
           <div id="itemsList" class="items-list"></div>
         </section>
 
         <section class="form-section">
-          <h2>4. Comentários</h2>
+          <h2>Comentários</h2>
           <label>Observações<textarea id="comments" rows="4" placeholder="Descreva detalhes relevantes da ocorrência..."></textarea></label>
         </section>
 
