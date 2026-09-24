@@ -61,7 +61,7 @@
           '<div id="adminPinSelected" class="admin-pin-selected"></div>'+
           '<div class="admin-actions"><button class="primary" id="adminPinAction">Gerar / redefinir PIN</button><button id="adminPinMissing">Gerar pendentes do grupo</button><button id="adminPinOpenForklift">Abrir tela dos empilhadores</button></div>'+
           '<div id="adminPinUnifiedIssued"></div>'+
-        '</section>'+'<section class="admin-card"><p class="eyebrow">PUXADA · PROMAX</p><h2>Agente Puxada</h2><p>Um único agente lógico pode rodar em dois computadores. O primeiro PC que pegar uma sincronização bloqueia a tarefa para o outro, evitando duplicidade.</p><div id="adminAgentStatus" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div><div id="adminAgentNodes" class="admin-pin-list"></div><div id="adminAgentIssued"></div><label style="display:grid;gap:6px;margin-top:12px;font-size:11px;font-weight:700">Intervalo automático<select id="adminAgentInterval"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select></label><div class="admin-actions"><button id="adminAgentSaveInterval">Salvar intervalo</button></div><p style="font-size:10px;color:var(--muted)">Após a instalação inicial, o agente se atualiza automaticamente. Cada PC mantém seu próprio token; novas automações são distribuídas pelo atualizador sem reinstalação manual.</p></section>'+
+        '</section>'+'<section class="admin-card"><p class="eyebrow">PUXADA · PROMAX</p><h2>Agente Puxada</h2><p>Um único agente lógico pode rodar em dois computadores. O primeiro PC que pegar uma sincronização bloqueia a tarefa para o outro, evitando duplicidade.</p><div id="adminAgentStatus" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div><div id="adminAgentNodes" class="admin-pin-list"></div><div id="adminAgentIssued"></div><label style="display:grid;gap:6px;margin-top:12px;font-size:11px;font-weight:700">Intervalo automático<select id="adminAgentInterval"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select></label><div class="admin-actions"><button id="adminAgentSaveInterval">Salvar intervalo</button><button class="primary" id="adminAgentSyncNow">Sincronizar agora</button><button id="adminAgentRefresh">Atualizar status</button></div><p style="font-size:10px;color:var(--muted)">Após a instalação inicial, o agente se atualiza automaticamente. Cada PC mantém seu próprio token; novas automações são distribuídas pelo atualizador sem reinstalação manual.</p></section>'+
       '</div></div>';
   }
 
@@ -208,7 +208,18 @@
       else if(a.status==='error')overall='Com falha';
       else if(a.token_ready)overall='Aguardando um computador ficar disponível';
       else overall='Não instalado';
-      $('adminAgentStatus').innerHTML='<div class="admin-pin-item"><div><strong>'+esc(overall)+'</strong><small>1 agente · 2 computadores · última sincronização '+esc(adminDt(a.last_sync_completed_at))+' · intervalo '+esc(a.sync_interval_minutes||10)+' min</small><small>Versão publicada: '+esc(a.latest_agent_version||'—')+' · atualização automática</small></div></div>';
+      const lr=a.last_run||null;
+      let runLine='Nenhuma execução registrada.';
+      if(lr){
+        if(lr.status==='completed'){
+          runLine='Última execução OK · versão '+(lr.agent_version||'—')+' · '+Number(lr.raw_rows||0)+' linha(s) · '+Number(lr.aggregated_rows||0)+' item(ns) consolidado(s) · '+Number(lr.documents||0)+' documento(s)';
+        }else if(lr.status==='running'){
+          runLine='Execução #'+lr.id+' em andamento · versão '+(lr.agent_version||'—');
+        }else{
+          runLine='Última execução com falha · versão '+(lr.agent_version||'—')+(lr.message?' · '+lr.message:'');
+        }
+      }
+      $('adminAgentStatus').innerHTML='<div class="admin-pin-item"><div><strong>'+esc(overall)+'</strong><small>1 agente · 2 computadores · última sincronização '+esc(adminDt(a.last_sync_completed_at))+' · intervalo '+esc(a.sync_interval_minutes||10)+' min</small><small>Versão publicada: '+esc(a.latest_agent_version||'—')+' · atualização automática</small><small style="'+(lr&&lr.status==='completed'?'color:#238636;font-weight:700':'')+'">'+esc(runLine)+'</small></div></div>';
       $('adminAgentNodes').innerHTML=nodes.map(x=>{
         let status='Offline';
         if(!x.token_ready)status='Token pendente';
@@ -248,6 +259,20 @@
     try{await nriCall('agent_set_interval',{minutes:Number($('adminAgentInterval').value)});showToast('Intervalo do agente atualizado.');await loadAgentAdmin()}catch(e){showToast(e.message,true)}
   }
 
+  async function syncAgentNow(){
+    const b=$('adminAgentSyncNow');if(b)b.disabled=true;
+    try{
+      const d=await nriCall('agent_request_sync',{});
+      if(d.already_pending)showToast('Já existe uma sincronização aguardando ou em execução.');
+      else showToast('Sincronização solicitada. O agente vai assumir a tarefa agora.');
+      await loadAgentAdmin();
+      setTimeout(loadAgentAdmin,2500);
+      setTimeout(loadAgentAdmin,8000);
+      setTimeout(loadAgentAdmin,18000);
+    }catch(e){showToast(e.message,true)}
+    finally{if(b)b.disabled=false}
+  }
+
   async function open(){
     if(window.state?.user?.role!=='admin')return showToast('Área restrita à administração.',true);
     ensureView();
@@ -259,7 +284,7 @@
     bindAccess('adminConf',CONFERENTE_URL,CONFERENTE_QR,'Portal do Conferente — B.O. + NRI','QR_Portal_Conferentes.png');
     bindAccess('adminGate',PORTARIA_URL,PORTARIA_QR,'Portaria — Entrada de Carreta','QR_Portaria_Recebimento.png');
     bindAccess('adminFork',EMPILHADOR_URL,EMPILHADOR_QR,'Empilhadores — Descarga + Guarda','QR_Empilhadores_Descarga_Guarda.png');
-    $('adminPinGroup').onchange=renderPinPeople;$('adminPinPerson').onchange=renderPinSelected;$('adminPinAction').onclick=issueSelectedPin;$('adminPinMissing').onclick=issueMissingForGroup;$('adminPinOpenForklift').onclick=()=>window.open(RECEBIMENTO_URL+'guarda.html','_blank','noopener,noreferrer');$('adminAgentSaveInterval').onclick=saveAgentInterval;
+    $('adminPinGroup').onchange=renderPinPeople;$('adminPinPerson').onchange=renderPinSelected;$('adminPinAction').onclick=issueSelectedPin;$('adminPinMissing').onclick=issueMissingForGroup;$('adminPinOpenForklift').onclick=()=>window.open(RECEBIMENTO_URL+'guarda.html','_blank','noopener,noreferrer');$('adminAgentSaveInterval').onclick=saveAgentInterval;$('adminAgentSyncNow').onclick=syncAgentNow;$('adminAgentRefresh').onclick=loadAgentAdmin;
     await Promise.all([loadUnifiedPins(),loadAgentAdmin()]);
   }
   function bind(){
