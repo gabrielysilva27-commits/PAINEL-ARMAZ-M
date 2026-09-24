@@ -95,12 +95,14 @@
     if(!person){box.innerHTML='<span>Nenhuma pessoa disponível neste grupo.</span>';button.disabled=true;return}
     button.disabled=false;
     button.textContent=person.pin_ready?'Redefinir PIN':'Gerar PIN';
-    box.innerHTML='<div><strong>'+esc(person.display_name)+'</strong><small>'+esc(groupLabel(group))+'</small></div><span class="admin-pin-state '+(person.pin_ready?'ready':'pending')+'">'+(person.pin_ready?'PIN configurado':'PIN pendente')+'</span>';
+    const visiblePin=group==='conferencers'&&person.pin?String(person.pin):'';
+    box.innerHTML='<div><strong>'+esc(person.display_name)+'</strong><small>'+esc(groupLabel(group))+'</small>'+(visiblePin?'<code class="admin-pin-visible">'+esc(visiblePin)+'</code>':'')+'</div><div class="admin-pin-selected-actions"><span class="admin-pin-state '+(person.pin_ready?'ready':'pending')+'">'+(person.pin_ready?'PIN configurado':'PIN pendente')+'</span>'+(visiblePin?'<button type="button" id="adminCopySelectedPin">Copiar PIN</button>':'')+'</div>';
+    if(visiblePin&&$('adminCopySelectedPin'))$('adminCopySelectedPin').onclick=async()=>{await navigator.clipboard?.writeText(visiblePin);showToast('PIN copiado.')};
   }
   function showUnifiedIssued(item){
     const box=$('adminPinUnifiedIssued');if(!box)return;
     if(!item){box.innerHTML='';return}
-    box.innerHTML='<div class="admin-issued"><strong>Copie agora. Este PIN não será exibido novamente.</strong><div class="admin-issued-row"><span>'+esc(item.display_name)+'</span><code>'+esc(item.pin)+'</code><button id="adminCopyUnifiedPin">Copiar</button></div></div>';
+    box.innerHTML='<div class="admin-issued"><strong>PIN atualizado. O ADM poderá consultá-lo nesta tela.</strong><div class="admin-issued-row"><span>'+esc(item.display_name)+'</span><code>'+esc(item.pin)+'</code><button id="adminCopyUnifiedPin">Copiar</button></div></div>';
     $('adminCopyUnifiedPin').onclick=async()=>{await navigator.clipboard?.writeText(item.pin);showToast('PIN copiado.')};
   }
   async function loadUnifiedPins(){
@@ -147,7 +149,7 @@
         for(const person of missing){const d=await putawayCall('forklift_admin_reset_pin',{id:person.id});if(d.operator)issued.push(d.operator)}
       }
       const box=$('adminPinUnifiedIssued');
-      box.innerHTML=issued.length?'<div class="admin-issued"><strong>Copie agora. Estes PINs não serão exibidos novamente.</strong>'+issued.map(x=>'<div class="admin-issued-row"><span>'+esc(x.display_name)+'</span><code>'+esc(x.pin)+'</code><button data-copy-unified="'+esc(x.pin)+'">Copiar</button></div>').join('')+'</div>':'';
+      box.innerHTML=issued.length?'<div class="admin-issued"><strong>PINs atualizados. O ADM poderá consultá-los nesta tela.</strong>'+issued.map(x=>'<div class="admin-issued-row"><span>'+esc(x.display_name)+'</span><code>'+esc(x.pin)+'</code><button data-copy-unified="'+esc(x.pin)+'">Copiar</button></div>').join('')+'</div>':'';
       box.querySelectorAll('[data-copy-unified]').forEach(b=>b.onclick=async()=>{await navigator.clipboard?.writeText(b.dataset.copyUnified);showToast('PIN copiado.')});
       await loadUnifiedPins();
     }catch(e){showToast(e.message,true)}
@@ -161,7 +163,7 @@
     }catch(e){$('adminPinList').innerHTML='<p class="form-error">'+esc(e.message)+'</p>';}
   }
   function showIssued(items){
-    $('adminIssued').innerHTML=items?.length?'<div class="admin-issued"><strong>Copie agora. Estes PINs não serão exibidos novamente.</strong>'+items.map(x=>'<div class="admin-issued-row"><span>'+esc(x.display_name)+'</span><code>'+esc(x.pin)+'</code><button data-copy-pin="'+esc(x.pin)+'">Copiar</button></div>').join('')+'</div>':'';
+    $('adminIssued').innerHTML=items?.length?'<div class="admin-issued"><strong>PINs atualizados. O ADM poderá consultá-los nesta tela.</strong>'+items.map(x=>'<div class="admin-issued-row"><span>'+esc(x.display_name)+'</span><code>'+esc(x.pin)+'</code><button data-copy-pin="'+esc(x.pin)+'">Copiar</button></div>').join('')+'</div>':'';
     $('adminIssued').querySelectorAll('[data-copy-pin]').forEach(b=>b.onclick=async()=>{await navigator.clipboard?.writeText(b.dataset.copyPin);showToast('PIN copiado.');});
   }
   async function generateMissing(){try{const d=await boCall('generate_missing_pins');showIssued(d.issued||[]);await loadPins();if(!d.issued?.length)showToast('Todos os conferentes já possuem PIN.');}catch(e){showToast(e.message,true);}}
@@ -192,7 +194,7 @@
     try{
       const d=await nriCall(reset?'gate_reset_pin':'gate_generate_pin',{id});
       if(!d.issued){showToast('Este PIN já está configurado.');return loadGatePin();}
-      $('adminGateIssued').innerHTML='<div class="admin-issued"><strong>Copie agora. Este PIN não será exibido novamente.</strong><div class="admin-issued-row"><span>'+esc(d.issued.display_name)+'</span><code>'+esc(d.issued.pin)+'</code><button id="adminCopyGatePin">Copiar</button></div></div>';
+      $('adminGateIssued').innerHTML='<div class="admin-issued"><strong>PIN atualizado. O ADM poderá consultá-lo nesta tela.</strong><div class="admin-issued-row"><span>'+esc(d.issued.display_name)+'</span><code>'+esc(d.issued.pin)+'</code><button id="adminCopyGatePin">Copiar</button></div></div>';
       $('adminCopyGatePin').onclick=async()=>{await navigator.clipboard?.writeText(d.issued.pin);showToast('PIN copiado.');};
       await loadGatePin();
     }catch(e){showToast(e.message,true);}
