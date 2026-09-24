@@ -73,7 +73,8 @@ function normalizeHeader(value) {
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .replace(/\s+/g, " ")
-    .toUpperCase();
+    .toUpperCase()
+    .replace(/[.:]+$/g, "");
 }
 
 function normalizeDigits(value) {
@@ -136,11 +137,11 @@ function parse020501(filePath) {
     supplier: findColumn(headers, ["FORNEC", "FORNECEDOR"]),
     invoice: findColumn(headers, ["DOCUM", "DOCUMENTO", "NF"]),
     sku: findColumn(headers, ["ITEM", "COD ITEM", "CODIGO ITEM"]),
-    name: findColumn(headers, ["DESCRICAO"]),
-    unit: findColumn(headers, ["UNIDADE", "UND"]),
-    op: findColumn(headers, ["CODIGO OPERACAO", "OPERACAO"]),
-    opType: findColumn(headers, ["TIPO OPERACAO", "TIPO OP"], false),
-    qty: findColumn(headers, ["QTDE ENTRADA", "QTD ENTRADA", "QUANTIDADE ENTRADA"]),
+    name: findColumn(headers, ["DESCRICAO", "DESC", "DESC ITEM", "DESCRICAO ITEM", "PRODUTO"], false),
+    unit: findColumn(headers, ["UNIDADE", "UND", "UNID", "UN"]),
+    op: findColumn(headers, ["CODIGO OPERACAO", "OPERACAO", "OPER", "COD OPER"]),
+    opType: findColumn(headers, ["TIPO OPERACAO", "TIPO OP", "MOV", "MOVIMENTO", "TIPO MOV"], false),
+    qty: findColumn(headers, ["QTDE ENTRADA", "QTD ENTRADA", "QUANTIDADE ENTRADA", "QTDE", "QTD", "QUANTIDADE", "QTDE MOV", "QTD MOV"]),
     date: findColumn(headers, ["DATA", "DT ENTRADA"], false)
   };
 
