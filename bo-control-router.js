@@ -19,12 +19,25 @@
     return loading;
   }
 
+  function setControlGroupOpen(group,parent,open){
+    group.classList.toggle('open',!!open);
+    parent.setAttribute('aria-expanded',open?'true':'false');
+  }
+  function bindControlGroupToggle(group,parent){
+    parent.setAttribute('aria-expanded',group.classList.contains('open')?'true':'false');
+    parent.onclick=(ev)=>{
+      ev.preventDefault();
+      ev.stopPropagation();
+      setControlGroupOpen(group,parent,!group.classList.contains('open'));
+    };
+  }
+
   async function open(){
     document.querySelectorAll('main > .view').forEach(v=>v.classList.add('hidden'));
     document.querySelectorAll('.nav-link').forEach(n=>n.classList.remove('active'));
     $('boControlView')&&$('boControlView').classList.remove('hidden');
     const nav=document.querySelector('[data-view="bo-control"]');if(nav)nav.classList.add('active');
-    const group=document.querySelector('.control-nav-group');if(group)group.classList.add('open');
+    const group=document.querySelector('.control-nav-group');if(group){group.classList.add('open');group.querySelector(':scope > .control-nav-parent')?.setAttribute('aria-expanded','true')};
     $('sidebar')&&$('sidebar').classList.remove('open');
     try{const mod=await ensureAssets();await mod.open();}catch(e){if($('boControlView'))$('boControlView').innerHTML='<p class="form-error">'+String(e.message||e)+'</p>';}
   }
@@ -40,7 +53,7 @@
     const submenu=document.createElement('div');submenu.className='control-submenu';
     const bo=document.createElement('button');bo.className='nav-link control-sub-link';bo.dataset.view='bo-control';bo.innerHTML='<span>☑</span> B.O.';bo.onclick=open;
     submenu.appendChild(bo);group.appendChild(parent);group.appendChild(submenu);anchor.insertAdjacentElement('afterend',group);
-    parent.onclick=()=>group.classList.toggle('open');
+    bindControlGroupToggle(group,parent);
 
     const view=document.createElement('section');view.id='boControlView';view.className='view hidden';main.appendChild(view);
     for(const n of document.querySelectorAll('.nav-link:not([data-view="bo-control"])'))n.addEventListener('click',()=>view.classList.add('hidden'));
