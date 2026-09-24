@@ -108,8 +108,8 @@ jobs:
       - name: Create ZIPs
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist\AgentePuxada\*" -DestinationPath "AgentePuxada-Portatil-Windows-x64-v3.2.7.zip" -CompressionLevel Optimal
-          Compress-Archive -Path "dist\AtualizacaoAgentePuxadaV2\*" -DestinationPath "AgentePuxada-Atualizacao-v3.2.7.zip" -CompressionLevel Optimal
+          Compress-Archive -Path "dist\AgentePuxada\*" -DestinationPath "AgentePuxada-Portatil-Windows-x64-v3.2.39.zip" -CompressionLevel Optimal
+          Compress-Archive -Path "dist\AtualizacaoAgentePuxadaV2\*" -DestinationPath "AgentePuxada-Atualizacao-v3.2.39.zip" -CompressionLevel Optimal
 
       - name: Create SHA-256 release manifest
         shell: pwsh
@@ -123,10 +123,10 @@ jobs:
             $target = $file.FullName.Substring($root.Length + 1).Replace('\','/')
             $asset = $target.Replace('/','__')
             Copy-Item $file.FullName "dist/release-assets/$asset"
-            $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/agent-puxada-v3.2.7/$asset"
+            $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/agent-puxada-v3.2.39/$asset"
             @{ target = $target; sha256 = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); url = $url }
           }
-          @{ version = '3.2.7'; commit_sha = $env:GITHUB_SHA; min_updater_version = '1'; capabilities = @('020501_SYNC','PROMAX_IE_MODE','PROMAX_DIRECT_CONTROL_PROBE','PROMAX_CALIBRATION_LOCK','AUTO_UPDATE_V2','RELEASE_SHA256','UPDATE_ROLLBACK','FUTURE_JOBS_V1'); files = @($entries) } | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 'AgentePuxada-release-manifest-v3.2.7.json'
+          @{ version = '3.2.39'; commit_sha = $env:GITHUB_SHA; min_updater_version = '1'; capabilities = @('020501_SYNC','PROMAX_IE_MODE','PROMAX_DIRECT_CONTROL_PROBE','PROMAX_CALIBRATION_LOCK','PROMAX_CSV_AUTHENTICATED_CAPTURE','AUTO_UPDATE_V2','RELEASE_SHA256','UPDATE_ROLLBACK','FUTURE_JOBS_V1'); files = @($entries) } | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 'AgentePuxada-release-manifest-v3.2.39.json'
 
       - name: Publish installable release
         if: github.ref == 'refs/heads/main'
@@ -134,25 +134,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "agent-puxada-v3.2.7"
+          $tag = "agent-puxada-v3.2.39"
           if (-not (gh release view $tag 2>$null)) {
-            gh release create $tag --target $env:GITHUB_SHA --title "Agente Puxada 3.2.7" --notes "Instalador portátil ADM/PUXADA com atualizador SHA-256 e rollback. Cada computador usa seu próprio token."
+            gh release create $tag --target $env:GITHUB_SHA --title "Agente Puxada 3.2.39" --notes "Instalador portátil ADM/PUXADA com atualizador SHA-256 e rollback. Cada computador usa seu próprio token."
           }
           $assets = @(Get-ChildItem 'dist/release-assets' -File | ForEach-Object { $_.FullName })
-          gh release upload $tag "AgentePuxada-Portatil-Windows-x64-v3.2.7.zip" "AgentePuxada-Atualizacao-v3.2.7.zip" "AgentePuxada-release-manifest-v3.2.7.json" @assets --clobber
+          gh release upload $tag "AgentePuxada-Portatil-Windows-x64-v3.2.39.zip" "AgentePuxada-Atualizacao-v3.2.39.zip" "AgentePuxada-release-manifest-v3.2.39.json" @assets --clobber
 
       - name: Upload full artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AgentePuxada-Portatil-Windows-x64-v3.2.7
-          path: AgentePuxada-Portatil-Windows-x64-v3.2.7.zip
+          name: AgentePuxada-Portatil-Windows-x64-v3.2.39
+          path: AgentePuxada-Portatil-Windows-x64-v3.2.39.zip
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload update artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AgentePuxada-Atualizacao-v3.2.7
-          path: AgentePuxada-Atualizacao-v3.2.7.zip
+          name: AgentePuxada-Atualizacao-v3.2.39
+          path: AgentePuxada-Atualizacao-v3.2.39.zip
           if-no-files-found: error
           retention-days: 30
