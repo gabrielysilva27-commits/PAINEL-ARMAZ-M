@@ -16,6 +16,19 @@ main{width:calc(100% - 224px);margin-left:224px;padding:24px 32px 38px;max-width
 .sidebar-footer{flex:0 0 auto}
 .sidebar nav:focus-within::-webkit-scrollbar-thumb{background:#bfc0c4}
 
+/* Grupos de navegação com submódulos */
+.module-nav-group{display:grid;gap:1px}
+.module-nav-parent{display:flex!important;align-items:center}
+.module-nav-parent .module-chevron{margin-left:auto!important;width:auto!important;font-size:10px!important;color:#9a9ba0!important;transition:transform .16s ease}
+.module-nav-group:not(.open) .module-chevron{transform:rotate(-90deg)}
+.module-submenu{display:none;padding-left:19px}
+.module-nav-group.open .module-submenu{display:grid;gap:1px}
+.module-sub-link{padding:8px 11px!important;font-size:11px!important;position:relative}
+.module-sub-link>span{width:20px!important;font-size:12px!important}
+.module-sub-link.active{background:transparent!important;color:var(--orange-dark)!important}
+.module-sub-link.active:before{content:"";position:absolute;left:5px;top:10px;bottom:10px;width:2px;border-radius:2px;background:var(--orange)}
+.module-nav-parent:hover,.module-sub-link:hover{background:#f7f7f8!important}
+
 /* Navegação agrupada: mantém o padrão visual nativo do Painel */
 .control-nav-group{display:grid;gap:1px}
 .control-nav-parent{display:flex;align-items:center}
