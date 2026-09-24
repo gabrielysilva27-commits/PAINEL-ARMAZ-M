@@ -34,10 +34,10 @@
   function maxCell(x){
     const unit=x.unit_code||'';
     if(x.avg_daily_qty>0&&x.max_days!=null){
-      return level(nf.format(x.max_days)+' dias',x.max_qty,x.max_hl,unit,'histórico da planilha · sem teto artificial');
+      return level(nf.format(x.max_days)+' dias',x.max_qty,x.max_hl,unit);
     }
-    if(x.avg_daily_qty>0) return level('Pendente','—','—',unit,'demanda existente · revisar máximo');
-    return level('Sem demanda',0,0,unit,'sem máximo artificial · não gera OVER automático');
+    if(x.avg_daily_qty>0) return level('Pendente','—','—',unit);
+    return level('Sem demanda',0,0,unit);
   }
   function render(){
     const root=view();if(!root)return;const d=S.data;
