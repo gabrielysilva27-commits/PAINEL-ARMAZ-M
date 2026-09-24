@@ -1316,6 +1316,91 @@ async function currentReportMatches(job) {
   return false;
 }
 
+function normalizeReportHeader(value) {
+  return String(value == null ? "" : value)
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ").trim().toUpperCase();
+}
+
+function decodeHtmlCell(value) {
+  return String(value || "")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#(\d+);/g, function (_, n) { const x=Number(n); return Number.isFinite(x) ? String.fromCharCode(x) : _; })
+    .replace(/\s+/g, " ").trim();
+}
+
+function reportHeaderScore(row) {
+  const j = row.map(normalizeReportHeader).join("|");
+  let score = 0;
+  if (j.indexOf("FORNEC") >= 0) score++;
+  if (j.indexOf("DOCUM") >= 0 || j.indexOf("DOCUMENTO") >= 0) score++;
+  if (j.indexOf("ITEM") >= 0) score++;
+  if (j.indexOf("DESCRICAO") >= 0 || j.indexOf("PRODUTO") >= 0) score++;
+  if (j.indexOf("UNIDADE") >= 0 || j.indexOf("UND") >= 0 || j.indexOf("UNID") >= 0) score++;
+  if (j.indexOf("OPER") >= 0) score++;
+  if (j.indexOf("QTDE") >= 0 || j.indexOf("QTD") >= 0 || j.indexOf("QUANTIDADE") >= 0) score++;
+  return score;
+}
+
+function parseReportTableFromHtml(html) {
+  const source = String(html || "");
+  const tableBlocks = source.match(/<table\b[\s\S]*?<\/table>/gi) || [source];
+  let best = null;
+  for (let ti=0; ti<tableBlocks.length; ti++) {
+    const trs = tableBlocks[ti].match(/<tr\b[\s\S]*?<\/tr>/gi) || [];
+    const rows = [];
+    for (const tr of trs) {
+      const cells = [];
+      const re = /<(?:td|th)\b[^>]*>([\s\S]*?)<\/(?:td|th)>/gi;
+      let m;
+      while ((m = re.exec(tr))) cells.push(decodeHtmlCell(m[1]));
+      if (cells.length) rows.push(cells);
+    }
+    if (!rows.length) continue;
+    let headerIndex=-1, score=0;
+    for (let i=0;i<rows.length;i++) {
+      const sc=reportHeaderScore(rows[i]);
+      if (sc>score) { score=sc; headerIndex=i; }
+    }
+    if (headerIndex<0 || score<5) continue;
+    const headers=rows[headerIndex];
+    const data=[];
+    for (let i=headerIndex+1;i<rows.length;i++) {
+      const row=rows[i];
+      if (!row.some(function(v){return String(v||"").trim()!=="";})) continue;
+      if (reportHeaderScore(row)>=5) continue;
+      data.push(row);
+    }
+    if (data.length && (!best || data.length>best.rows.length)) best={headers:headers,rows:data,score:score,table:ti};
+  }
+  return best;
+}
+
+function writeReportHtmlCsv(html, rootDir, validateCsv) {
+  const extracted=parseReportTableFromHtml(html);
+  if (!extracted) throw new Error("HTML_REPORT_EMPTY: tabela de dados não encontrada na resposta HTML.");
+  function quote(value){return '"' + String(value == null ? "" : value).replace(/"/g,'""') + '"';}
+  const lines=[extracted.headers].concat(extracted.rows).map(function(row){return row.map(quote).join(";");});
+  const dir=path.join(rootDir,"downloads");fs.mkdirSync(dir,{recursive:true});
+  const target=path.join(dir,"020501_html_"+Date.now()+".csv.inf");
+  fs.writeFileSync(target,"\uFEFF"+lines.join("\r\n"),"utf8");
+  try {
+    if (typeof validateCsv === "function") validateCsv(target);
+  } catch (error) {
+    fs.rmSync(target,{force:true});
+    throw new Error("HTML_REPORT_FORMAT: "+(error&&error.message?error.message:String(error))+
+      "; linhas="+extracted.rows.length+"; score="+extracted.score+"; tabela="+extracted.table+".");
+  }
+  return target;
+}
+
 async function captureAuthenticatedCsv(rootDir, validateCsv) {
   await clickCsv(); // deixa o WebDriver no frame que possui o botão CSV
   let probe = null;
@@ -1356,9 +1441,17 @@ async function captureAuthenticatedCsv(rootDir, validateCsv) {
   if (!result || result.error) throw new Error("CSV_CAPTURE_TRANSPORT: " + JSON.stringify(result || {}));
 
   const bytes = Array.isArray(result.bytes) ? Buffer.from(result.bytes) : Buffer.from(result.text || '', 'utf8');
-  const raw = bytes.toString('latin1');
+  const utf8 = bytes.toString('utf8');
+  const raw = ((utf8.match(/\uFFFD/g)||[]).length <= 2) ? utf8 : bytes.toString('latin1');
   const head = raw.slice(0, 4096);
   const looksHtml = /<html|<script|<!doctype|<form/i.test(head);
+  if (result.status === 200 && looksHtml) {
+    try {
+      return writeReportHtmlCsv(raw, rootDir, validateCsv);
+    } catch (htmlError) {
+      result.html_parse_error = htmlError && htmlError.message ? htmlError.message : String(htmlError);
+    }
+  }
   if (result.status !== 200 || looksHtml) {
     const reason = /inv.lida|login|senha|usuario/i.test(head) ? 'sessão inválida' : 'resposta não CSV';
     const current = new URL(form.referer);
@@ -1370,7 +1463,7 @@ async function captureAuthenticatedCsv(rootDir, validateCsv) {
     const fm = raw.match(/function\s+Excel[\s\S]{0,1000}/i);
     if (fm) clue = fm[0].replace(/\s+/g," ").replace(/https?:\/\/[^\s"'<>]+/gi,"[URL]").slice(0,900);
     if (!clue) clue = head.replace(/<[^>]*>/g," ").replace(/\b[A-Za-z0-9_-]{18,}\b/g,"[valor]").replace(/\s+/g," ").trim().slice(0,500);
-    throw new Error("CSV_CAPTURE_RESPONSE: HTTP "+result.status+"; "+reason+"; bytes="+bytes.length+"; tipo="+String(result.type||"")+"; disposition="+String(result.disposition||"")+"; transporte="+result.transport+"; método="+result.method+"; submit="+String(form.submit_called)+"; target="+String(form.target||"")+"; opens="+JSON.stringify(form.opens||[]).slice(0,300)+"; "+diagnostic.join(';')+"; Excel="+excel+"; resposta="+clue);
+    throw new Error("CSV_CAPTURE_RESPONSE: HTTP "+result.status+"; "+reason+"; bytes="+bytes.length+"; tipo="+String(result.type||"")+"; disposition="+String(result.disposition||"")+"; transporte="+result.transport+"; método="+result.method+"; submit="+String(form.submit_called)+"; target="+String(form.target||"")+"; opens="+JSON.stringify(form.opens||[]).slice(0,300)+"; "+diagnostic.join(';')+"; HTML="+String(result.html_parse_error||"não analisado")+"; Excel="+excel+"; resposta="+clue);
   }
 
   const dir=path.join(rootDir,'downloads');fs.mkdirSync(dir,{recursive:true});
