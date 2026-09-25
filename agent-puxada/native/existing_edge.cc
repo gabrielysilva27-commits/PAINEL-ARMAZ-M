@@ -120,7 +120,8 @@ static BOOL CALLBACK VisitWindow(HWND hwnd, LPARAM state) {
   scan->edgeWindow = true;
   EnumChildWindows(hwnd, VisitChild, state);
   scan->edgeWindow = prior;
-  if (scan->surfaces.size() > before &&
+  const bool titleLooksPromax = title.find(L"promaxweb") != std::wstring::npos;
+  if (scan->surfaces.size() > before && titleLooksPromax &&
       !(title.find(L"movimenta") != std::wstring::npos && title.find(L"estoque") != std::wstring::npos)) {
     ++scan->homeWindows;
     ProbeAccessibility(hwnd, scan, L"H" + std::to_wstring(scan->homeWindows));
