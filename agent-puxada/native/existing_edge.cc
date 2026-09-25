@@ -7,6 +7,7 @@
 #include <vector>
 #include <algorithm>
 #include <cwctype>
+#include <thread>
 
 // Read-only discovery of IE-mode document surfaces. No URL, page content,
 // cookie, credential, or window title is returned to JavaScript.
@@ -65,14 +66,17 @@ static void SetInt(napi_env env, napi_value out, const char* key, int value) {
 static napi_value Probe(napi_env env, napi_callback_info info) {
   napi_value out;
   napi_create_object(env, &out);
-  const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-  if (FAILED(initialized) && initialized != RPC_E_CHANGED_MODE) {
-    napi_throw_error(env, nullptr, "Não foi possível iniciar a leitura das janelas do Edge.");
-    return nullptr;
-  }
   Scan scan = {};
-  EnumWindows(VisitWindow, reinterpret_cast<LPARAM>(&scan));
-  if (SUCCEEDED(initialized)) CoUninitialize();
+  // Node may initialize its main thread in MTA. MSHTML automation requires
+  // an STA; use a dedicated thread so COM cannot inherit Node's apartment.
+  std::thread worker([&scan]() {
+    const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    if (SUCCEEDED(initialized)) {
+      EnumWindows(VisitWindow, reinterpret_cast<LPARAM>(&scan));
+      CoUninitialize();
+    }
+  });
+  worker.join();
   int promax = 0, accessible = 0;
   for (const Surface& surface : scan.surfaces) {
     if (surface.promax) ++promax;
