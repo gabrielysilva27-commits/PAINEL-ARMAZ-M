@@ -13,12 +13,11 @@
 // Read-only discovery of IE-mode document surfaces. No URL, page content,
 // cookie, credential, or window title is returned to JavaScript.
 struct Surface { bool promax; bool accessible; bool edgeWindow; };
-struct Scan { std::vector<Surface> surfaces; std::vector<std::wstring> layout; bool edgeWindow; int reportWindows; int uiaElements; int csvControls; int visualizeControls; };
+struct Scan { std::vector<Surface> surfaces; std::vector<std::wstring> layout; bool edgeWindow; int reportWindows; int homeWindows; int shortcutControls; int uiaElements; int csvControls; int visualizeControls; };
 
-static void ProbeAccessibility(HWND hwnd, Scan* scan) {
+static void ProbeAccessibility(HWND hwnd, Scan* scan, const std::wstring& windowIndex) {
   RECT windowRect = {};
   GetWindowRect(hwnd, &windowRect);
-  const int windowIndex = scan->reportWindows;
   IUIAutomation* automation = nullptr;
   if (FAILED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
       IID_IUIAutomation, reinterpret_cast<void**>(&automation))) || !automation) return;
@@ -40,6 +39,7 @@ static void ProbeAccessibility(HWND hwnd, Scan* scan) {
           std::transform(name.begin(), name.end(), name.begin(), towlower);
           if (name.find(L"csv") != std::wstring::npos) ++scan->csvControls;
           if (name.find(L"visualizar") != std::wstring::npos) ++scan->visualizeControls;
+          if (name.find(L"atalho") != std::wstring::npos) ++scan->shortcutControls;
           SysFreeString(raw);
         }
         CONTROLTYPEID type = 0;
@@ -54,7 +54,7 @@ static void ProbeAccessibility(HWND hwnd, Scan* scan) {
               type == UIA_ComboBoxControlTypeId ? L"C" :
               type == UIA_CheckBoxControlTypeId ? L"K" : L"B";
           // Geometry and control type only: never transmit field contents or names.
-          scan->layout.push_back(std::to_wstring(windowIndex) + L":" + kind + L":" +
+          scan->layout.push_back(windowIndex + L":" + kind + L":" +
               std::to_wstring(rect.left-windowRect.left) + L":" +
               std::to_wstring(rect.top-windowRect.top) + L":" +
               std::to_wstring(rect.right-rect.left) + L":" +
@@ -113,12 +113,18 @@ static BOOL CALLBACK VisitWindow(HWND hwnd, LPARAM state) {
   if (title.find(L"movimenta") != std::wstring::npos &&
       title.find(L"estoque") != std::wstring::npos) {
     ++scan->reportWindows;
-    ProbeAccessibility(hwnd, scan);
+    ProbeAccessibility(hwnd, scan, std::to_wstring(scan->reportWindows));
   }
+  const size_t before = scan->surfaces.size();
   const bool prior = scan->edgeWindow;
   scan->edgeWindow = true;
   EnumChildWindows(hwnd, VisitChild, state);
   scan->edgeWindow = prior;
+  if (scan->surfaces.size() > before &&
+      !(title.find(L"movimenta") != std::wstring::npos && title.find(L"estoque") != std::wstring::npos)) {
+    ++scan->homeWindows;
+    ProbeAccessibility(hwnd, scan, L"H" + std::to_wstring(scan->homeWindows));
+  }
   return TRUE;
 }
 
@@ -163,6 +169,8 @@ static napi_value Probe(napi_env env, napi_callback_info info) {
   SetInt(env, out, "accessibleSurfaces", accessible);
   SetInt(env, out, "promaxSurfaces", promax);
   SetInt(env, out, "reportWindows", scan.reportWindows);
+  SetInt(env, out, "homeWindows", scan.homeWindows);
+  SetInt(env, out, "shortcutControls", scan.shortcutControls);
   SetInt(env, out, "uiaElements", scan.uiaElements);
   SetInt(env, out, "csvControls", scan.csvControls);
   SetInt(env, out, "visualizeControls", scan.visualizeControls);
