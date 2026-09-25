@@ -202,12 +202,14 @@ static bool Key(WORD vk, bool up = false) {
 }
 static bool TypeText(const std::wstring& value) {
   for (wchar_t c : value) {
-    INPUT events[2] = {};
-    events[0].type = events[1].type = INPUT_KEYBOARD;
-    events[0].ki.wScan = events[1].ki.wScan = c;
-    events[0].ki.dwFlags = KEYEVENTF_UNICODE;
-    events[1].ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
-    if (SendInput(2, events, sizeof(INPUT)) != 2) return false;
+    const SHORT mapped = VkKeyScanW(c);
+    if (mapped == -1) return false;
+    const bool shift = (HIBYTE(mapped) & 1) != 0;
+    if (shift && !Key(VK_SHIFT)) return false;
+    const WORD vk = LOBYTE(mapped);
+    const bool sent = Key(vk) && Key(vk, true);
+    if (shift && !Key(VK_SHIFT, true)) return false;
+    if (!sent) return false;
   }
   return true;
 }
@@ -324,7 +326,20 @@ static napi_value Act(napi_env env, napi_callback_info info) {
         GetWindowRect(target.hwnd, &r);
         if (GetForegroundWindow() != target.hwnd) result = L"window-not-foreground";
         else if (stage == L"shortcut") {
+          HDC screen = GetDC(nullptr);
+          const COLORREF panel = screen ? GetPixel(screen,
+              r.left + static_cast<int>(1150*coordinateScale),
+              r.top + static_cast<int>(198*coordinateScale)) : CLR_INVALID;
+          if (screen) ReleaseDC(nullptr, screen);
+          if (panel == CLR_INVALID || GetRValue(panel) > 110 ||
+              GetGValue(panel) > 110 || GetBValue(panel) < 35) {
+            result = L"home-panel-rgb-" + std::to_wstring(GetRValue(panel)) + L"-" +
+                std::to_wstring(GetGValue(panel)) + L"-" + std::to_wstring(GetBValue(panel));
+            CoUninitialize();
+            return;
+          }
           if (!ReplaceField(r, 1155, 220, L"02.05.01") ||
+              !Key(VK_TAB) || !Key(VK_TAB, true) ||
               !ClickRelative(r, 1233, 220)) result = L"input-failed";
           else {
             result = L"shortcut-no-report-window";
