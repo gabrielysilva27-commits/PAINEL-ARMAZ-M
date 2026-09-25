@@ -330,11 +330,21 @@ static napi_value Act(napi_env env, napi_callback_info info) {
           const COLORREF panel = screen ? GetPixel(screen,
               r.left + static_cast<int>(1150*coordinateScale),
               r.top + static_cast<int>(198*coordinateScale)) : CLR_INVALID;
+          const COLORREF input = screen ? GetPixel(screen,
+              r.left + static_cast<int>(1150*coordinateScale),
+              r.top + static_cast<int>(220*coordinateScale)) : CLR_INVALID;
+          const COLORREF area = screen ? GetPixel(screen,
+              r.left + static_cast<int>(1000*coordinateScale),
+              r.top + static_cast<int>(350*coordinateScale)) : CLR_INVALID;
           if (screen) ReleaseDC(nullptr, screen);
           if (panel == CLR_INVALID || GetRValue(panel) > 110 ||
               GetGValue(panel) > 110 || GetBValue(panel) < 35) {
             result = L"home-panel-rgb-" + std::to_wstring(GetRValue(panel)) + L"-" +
-                std::to_wstring(GetGValue(panel)) + L"-" + std::to_wstring(GetBValue(panel));
+                std::to_wstring(GetGValue(panel)) + L"-" + std::to_wstring(GetBValue(panel)) +
+                L"-input-" + std::to_wstring(GetRValue(input)) + L"-" +
+                std::to_wstring(GetGValue(input)) + L"-" + std::to_wstring(GetBValue(input)) +
+                L"-area-" + std::to_wstring(GetRValue(area)) + L"-" +
+                std::to_wstring(GetGValue(area)) + L"-" + std::to_wstring(GetBValue(area));
             CoUninitialize();
             return;
           }
