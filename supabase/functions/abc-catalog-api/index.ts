@@ -27,8 +27,7 @@ Deno.serve(async(req:Request)=>{
     if(action==="get"){
       const data=await readAllCatalog();const valid=data.filter((x:any)=>Number(x.factor_hecto_commercial)>0).length;return json({items:data,count:data.length,valid_factor_count:valid,no_factor_count:data.length-valid});
     }
-    if(action==="import"){
-      if(user.role!=="admin")return json({error:"Sem autorização"},403);const items=Array.isArray(body.items)?body.items:[];if(!items.length)return json({error:"Nenhum produto recebido"},400);let saved=0,withFactor=0;
+    if(action==="import"){const items=Array.isArray(body.items)?body.items:[];if(!items.length)return json({error:"Nenhum produto recebido"},400);let saved=0,withFactor=0;
       for(let i=0;i<items.length;i+=200){const batch=items.slice(i,i+200).map((x:any)=>{const factor=n(x.factor_hecto_commercial);return{sku_code:String(x.sku_code||"").trim(),sku_name:String(x.sku_name||""),factor_hecto_commercial:factor&&factor>0?factor:null,boxes_per_pallet:n(x.boxes_per_pallet),source_file:String(body.source_file||"01.11"),updated_at:new Date().toISOString()};}).filter((x:any)=>x.sku_code);if(!batch.length)continue;const {error}=await db.from("product_catalog").upsert(batch,{onConflict:"sku_code"});if(error)throw error;saved+=batch.length;withFactor+=batch.filter((x:any)=>Number(x.factor_hecto_commercial)>0).length;}
       return json({ok:true,count:saved,valid_factor_count:withFactor,no_factor_count:saved-withFactor});
     }
