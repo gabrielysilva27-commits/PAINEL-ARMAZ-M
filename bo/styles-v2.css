@@ -17,7 +17,13 @@
 .confront-note{margin:0 0 12px;padding:12px 14px;border:1px solid #f0d3b8;background:#fff8f1;border-radius:12px;color:#76573f;font-size:12px;line-height:1.45}
 .confront-origin{display:block;margin-top:3px;color:#8a8d94;font-size:10px;font-weight:700}
 .confront-items{margin-top:8px;padding:9px 10px;border:1px solid #eceef1;background:#fafbfc;border-radius:9px;color:#60646b;font-size:11px;line-height:1.45}
-.confront-card .history-actions .primary{width:100%}
+.confront-card{cursor:pointer;transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease;-webkit-tap-highlight-color:transparent}
+.confront-card:hover{border-color:#e2c8ad;box-shadow:0 10px 28px rgba(30,30,35,.09);transform:translateY(-1px)}
+.confront-card:active{transform:scale(.995)}
+.confront-card:focus-visible{outline:3px solid rgba(244,122,32,.22);outline-offset:2px;border-color:var(--orange)}
+.confront-open-hint{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding:11px 12px;border-top:1px solid #eceef1;color:#9a5a20;font-size:12px;font-weight:800}
+.confront-open-hint span{font-size:18px;line-height:1;color:var(--orange)}
+@media(max-width:560px){.confront-open-hint{padding:12px 4px 2px}}
 
 .shift-flow-notice{margin-top:8px;padding:9px 10px;border-radius:9px;border:1px solid #e0e1e5;background:#f8f8f9;font-size:11px;line-height:1.4}
 .shift-flow-notice strong,.shift-flow-notice span{display:block}
