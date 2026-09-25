@@ -9,6 +9,7 @@ let DRIVER = null;
 let SESSION_ID = null;
 let DRIVER_PORT = 5555;
 let LAST_READINESS_ERROR = "";
+let LAST_NORMAL_EDGE_STATUS = "not_run";
 // Promax renders its home and reports in nested frames; document.body on the
 // outer frameset does not contain the visible LogOff/Atalho controls.
 const PAGE_TEXT_SCRIPT = [
@@ -1880,11 +1881,14 @@ async function exportInNormalEdge(job, config, rootDir, validateCsv) {
 
 async function export020501(job, config, rootDir, validateCsv) {
   try {
-    return await exportInNormalEdge(job, config, rootDir, validateCsv);
+    const file = await exportInNormalEdge(job, config, rootDir, validateCsv);
+    LAST_NORMAL_EDGE_STATUS = "success";
+    return file;
   } catch (normalEdgeError) {
     // Preserve the proven route while the normal Edge path is being verified
     // on the corporate Windows desktop.
-    LAST_READINESS_ERROR = "Janela normal do Edge: " + String(normalEdgeError && normalEdgeError.message || normalEdgeError).slice(0,180);
+    LAST_NORMAL_EDGE_STATUS = String(normalEdgeError && normalEdgeError.message || normalEdgeError).replace(/[^A-Za-z0-9_-]/g, "_").slice(0,100);
+    LAST_READINESS_ERROR = "Janela normal do Edge: " + LAST_NORMAL_EDGE_STATUS;
   }
   await ensurePromaxHome(config, rootDir);
   const alreadyGenerated = await currentReportMatches(job);
@@ -1989,4 +1993,4 @@ async function openCalibrationBrowser(config, rootDir) {
   }
 }
 
-module.exports = { isConfigured, readinessError, missingSelectors, openCalibrationBrowser, export020501 };
+module.exports = { isConfigured, readinessError, missingSelectors, openCalibrationBrowser, export020501, normalEdgeStatus: () => LAST_NORMAL_EDGE_STATUS };
