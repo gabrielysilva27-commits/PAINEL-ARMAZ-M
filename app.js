@@ -35,7 +35,7 @@ function showToast(message, error=false) {
 function setLoggedIn(user) {
   state.user=user;
   $('loginScreen').classList.add('hidden'); $('appShell').classList.remove('hidden');
-  $('userName').textContent=user.display_name || user.username; $('userRole').textContent=user.role==='admin'?'ADM':'VISUALIZAÇÃO';
+  $('userName').textContent=user.display_name || user.username; $('userRole').textContent=user.role==='admin'?'ADM':'LOGÍSTICA';
   $('userInitials').textContent=(user.display_name||user.username).split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase();
   document.querySelectorAll('.admin-only').forEach(el=>el.classList.toggle('hidden',user.role!=='admin'));
 }
