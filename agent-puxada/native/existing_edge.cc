@@ -219,8 +219,10 @@ static bool ClickPoint(int x, int y) {
   events[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
   return SendInput(2, events, sizeof(INPUT)) == 2;
 }
+static thread_local double coordinateScale = 1.0;
 static bool ClickRelative(const RECT& r, int x, int y) {
-  return ClickPoint(r.left + x, r.top + y);
+  return ClickPoint(r.left + static_cast<int>(x * coordinateScale + 0.5),
+      r.top + static_cast<int>(y * coordinateScale + 0.5));
 }
 static bool ReplaceField(const RECT& r, int x, int y, const std::wstring& value) {
   if (!ClickRelative(r, x, y)) return false;
@@ -301,11 +303,19 @@ static napi_value Act(napi_env env, napi_callback_info info) {
       EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&target));
       RECT r = {};
       if (!target.hwnd || !GetWindowRect(target.hwnd, &r)) result = L"window-not-found";
-      else if (GetSystemMetrics(SM_CXSCREEN) != 1280 || GetSystemMetrics(SM_CYSCREEN) != 720 ||
-          (target.home ? r.right-r.left < 1200 || r.bottom-r.top < 650 :
-              r.right-r.left < 790 || r.right-r.left > 820 || r.bottom-r.top < 595 || r.bottom-r.top > 630))
-        result = L"unsupported-window-geometry";
+      else if (!((GetSystemMetrics(SM_CXSCREEN) == 1280 && GetSystemMetrics(SM_CYSCREEN) == 720) ||
+                 (GetSystemMetrics(SM_CXSCREEN) == 1920 && GetSystemMetrics(SM_CYSCREEN) == 1080)))
+        result = L"unsupported-screen-geometry";
       else {
+        coordinateScale = GetSystemMetrics(SM_CXSCREEN) / 1280.0;
+        const int width = r.right-r.left, height = r.bottom-r.top;
+        if (target.home ? (width < 1200*coordinateScale || height < 650*coordinateScale) :
+            (width < 790*coordinateScale || width > 820*coordinateScale ||
+             height < 595*coordinateScale || height > 630*coordinateScale)) {
+          result = L"unsupported-window-geometry";
+          CoUninitialize();
+          return;
+        }
         if (IsIconic(target.hwnd)) ShowWindow(target.hwnd, SW_RESTORE);
         Key(VK_MENU);
         Key(VK_MENU, true);
