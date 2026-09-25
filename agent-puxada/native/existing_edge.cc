@@ -87,6 +87,45 @@ static bool IsPromax(IHTMLDocument2* document) {
          (url.size() == prefix.size() || url[prefix.size()] == L'/');
 }
 
+static void InspectEdgeWindow(HWND hwnd, bool* automated, int* tabItems) {
+  *automated = false;
+  *tabItems = 0;
+  IUIAutomation* automation = nullptr;
+  IUIAutomationElement* root = nullptr;
+  IUIAutomationCondition* condition = nullptr;
+  IUIAutomationElementArray* elements = nullptr;
+  if (FAILED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+      IID_IUIAutomation, reinterpret_cast<void**>(&automation))) || !automation) return;
+  if (SUCCEEDED(automation->ElementFromHandle(hwnd, &root)) && root &&
+      SUCCEEDED(automation->CreateTrueCondition(&condition)) && condition &&
+      SUCCEEDED(root->FindAll(TreeScope_Descendants, condition, &elements)) && elements) {
+    int count = 0;
+    elements->get_Length(&count);
+    for (int i = 0; i < count && i < 2000; ++i) {
+      IUIAutomationElement* item = nullptr;
+      if (FAILED(elements->GetElement(i, &item)) || !item) continue;
+      CONTROLTYPEID type = 0;
+      if (SUCCEEDED(item->get_CurrentControlType(&type)) && type == UIA_TabItemControlTypeId) ++(*tabItems);
+      BSTR raw = nullptr;
+      if (SUCCEEDED(item->get_CurrentName(&raw)) && raw) {
+        std::wstring name(raw, SysStringLen(raw));
+        std::transform(name.begin(), name.end(), name.begin(), towlower);
+        if (name.find(L"automated test") != std::wstring::npos ||
+            (name.find(L"controlado") != std::wstring::npos && name.find(L"teste") != std::wstring::npos) ||
+            name.find(L"webdriver") != std::wstring::npos) {
+          *automated = true;
+        }
+        SysFreeString(raw);
+      }
+      item->Release();
+    }
+  }
+  if (elements) elements->Release();
+  if (condition) condition->Release();
+  if (root) root->Release();
+  automation->Release();
+}
+
 static BOOL CALLBACK VisitChild(HWND hwnd, LPARAM state) {
   if (ClassName(hwnd) != L"Internet Explorer_Server") return TRUE;
   Scan* scan = reinterpret_cast<Scan*>(state);
@@ -121,7 +160,10 @@ static BOOL CALLBACK VisitWindow(HWND hwnd, LPARAM state) {
   EnumChildWindows(hwnd, VisitChild, state);
   scan->edgeWindow = prior;
   const bool titleLooksPromax = title.find(L"promaxweb") != std::wstring::npos;
-  if (scan->surfaces.size() > before && titleLooksPromax &&
+  bool automated = false;
+  int tabItems = 0;
+  if (titleLooksPromax) InspectEdgeWindow(hwnd, &automated, &tabItems);
+  if (scan->surfaces.size() > before && titleLooksPromax && !automated &&
       !(title.find(L"movimenta") != std::wstring::npos && title.find(L"estoque") != std::wstring::npos)) {
     ++scan->homeWindows;
     ProbeAccessibility(hwnd, scan, L"H" + std::to_wstring(scan->homeWindows));
@@ -179,7 +221,7 @@ static napi_value Probe(napi_env env, napi_callback_info info) {
   return out;
 }
 
-struct TargetWindow { HWND hwnd; bool home; };
+struct TargetWindow { HWND hwnd; bool home; int score; };
 static BOOL CALLBACK FindTarget(HWND hwnd, LPARAM raw) {
   TargetWindow* target = reinterpret_cast<TargetWindow*>(raw);
   if (!IsWindowVisible(hwnd) || ClassName(hwnd) != L"Chrome_WidgetWin_1") return TRUE;
@@ -190,7 +232,19 @@ static BOOL CALLBACK FindTarget(HWND hwnd, LPARAM raw) {
   const bool match = target->home
       ? name.find(L"promaxweb") != std::wstring::npos
       : name.find(L"movimenta") != std::wstring::npos && name.find(L"estoque") != std::wstring::npos;
-  if (match) { target->hwnd = hwnd; return FALSE; }
+  if (!match) return TRUE;
+  if (!target->home) { target->hwnd = hwnd; target->score = 1; return FALSE; }
+
+  bool automated = false;
+  int tabItems = 0;
+  InspectEdgeWindow(hwnd, &automated, &tabItems);
+  if (automated) return TRUE;
+
+  const int score = 100 + tabItems;
+  if (!target->hwnd || score > target->score) {
+    target->hwnd = hwnd;
+    target->score = score;
+  }
   return TRUE;
 }
 
@@ -302,7 +356,7 @@ static napi_value Act(napi_env env, napi_callback_info info) {
       const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
       if (FAILED(initialized)) { result = L"com-unavailable"; return; }
       SetProcessDPIAware();
-      TargetWindow target = { nullptr, stage == L"shortcut" };
+      TargetWindow target = { nullptr, stage == L"shortcut", -1 };
       EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&target));
       RECT r = {};
       if (!target.hwnd || !GetWindowRect(target.hwnd, &r)) result = L"window-not-found";

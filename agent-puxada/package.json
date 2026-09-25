@@ -1,6 +1,6 @@
 {
   "name": "agente-puxada-promax",
-  "version": "3.2.64",
+  "version": "3.2.65",
   "private": true,
   "description": "Agente local autoatualizável do Painel Armazém para automações de Puxada/Promax pela janela normal do Microsoft Edge.",
   "main": "agent.js",
