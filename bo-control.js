@@ -41,7 +41,7 @@
       '<section class="bo-control-panel"><div class="bo-control-toolbar">'+
       '<label>Buscar<input id="boSearch" placeholder="B.O., funcionário, fábrica, código ou produto" /></label>'+
       '<label>Status<select id="boStatus"><option value="pending">Pendentes</option><option value="validated">Validados</option><option value="returned">Devolvidos</option><option value="cancelled">Excluídos</option><option value="all">Todos</option></select></label>'+
-      '<div class="bo-control-actions"><button class="bo-btn-secondary" id="boRefresh">Atualizar</button><button class="bo-btn-secondary" id="boPrintSelected" disabled>Imprimir selecionados (0)</button><button class="bo-btn-secondary" id="boExportPa">PA (.xlsx)</button><button class="bo-btn-secondary" id="boPreviewDaily">Visualizar Informativo</button></div>'+
+      '<div class="bo-control-actions"><button class="bo-btn-secondary" id="boRefresh">Atualizar</button><button class="bo-btn-primary" id="boValidateSelected" disabled>Validar selecionados (0)</button><button class="bo-btn-secondary" id="boPrintSelected" disabled>Imprimir selecionados (0)</button><button class="bo-btn-secondary" id="boExportPa">PA (.xlsx)</button><button class="bo-btn-secondary" id="boPreviewDaily">Visualizar Informativo</button></div>'+
       '</div><div style="display:flex;justify-content:flex-end;margin-top:10px"><label style="display:grid;gap:5px;font-size:12px;font-weight:700">Data do Informativo<input id="boDailyDate" type="date" value="'+today()+'" style="border:1px solid #d7d8dd;border-radius:9px;padding:9px 10px"></label></div>'+
       '<div class="bo-table-wrap"><table class="bo-table"><thead><tr><th class="bo-select-col"><label class="bo-select-all" title="Selecionar todos os B.O.s visíveis"><input id="boSelectAll" type="checkbox"><span>Todos</span></label></th><th>B.O.</th><th>Data/Hora</th><th>Conferente</th><th>Origem</th><th>Turno</th><th>Motivo</th><th>Local</th><th>Status</th><th>Ação</th></tr></thead><tbody id="boTableBody"></tbody></table></div><div class="bo-empty hidden" id="boEmpty">Nenhum B.O. encontrado.</div><p class="bo-export-note">A PA e o Informativo são derivados automaticamente dos B.O.s validados. Não há nova digitação.</p></section>'+
       '</div>'+
@@ -54,7 +54,7 @@
     $('boStatus').value=activeStatus;
     $('boStatus').onchange=()=>{activeStatus=$('boStatus').value;load();};
     let t;$('boSearch').oninput=()=>{clearTimeout(t);t=setTimeout(load,250);};
-    $('boRefresh').onclick=load;$('boPrintSelected').onclick=printSelectedBos;$('boExportPa').onclick=exportPaXlsx;$('boPreviewDaily').onclick=previewDaily;
+    $('boRefresh').onclick=load;$('boValidateSelected').onclick=validateSelectedBos;$('boPrintSelected').onclick=printSelectedBos;$('boExportPa').onclick=exportPaXlsx;$('boPreviewDaily').onclick=previewDaily;
     $('boSelectAll').onchange=e=>{if(e.target.checked)rows.forEach(r=>selectedIds.add(Number(r.id)));else selectedIds.clear();syncSelectionUi();renderRowSelection();};
     $('boDialogClose').onclick=()=>$('boReviewDialog').close();$('boPrint').onclick=printBo;$('boInfClose').onclick=()=>$('boInformativoDialog').close();
     $('boInfPrint').onclick=printInformativo;$('boInfDownload').onclick=exportDailyXlsx;
@@ -65,9 +65,12 @@
     if(row.record_kind==='turn_a_confront')return {text:'Turno A · oficial',cls:'official'};
     return {text:statusLabel(row.status),cls:row.status};
   }
+  function isBulkEligible(row){return row&&row.status==='pending'&&row.record_kind!=='turn_c_origin';}
   function syncSelectionUi(){
-    const count=selectedIds.size,btn=$('boPrintSelected'),all=$('boSelectAll');
+    const count=selectedIds.size,btn=$('boPrintSelected'),validateBtn=$('boValidateSelected'),all=$('boSelectAll');
+    const eligible=rows.filter(r=>selectedIds.has(Number(r.id))&&isBulkEligible(r));
     if(btn){btn.disabled=count===0;btn.textContent='Imprimir selecionados ('+count+')';}
+    if(validateBtn){validateBtn.disabled=eligible.length===0;validateBtn.textContent='Validar selecionados ('+eligible.length+')';}
     if(all){const visible=rows.length,selectedVisible=rows.filter(r=>selectedIds.has(Number(r.id))).length;all.checked=visible>0&&selectedVisible===visible;all.indeterminate=selectedVisible>0&&selectedVisible<visible;}
   }
   function renderRowSelection(){
@@ -133,6 +136,21 @@
   }
 
   async function review(decision){try{await call('review',{id:selected.id,decision,comment:$('boReviewComment')?$('boReviewComment').value:''});$('boReviewDialog').close();showToast(decision==='validated'?'B.O. validado com sucesso.':'B.O. devolvido ao conferente.');await load();}catch(e){showToast(e.message,true);}}
+
+  async function validateSelectedBos(){
+    const chosen=rows.filter(r=>selectedIds.has(Number(r.id))),eligible=chosen.filter(isBulkEligible);
+    if(!eligible.length)return showToast('Nenhum B.O. selecionado está pendente e elegível para validação.',true);
+    const skipped=chosen.length-eligible.length;
+    const message='Validar '+eligible.length+' B.O.'+(eligible.length===1?'':'s')+' selecionado'+(eligible.length===1?'':'s')+' agora?'+(skipped?'\n\n'+skipped+' registro'+(skipped===1?' será ignorado':'s serão ignorados')+' por não estar pendente ou por ser origem do Turno C.':'');
+    if(!confirm(message))return;
+    const btn=$('boValidateSelected');if(btn)btn.disabled=true;
+    try{
+      const d=await call('bulk_validate',{ids:eligible.map(r=>Number(r.id))});
+      const validated=Number(d.validated_count||0),ignored=Number(d.skipped_count||0)+skipped;
+      showToast(validated+' B.O.'+(validated===1?' validado':'s validados')+' com sucesso.'+(ignored?' '+ignored+' ignorado'+(ignored===1?'.':'s.'):''));
+      await load();
+    }catch(e){showToast(e.message,true);syncSelectionUi();}
+  }
 
   async function exportPaXlsx(){
     try{
