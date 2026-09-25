@@ -1815,35 +1815,27 @@ async function export020501(job, config, rootDir, validateCsv) {
     }, 30000, 600);
   }
 
-  // O relatório 02.05.01 já pode estar totalmente renderizado mesmo quando o
-  // controle CSV legado não é exposto ao WebDriver. Leia primeiro a tabela/texto
-  // visível e só dependa do botão CSV como fallback de exportação.
-  let domFailure = "";
-  let textFailure = "";
-  try {
-    return await waitUntil(async function () {
-      try {
-        return await domReportDownload(rootDir, validateCsv);
-      } catch (domError) {
-        domFailure = domError && domError.message ? domError.message : String(domError);
-      }
-
-      try {
-        return await textReportDownload(rootDir, validateCsv);
-      } catch (textError) {
-        textFailure = textError && textError.message ? textError.message : String(textError);
-      }
-      return null;
-    }, 20000, 1200);
-  } catch {}
-
   let d;
   try {
     d = await waitUntil(async function () {
       return await csvDescriptor();
-    }, 45000, 700);
+    }, 60000, 700);
   } catch {
-    throw new Error("CSV_CONTROL_TIMEOUT: o relatório foi gerado, não pôde ser lido diretamente e o botão CSV não foi localizado na tela de resultados. Leitura DOM: " + domFailure + ". Leitura texto: " + textFailure + ".");
+    throw new Error("CSV_CONTROL_TIMEOUT: o relatório foi gerado, mas o botão CSV não foi localizado na tela de resultados.");
+  }
+
+  let domFailure = "";
+  let textFailure = "";
+  try {
+    return await domReportDownload(rootDir, validateCsv);
+  } catch (domError) {
+    domFailure = domError && domError.message ? domError.message : String(domError);
+  }
+
+  try {
+    return await textReportDownload(rootDir, validateCsv);
+  } catch (textError) {
+    textFailure = textError && textError.message ? textError.message : String(textError);
   }
 
   if (d && d.href && !/^javascript:/i.test(d.href) && d.href !== "#") {
