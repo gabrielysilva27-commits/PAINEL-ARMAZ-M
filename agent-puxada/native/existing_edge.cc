@@ -13,9 +13,12 @@
 // Read-only discovery of IE-mode document surfaces. No URL, page content,
 // cookie, credential, or window title is returned to JavaScript.
 struct Surface { bool promax; bool accessible; bool edgeWindow; };
-struct Scan { std::vector<Surface> surfaces; bool edgeWindow; int reportWindows; int uiaElements; int csvControls; int visualizeControls; };
+struct Scan { std::vector<Surface> surfaces; std::vector<std::wstring> layout; bool edgeWindow; int reportWindows; int uiaElements; int csvControls; int visualizeControls; };
 
 static void ProbeAccessibility(HWND hwnd, Scan* scan) {
+  RECT windowRect = {};
+  GetWindowRect(hwnd, &windowRect);
+  const int windowIndex = scan->reportWindows;
   IUIAutomation* automation = nullptr;
   if (FAILED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
       IID_IUIAutomation, reinterpret_cast<void**>(&automation))) || !automation) return;
@@ -38,6 +41,24 @@ static void ProbeAccessibility(HWND hwnd, Scan* scan) {
           if (name.find(L"csv") != std::wstring::npos) ++scan->csvControls;
           if (name.find(L"visualizar") != std::wstring::npos) ++scan->visualizeControls;
           SysFreeString(raw);
+        }
+        CONTROLTYPEID type = 0;
+        RECT rect = {};
+        if (SUCCEEDED(item->get_CurrentControlType(&type)) &&
+            (type == UIA_EditControlTypeId || type == UIA_ComboBoxControlTypeId ||
+             type == UIA_CheckBoxControlTypeId || type == UIA_ButtonControlTypeId) &&
+            SUCCEEDED(item->get_CurrentBoundingRectangle(&rect)) &&
+            rect.right > rect.left && rect.bottom > rect.top &&
+            scan->layout.size() < 90) {
+          const wchar_t* kind = type == UIA_EditControlTypeId ? L"E" :
+              type == UIA_ComboBoxControlTypeId ? L"C" :
+              type == UIA_CheckBoxControlTypeId ? L"K" : L"B";
+          // Geometry and control type only: never transmit field contents or names.
+          scan->layout.push_back(std::to_wstring(windowIndex) + L":" + kind + L":" +
+              std::to_wstring(rect.left-windowRect.left) + L":" +
+              std::to_wstring(rect.top-windowRect.top) + L":" +
+              std::to_wstring(rect.right-rect.left) + L":" +
+              std::to_wstring(rect.bottom-rect.top));
         }
         item->Release();
       }
@@ -107,6 +128,18 @@ static void SetInt(napi_env env, napi_value out, const char* key, int value) {
   napi_set_named_property(env, out, key, number);
 }
 
+static void SetLayout(napi_env env, napi_value out, const Scan& scan) {
+  napi_value array;
+  napi_create_array_with_length(env, scan.layout.size(), &array);
+  for (size_t i = 0; i < scan.layout.size(); ++i) {
+    napi_value value;
+    napi_create_string_utf16(env, reinterpret_cast<const char16_t*>(scan.layout[i].c_str()),
+        scan.layout[i].size(), &value);
+    napi_set_element(env, array, static_cast<uint32_t>(i), value);
+  }
+  napi_set_named_property(env, out, "layout", array);
+}
+
 static napi_value Probe(napi_env env, napi_callback_info info) {
   napi_value out;
   napi_create_object(env, &out);
@@ -133,6 +166,7 @@ static napi_value Probe(napi_env env, napi_callback_info info) {
   SetInt(env, out, "uiaElements", scan.uiaElements);
   SetInt(env, out, "csvControls", scan.csvControls);
   SetInt(env, out, "visualizeControls", scan.visualizeControls);
+  SetLayout(env, out, scan);
   return out;
 }
 
