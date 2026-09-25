@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <oleacc.h>
 #include <mshtml.h>
+#include <UIAutomation.h>
 #include <node_api.h>
 #include <string>
 #include <vector>
@@ -12,7 +13,41 @@
 // Read-only discovery of IE-mode document surfaces. No URL, page content,
 // cookie, credential, or window title is returned to JavaScript.
 struct Surface { bool promax; bool accessible; bool edgeWindow; };
-struct Scan { std::vector<Surface> surfaces; bool edgeWindow; };
+struct Scan { std::vector<Surface> surfaces; bool edgeWindow; int reportWindows; int uiaElements; int csvControls; int visualizeControls; };
+
+static void ProbeAccessibility(HWND hwnd, Scan* scan) {
+  IUIAutomation* automation = nullptr;
+  if (FAILED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+      IID_IUIAutomation, reinterpret_cast<void**>(&automation))) || !automation) return;
+  IUIAutomationElement* root = nullptr;
+  IUIAutomationCondition* condition = nullptr;
+  IUIAutomationElementArray* elements = nullptr;
+  if (SUCCEEDED(automation->ElementFromHandle(hwnd, &root)) && root &&
+      SUCCEEDED(automation->CreateTrueCondition(&condition)) && condition &&
+      SUCCEEDED(root->FindAll(TreeScope_Descendants, condition, &elements)) && elements) {
+    int length = 0;
+    if (SUCCEEDED(elements->get_Length(&length))) {
+      scan->uiaElements += length;
+      for (int i = 0; i < length && i < 1000; ++i) {
+        IUIAutomationElement* item = nullptr;
+        if (FAILED(elements->GetElement(i, &item)) || !item) continue;
+        BSTR raw = nullptr;
+        if (SUCCEEDED(item->get_CurrentName(&raw)) && raw) {
+          std::wstring name(raw, SysStringLen(raw));
+          std::transform(name.begin(), name.end(), name.begin(), towlower);
+          if (name.find(L"csv") != std::wstring::npos) ++scan->csvControls;
+          if (name.find(L"visualizar") != std::wstring::npos) ++scan->visualizeControls;
+          SysFreeString(raw);
+        }
+        item->Release();
+      }
+    }
+  }
+  if (elements) elements->Release();
+  if (condition) condition->Release();
+  if (root) root->Release();
+  automation->Release();
+}
 
 static std::wstring ClassName(HWND hwnd) {
   wchar_t name[128] = {};
@@ -50,6 +85,15 @@ static BOOL CALLBACK VisitChild(HWND hwnd, LPARAM state) {
 static BOOL CALLBACK VisitWindow(HWND hwnd, LPARAM state) {
   if (ClassName(hwnd) != L"Chrome_WidgetWin_1") return TRUE;
   Scan* scan = reinterpret_cast<Scan*>(state);
+  wchar_t rawTitle[512] = {};
+  GetWindowTextW(hwnd, rawTitle, 512);
+  std::wstring title(rawTitle);
+  std::transform(title.begin(), title.end(), title.begin(), towlower);
+  if (title.find(L"movimenta") != std::wstring::npos &&
+      title.find(L"estoque") != std::wstring::npos) {
+    ++scan->reportWindows;
+    ProbeAccessibility(hwnd, scan);
+  }
   const bool prior = scan->edgeWindow;
   scan->edgeWindow = true;
   EnumChildWindows(hwnd, VisitChild, state);
@@ -85,6 +129,10 @@ static napi_value Probe(napi_env env, napi_callback_info info) {
   SetInt(env, out, "ieModeSurfaces", static_cast<int>(scan.surfaces.size()));
   SetInt(env, out, "accessibleSurfaces", accessible);
   SetInt(env, out, "promaxSurfaces", promax);
+  SetInt(env, out, "reportWindows", scan.reportWindows);
+  SetInt(env, out, "uiaElements", scan.uiaElements);
+  SetInt(env, out, "csvControls", scan.csvControls);
+  SetInt(env, out, "visualizeControls", scan.visualizeControls);
   return out;
 }
 

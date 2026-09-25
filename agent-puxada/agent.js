@@ -10,7 +10,7 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.54";
+const VERSION = "3.2.55";
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -78,7 +78,7 @@ async function main() {
     const calibrationReady = await promax.isConfigured(config, ROOT);
     const edgeProbe = existingEdge.probe();
     const edgeProbeStatus = edgeProbe.available
-      ? "Modo IE: " + edgeProbe.ieModeSurfaces + " aba(s); legíveis: " + edgeProbe.accessibleSurfaces + "; Promax: " + edgeProbe.promaxSurfaces + " aba(s)."
+      ? "Modo IE: " + edgeProbe.ieModeSurfaces + "; DOM legível: " + edgeProbe.accessibleSurfaces + "; janela relatório: " + edgeProbe.reportWindows + "; controles: " + edgeProbe.uiaElements + "; CSV: " + edgeProbe.csvControls + "; Visualizar: " + edgeProbe.visualizeControls + "."
       : "Leitura da janela existente indisponível neste computador.";
     if (edgeProbeStatus !== lastEdgeProbe) {
       log("Verificação Edge: " + edgeProbeStatus);
@@ -94,7 +94,7 @@ async function main() {
       hostname: os.hostname(),
       agent_version: VERSION,
       updater_version: updater.UPDATER_VERSION,
-      capabilities: ["020501_SYNC","PROMAX_IE_MODE","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","PROMAX_CSV_AUTHENTICATED_CAPTURE","PROMAX_EXCEL_COM_CAPTURE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1", edgeProbe.available ? "EDGE_IE_SURFACES_" + Math.min(edgeProbe.ieModeSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_ACCESSIBLE_SURFACES_" + Math.min(edgeProbe.accessibleSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_PROMAX_SURFACES_" + Math.min(edgeProbe.promaxSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE"],
+      capabilities: ["020501_SYNC","PROMAX_IE_MODE","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","PROMAX_CSV_AUTHENTICATED_CAPTURE","PROMAX_EXCEL_COM_CAPTURE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1", edgeProbe.available ? "EDGE_IE_SURFACES_" + Math.min(edgeProbe.ieModeSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_ACCESSIBLE_SURFACES_" + Math.min(edgeProbe.accessibleSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_REPORT_WINDOWS_" + Math.min(edgeProbe.reportWindows, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_UIA_CONTROLS_" + Math.min(edgeProbe.uiaElements, 9999) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_CSV_CONTROLS_" + Math.min(edgeProbe.csvControls, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_VISUALIZAR_CONTROLS_" + Math.min(edgeProbe.visualizeControls, 99) : "EDGE_PROBE_UNAVAILABLE"],
       calibration_ready: calibrationReady,
       readiness_error: readinessError
     };
