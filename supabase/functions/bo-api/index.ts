@@ -179,14 +179,18 @@ async function createConfrontation(conferencer:any,body:any){
   }
   const {error:itemError}=await db.from("bo_occurrence_items").insert(itemRecords(Number(created.id),input,catalog));
   if(itemError){await db.from("bo_occurrences").delete().eq("id",created.id);throw itemError;}
-  const {data:sourceUpdated,error:ue}=await db.from("bo_occurrences")
-    .update({confront_state:"completed",updated_at:new Date().toISOString()})
-    .eq("id",sourceId).eq("record_kind","turn_c_origin").eq("confront_state","awaiting")
-    .select("id").maybeSingle();
-  if(ue||!sourceUpdated){
+  // O trigger bo_sync_turn_c_confront_state já marca a origem do Turno C
+  // como "completed" assim que o confronto do Turno A é inserido.
+  // Aqui apenas confirmamos o estado, evitando disputar a mesma atualização
+  // com o trigger e gerar falso erro 406 no PostgREST.
+  const {data:sourceState,error:ue}=await db.from("bo_occurrences")
+    .select("id,confront_state")
+    .eq("id",sourceId).eq("record_kind","turn_c_origin")
+    .maybeSingle();
+  if(ue||!sourceState||sourceState.confront_state!=="completed"){
     await db.from("bo_occurrences").delete().eq("id",created.id);
     if(ue)throw ue;
-    throw new Error("O B.O. do Turno C foi alterado enquanto o confronto era salvo. Atualize a fila e tente novamente.");
+    throw new Error("Não foi possível confirmar o confronto do Turno A. Atualize a fila e tente novamente.");
   }
   return created;
 }
