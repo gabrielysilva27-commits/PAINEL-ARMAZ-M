@@ -497,8 +497,8 @@ Deno.serve(async(req:Request)=>{
   if(a==="agent_request_sync"){
     const {data:existing}=await db.from("receiving_pull_sync_requests").select("*").in("status",["pending","running"]).order("requested_at",{ascending:true}).limit(1).maybeSingle();
     if(existing)return json(req,{request:existing,already_pending:true});
-    const {data:req,error}=await db.from("receiving_pull_sync_requests").insert({request_type:"manual",status:"pending",requested_by:u.id,date_from:clean(b.date_from,10)||null,date_to:clean(b.date_to,10)||null}).select("*").single();if(error)throw error;
-    return json(req,{request:req,already_pending:false});
+    const {data:syncRequest,error}=await db.from("receiving_pull_sync_requests").insert({request_type:"manual",status:"pending",requested_by:u.id,date_from:clean(b.date_from,10)||null,date_to:clean(b.date_to,10)||null}).select("*").single();if(error)throw error;
+    return json(req,{request:syncRequest,already_pending:false});
   }
   if(a==="agent_generate_token"||a==="agent_reset_token"){
     if(u.role!=="admin")return json(req,{error:"Acesso restrito à administração."},403);
