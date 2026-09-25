@@ -33,7 +33,7 @@ async function requireSession(req: Request) {
   return u || null;
 }
 
-const canEdit = (u: any) => ["admin", "conferente"].includes(String(u?.role || "").toLowerCase());
+const canEdit = (u: any) => !!u?.id;
 const todayBR = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 const rowKey = (r: any) => String(r?.id || `${r?.area || ""}|${r?.address || ""}|${r?.sku_code || ""}`);
 const isFefoReady = (r: any) => ["Prioridade FEFO", "Aguardar lote anterior"].includes(String(r?.fefo_status || "")) && Number.isFinite(Number(r?.pallets)) && Number(r.pallets) > 0;
@@ -297,7 +297,6 @@ Deno.serve(async (req: Request) => {
     }
 
     if (body.action === "policy_prepare") {
-      if (String(user.role || "").toLowerCase() !== "admin") return json({ error: "Somente ADM pode preparar uma nova Política de Estoque" }, 403);
       const code = String(body.code || "").trim();
       const reviewStart = String(body.review_start || ""), reviewEnd = String(body.review_end || "");
       const effectiveStart = String(body.effective_start || ""), effectiveEnd = String(body.effective_end || "");
@@ -334,7 +333,6 @@ Deno.serve(async (req: Request) => {
     }
 
     if (body.action === "policy_edit") {
-      if (String(user.role || "").toLowerCase() !== "admin") return json({ error: "Somente ADM pode revisar a Política de Estoque" }, 403);
       const versionId = String(body.version_id || ""), sku = String(body.sku_code || "").trim();
       const version = await policyVersionById(versionId);
       if (!version || version.status !== "draft") return json({ error: "Somente a próxima política em preparação pode ser editada" }, 409);
@@ -360,7 +358,6 @@ Deno.serve(async (req: Request) => {
     }
 
     if (body.action === "policy_approve") {
-      if (String(user.role || "").toLowerCase() !== "admin") return json({ error: "Somente ADM pode aprovar a Política de Estoque" }, 403);
       const versionId = String(body.version_id || "");
       const version = await policyVersionById(versionId);
       if (!version || version.status !== "draft") return json({ error: "A versão não está disponível para aprovação" }, 409);
