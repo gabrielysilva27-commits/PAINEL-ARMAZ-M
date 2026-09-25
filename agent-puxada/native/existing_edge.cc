@@ -324,9 +324,33 @@ static napi_value Act(napi_env env, napi_callback_info info) {
         GetWindowRect(target.hwnd, &r);
         if (GetForegroundWindow() != target.hwnd) result = L"window-not-foreground";
         else if (stage == L"shortcut") {
-          result = ReplaceField(r, 1155, 220, L"02.05.01") &&
-              ClickRelative(r, 1233, 220) ? L"ok" : L"input-failed";
+          if (!ReplaceField(r, 1155, 220, L"02.05.01") ||
+              !ClickRelative(r, 1233, 220)) result = L"input-failed";
+          else {
+            result = L"shortcut-no-report-window";
+            for (int i = 0; i < 20; ++i) {
+              Sleep(200);
+              wchar_t title[512] = {};
+              GetWindowTextW(GetForegroundWindow(), title, 512);
+              std::wstring active(title);
+              std::transform(active.begin(), active.end(), active.begin(), towlower);
+              if (active.find(L"movimenta") != std::wstring::npos &&
+                  active.find(L"estoque") != std::wstring::npos) { result = L"ok"; break; }
+            }
+          }
         } else if (stage == L"filters") {
+          HDC screen = GetDC(nullptr);
+          const COLORREF background = screen ? GetPixel(screen,
+              r.left + static_cast<int>(400*coordinateScale),
+              r.top + static_cast<int>(300*coordinateScale)) : CLR_INVALID;
+          if (screen) ReleaseDC(nullptr, screen);
+          if (background == CLR_INVALID || GetRValue(background) < 170 ||
+              GetRValue(background) > 235 || GetGValue(background) < 170 ||
+              GetGValue(background) > 235) {
+            result = L"filters-not-on-form";
+            CoUninitialize();
+            return;
+          }
           bool ok = ClickRelative(r, 242, 225);
           ok = Key(VK_HOME) && Key(VK_HOME, true) && Key('D') && Key('D', true) &&
               Key(VK_RETURN) && Key(VK_RETURN, true) && ok;

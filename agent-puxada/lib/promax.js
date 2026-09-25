@@ -10,6 +10,7 @@ let SESSION_ID = null;
 let DRIVER_PORT = 5555;
 let LAST_READINESS_ERROR = "";
 let LAST_NORMAL_EDGE_STATUS = "not_run";
+let NORMAL_EDGE_ATTEMPTED = false;
 // Promax renders its home and reports in nested frames; document.body on the
 // outer frameset does not contain the visible LogOff/Atalho controls.
 const PAGE_TEXT_SCRIPT = [
@@ -1832,7 +1833,10 @@ async function exportInNormalEdge(job, config, rootDir, validateCsv) {
   await waitUntil(async function () {
     try { existingEdge.act("csv"); return true; }
     catch (error) { if (/csv-not-found/.test(String(error.message))) return false; throw error; }
-  }, 60000, 1000);
+  }, 60000, 1000).catch(function (error) {
+    if (/Tempo esgotado/.test(String(error.message))) throw new Error("EDGE_CSV_NOT_FOUND_AFTER_FILTERS");
+    throw error;
+  });
   await sleep(1200);
   if (!newestCandidate(since)) {
     try { existingEdge.act("save"); } catch (error) {
@@ -1880,15 +1884,19 @@ async function exportInNormalEdge(job, config, rootDir, validateCsv) {
 }
 
 async function export020501(job, config, rootDir, validateCsv) {
-  try {
-    const file = await exportInNormalEdge(job, config, rootDir, validateCsv);
-    LAST_NORMAL_EDGE_STATUS = "success";
-    return file;
-  } catch (normalEdgeError) {
-    // Preserve the proven route while the normal Edge path is being verified
-    // on the corporate Windows desktop.
-    LAST_NORMAL_EDGE_STATUS = String(normalEdgeError && normalEdgeError.message || normalEdgeError).replace(/[^A-Za-z0-9_-]/g, "_").slice(0,100);
-    LAST_READINESS_ERROR = "Janela normal do Edge: " + LAST_NORMAL_EDGE_STATUS;
+  if (!NORMAL_EDGE_ATTEMPTED) {
+    NORMAL_EDGE_ATTEMPTED = true;
+    try {
+      const file = await exportInNormalEdge(job, config, rootDir, validateCsv);
+      LAST_NORMAL_EDGE_STATUS = "success";
+      NORMAL_EDGE_ATTEMPTED = false;
+      return file;
+    } catch (normalEdgeError) {
+      // Keep the reliable route for subsequent cycles until a new version is
+      // installed. This avoids taking focus every ten minutes after a failure.
+      LAST_NORMAL_EDGE_STATUS = String(normalEdgeError && normalEdgeError.message || normalEdgeError).replace(/[^A-Za-z0-9_-]/g, "_").slice(0,100);
+      LAST_READINESS_ERROR = "Janela normal do Edge: " + LAST_NORMAL_EDGE_STATUS;
+    }
   }
   await ensurePromaxHome(config, rootDir);
   const alreadyGenerated = await currentReportMatches(job);
