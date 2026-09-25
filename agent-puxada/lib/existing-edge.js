@@ -23,4 +23,10 @@ function probe() {
   }
 }
 
-module.exports = { probe };
+function act(stage, values = {}) {
+  if (!bridge || typeof bridge.act !== "function") throw new Error("EDGE_NATIVE_ACTION_UNAVAILABLE");
+  const result = bridge.act({ stage }, values);
+  if (result !== "ok") throw new Error("EDGE_NATIVE_" + String(result || "unknown"));
+}
+
+module.exports = { probe, act };

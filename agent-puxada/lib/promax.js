@@ -3,6 +3,7 @@ const os = require("os");
 const path = require("path");
 const childProcess = require("child_process");
 const net = require("net");
+const existingEdge = require("./existing-edge");
 
 let DRIVER = null;
 let SESSION_ID = null;
@@ -1802,7 +1803,89 @@ async function textReportDownload(rootDir, validateCsv) {
   return target;
 }
 
+async function exportInNormalEdge(job, config, rootDir, validateCsv) {
+  if (process.platform !== "win32" || !existingEdge.probe().homeWindows) {
+    throw new Error("EDGE_HOME_NOT_FOUND");
+  }
+  const since = Date.now();
+  const vals = {
+    dateFrom: formatDate(job.date_from),
+    dateTo: formatDate(job.date_to),
+    warehouse: String(config.promax && config.promax.warehouse || job.warehouse || "1"),
+    deposit: String(config.promax && config.promax.deposit || job.deposit || "1"),
+    operationFrom: String(config.promax && config.promax.operationFrom || job.operation_from || "251"),
+    operationTo: String(config.promax && config.promax.operationTo || job.operation_to || "314")
+  };
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(vals.dateFrom) ||
+      !/^\d{2}\/\d{2}\/\d{4}$/.test(vals.dateTo) ||
+      !/^\d{1,4}$/.test(vals.warehouse) || !/^\d{1,4}$/.test(vals.deposit) ||
+      vals.operationFrom !== "251" || vals.operationTo !== "314") {
+    throw new Error("EDGE_FILTERS_UNSUPPORTED");
+  }
+  existingEdge.act("shortcut");
+  await sleep(1800);
+  existingEdge.act("filters", vals);
+  await sleep(1600);
+  // The report window is brought to the front by the native action. Export
+  // through the visible CSV control, then accept Edge's legacy save prompt.
+  await waitUntil(async function () {
+    try { existingEdge.act("csv"); return true; }
+    catch (error) { if (/csv-not-found/.test(String(error.message))) return false; throw error; }
+  }, 60000, 1000);
+  await sleep(1200);
+  if (!newestCandidate(since)) {
+    try { existingEdge.act("save"); } catch (error) {
+      if (!/save-not-found/.test(String(error.message))) throw error;
+    }
+  }
+  let prior = null, stable = 0;
+  const candidate = await waitUntil(async function () {
+    const current = newestCandidate(since);
+    if (!current) return null;
+    stable = prior && prior.path === current.path && prior.size === current.size ? stable + 1 : 0;
+    prior = current;
+    return stable >= 2 ? current : null;
+  }, 25000, 700);
+  const source = candidate.path;
+  const sourceText = fs.readFileSync(source, "latin1");
+  if (/movimenta.{0,12}o do estoque/i.test(sourceText.slice(0,2000))) {
+    const header = sourceText.slice(0,3500).replace(/\s+/g, " ");
+    if (!header.includes(vals.dateFrom) || !header.includes(vals.dateTo) ||
+        !/251\s+a\s+314/i.test(header) || !/dep.sito/i.test(header) ||
+        !/entrega/i.test(header) ||
+        !/mov\s+manual\s*:\s*n/i.test(header)) throw new Error("EDGE_REPORT_FILTER_MISMATCH");
+  }
+  const targetDir = path.join(rootDir, "downloads");
+  fs.mkdirSync(targetDir, { recursive: true });
+  const target = path.join(targetDir, "020501_normal_edge_" + Date.now() + ".csv.inf");
+  fs.copyFileSync(source, target);
+  try {
+    if (typeof validateCsv === "function") validateCsv(target);
+    return target;
+  } catch (error) {
+    fs.rmSync(target, { force: true });
+    // Some Promax configurations save the legacy printable report with an
+    // .inf extension. Parse the visible rows into the normal CSV schema.
+    const body = fs.readFileSync(source, "latin1");
+    const rows = parsePlainReportRows(body);
+    if (!rows.length) throw error;
+    const q = value => '"' + String(value == null ? "" : value).replace(/"/g, '""') + '"';
+    const table = [["FORNEC","DOCUM","ITEM","DESCRICAO","UNIDADE","OPERACAO","QTDE","DATA"]];
+    for (const row of rows) table.push([row.supplier,row.invoice,row.sku,row.name,row.unit,row.operation,row.quantity,row.date]);
+    fs.writeFileSync(target, "\uFEFF" + table.map(row => row.map(q).join(";")).join("\r\n"), "utf8");
+    if (typeof validateCsv === "function") validateCsv(target);
+    return target;
+  }
+}
+
 async function export020501(job, config, rootDir, validateCsv) {
+  try {
+    return await exportInNormalEdge(job, config, rootDir, validateCsv);
+  } catch (normalEdgeError) {
+    // Preserve the proven route while the normal Edge path is being verified
+    // on the corporate Windows desktop.
+    LAST_READINESS_ERROR = "Janela normal do Edge: " + String(normalEdgeError && normalEdgeError.message || normalEdgeError).slice(0,180);
+  }
   await ensurePromaxHome(config, rootDir);
   const alreadyGenerated = await currentReportMatches(job);
   if (!alreadyGenerated) {
