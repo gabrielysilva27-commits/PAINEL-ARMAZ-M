@@ -125,7 +125,7 @@ jobs:
             $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/agent-puxada-v3.2.50/$asset"
             @{ target = $target; sha256 = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); url = $url }
           }
-          @{ version = '3.2.50'; commit_sha = $env:GITHUB_SHA; min_updater_version = '1'; capabilities = @('020501_SYNC','PROMAX_IE_MODE','PROMAX_DIRECT_CONTROL_PROBE','PROMAX_CALIBRATION_LOCK','PROMAX_CSV_AUTHENTICATED_CAPTURE','PROMAX_EXCEL_COM_CAPTURE','AUTO_UPDATE_V2','RELEASE_SHA256','UPDATE_ROLLBACK','FUTURE_JOBS_V1'); files = @($entries) } | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 'AgentePuxada-release-manifest-v3.2.50.json'
+          @{ version = '3.2.50'; commit_sha = $env:GITHUB_SHA; min_updater_version = '2'; capabilities = @('020501_SYNC','PROMAX_IE_MODE','PROMAX_DIRECT_CONTROL_PROBE','PROMAX_CALIBRATION_LOCK','PROMAX_CSV_AUTHENTICATED_CAPTURE','PROMAX_EXCEL_COM_CAPTURE','AUTO_UPDATE_V2','RELEASE_SHA256','UPDATE_ROLLBACK','FUTURE_JOBS_V1'); files = @($entries) } | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 'AgentePuxada-release-manifest-v3.2.50.json'
 
       - name: Publish installable release
         if: github.ref == 'refs/heads/main'
