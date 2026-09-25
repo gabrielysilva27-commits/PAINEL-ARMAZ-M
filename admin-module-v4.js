@@ -275,6 +275,30 @@
     finally{if(b)b.disabled=false}
   }
 
+  function ensurePasswordModal(){
+    let modal=$('passwordChangeModal');if(modal)return modal;
+    modal=document.createElement('div');modal.id='passwordChangeModal';modal.className='modal-backdrop hidden';
+    modal.innerHTML='<div class="modal-card" style="max-width:520px"><div class="modal-header"><div><p class="eyebrow">MINHA CONTA</p><h2>Trocar senha</h2></div><button class="close-button" id="passwordChangeClose" aria-label="Fechar">×</button></div><p class="modal-intro">Confirme sua senha atual e defina uma nova senha com pelo menos 8 caracteres.</p><div class="import-grid" style="grid-template-columns:1fr"><label>Senha atual<input id="passwordCurrent" type="password" autocomplete="current-password"></label><label>Nova senha<input id="passwordNew" type="password" autocomplete="new-password"></label><label>Confirmar nova senha<input id="passwordConfirm" type="password" autocomplete="new-password"></label></div><p class="form-error" id="passwordChangeError"></p><div class="modal-actions"><button class="outline-button" id="passwordChangeCancel">Cancelar</button><button class="primary-button" id="passwordChangeSave">Alterar senha</button></div></div>';
+    document.body.appendChild(modal);
+    const close=()=>modal.classList.add('hidden');
+    $('passwordChangeClose').onclick=close;$('passwordChangeCancel').onclick=close;$('passwordChangeSave').onclick=submitPasswordChange;
+    return modal;
+  }
+  function openPasswordChange(){
+    const modal=ensurePasswordModal();['passwordCurrent','passwordNew','passwordConfirm'].forEach(id=>$(id).value='');$('passwordChangeError').textContent='';modal.classList.remove('hidden');setTimeout(()=>$('passwordCurrent')?.focus(),0);
+  }
+  async function submitPasswordChange(){
+    const current=$('passwordCurrent').value,newPassword=$('passwordNew').value,confirm=$('passwordConfirm').value,err=$('passwordChangeError'),btn=$('passwordChangeSave');err.textContent='';
+    if(!current){err.textContent='Informe sua senha atual.';return}
+    if(newPassword.length<8){err.textContent='A nova senha precisa ter pelo menos 8 caracteres.';return}
+    if(newPassword!==confirm){err.textContent='A confirmação da nova senha não confere.';return}
+    btn.disabled=true;btn.textContent='Alterando...';
+    try{await api('change_password',{current_password:current,new_password:newPassword});modalClose();showToast('Senha alterada. Entre novamente.');setTimeout(()=>logoutLocal(),400)}
+    catch(e){err.textContent=e.message}
+    finally{btn.disabled=false;btn.textContent='Alterar senha'}
+    function modalClose(){$('passwordChangeModal').classList.add('hidden')}
+  }
+
   async function open(){
     if(window.state?.user?.role!=='admin')return showToast('Área restrita à administração.',true);
     ensureView();
@@ -291,8 +315,9 @@
   }
   function bind(){
     const btn=$('adminProfileButton');if(!btn)return setTimeout(bind,120);
-    btn.onclick=open;btn.title='Abrir Administração';btn.setAttribute('aria-label','Abrir Administração');
+    btn.onclick=()=>{if(window.state?.user?.role==='admin')open();else openPasswordChange();};
+    btn.title='Abrir perfil';btn.setAttribute('aria-label','Abrir perfil');
   }
   bind();
-  window.__adminModule={open};
+  window.__adminModule={open,openPasswordChange};
 })();
