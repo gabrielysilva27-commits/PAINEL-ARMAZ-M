@@ -11,6 +11,7 @@ let DRIVER_PORT = 5555;
 let LAST_READINESS_ERROR = "";
 let LAST_NORMAL_EDGE_STATUS = "not_run";
 let NORMAL_EDGE_ATTEMPTED = false;
+let MANAGED_SESSION_RETIRED = false;
 // Promax renders its home and reports in nested frames; document.body on the
 // outer frameset does not contain the visible LogOff/Atalho controls.
 const PAGE_TEXT_SCRIPT = [
@@ -120,73 +121,43 @@ function homeReady(value) {
   return content.includes("ATALHO") && (content.includes("LOGOFF") || content.includes("LOG OFF"));
 }
 
-async function isConfigured(config, rootDir) {
-  if (!fs.existsSync(path.resolve(rootDir||__dirname,'..','data','promax-native-session.json'))) {
-    LAST_READINESS_ERROR='Abra o Promax pelo agente para ativar o clique nativo do CSV e faça login na nova janela.';
-    return false;
-  }
-  if (calibrationLocked(rootDir)) {
-    LAST_READINESS_ERROR = "Abrindo uma nova sessão controlada do Promax.";
-    LAST_MISSING_SELECTORS = [];
-    return false;
-  }
-  loadDriverPort(rootDir || __dirname);
-  const base = String(config && config.promax && config.promax.url || "https://imperio.promaxcloud.com.br").trim();
-  if (!base || !edgePath() || !driverPath(rootDir || __dirname)) {
-    LAST_READINESS_ERROR = "Edge, IEDriver ou URL do Promax indisponível.";
-    return false;
-  }
+async function retireManagedSession(config, rootDir) {
+  if (MANAGED_SESSION_RETIRED) return;
+  MANAGED_SESSION_RETIRED = true;
   try {
-    const p = sessionFile(rootDir || __dirname);
-    const x = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf8")) : null;
-    let id = String(x && x.session_id || "");
-    if (!await driverReady()) {
-      LAST_READINESS_ERROR = "IEDriver não responde na porta " + DRIVER_PORT + ".";
-      return false;
-    }
-    try {
-      if (!id) throw new Error("Sessão local ausente.");
-      SESSION_ID = id;
-      await wd("GET", "/url", null, 2500);
-    } catch {
-      id = await findExistingSession(config, rootDir);
-      if (!id) {
-        LAST_READINESS_ERROR = "Sessão do IEDriver não encontrada; abra o Promax pelo agente.";
-        return false;
-      }
-      SESSION_ID = id;
-    }
-    const hs = await handles();
-    let loginDetected = false;
-    let usablePromaxWindow = false;
-    for (const handle of hs) {
+    loadDriverPort(rootDir || __dirname);
+    if (await driverReady()) {
+      let id = "";
       try {
-        await switchWindow(handle);
-        if (await findHomeInFrames()) {
-          LAST_READINESS_ERROR = "";
-          return true;
-        }
-        if (await findLoginInFrames()) {
-          loginDetected = true;
-          continue;
-        }
-        if (urlLooksPromax(await currentUrl(), config)) usablePromaxWindow = true;
+        const p = sessionFile(rootDir || __dirname);
+        const x = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf8")) : null;
+        id = String(x && x.session_id || "");
       } catch {}
+      if (!id) {
+        try { id = await findExistingSession(config, rootDir); } catch {}
+      }
+      if (id) {
+        try {
+          SESSION_ID = id;
+          await wd("DELETE", "", null, 10000);
+        } catch {}
+      }
     }
-    if (usablePromaxWindow) {
-      LAST_READINESS_ERROR = "";
-      return true;
-    }
-    if (loginDetected) {
-      LAST_READINESS_ERROR = "Sessão do Promax encontrada, mas somente a tela de login está disponível.";
-      return false;
-    }
-    LAST_READINESS_ERROR = "Sessão conectada, mas nenhuma janela navegável do Promax foi encontrada.";
-    return false;
-  } catch (error) {
-    LAST_READINESS_ERROR = "Falha ao consultar a sessão do Promax: " + (error && error.message || String(error));
-    return false;
+  } catch {}
+  SESSION_ID = null;
+  try { clearSavedSession(rootDir || __dirname); } catch {}
+  try { fs.rmSync(path.resolve(rootDir || __dirname, "..", "data", "promax-native-session.json"), { force: true }); } catch {}
+}
+
+async function isConfigured(config, rootDir) {
+  await retireManagedSession(config, rootDir);
+  const probe = existingEdge.probe();
+  if (process.platform === "win32" && probe.available && probe.homeWindows > 0) {
+    LAST_READINESS_ERROR = "";
+    return true;
   }
+  LAST_READINESS_ERROR = "PromaxWEB não foi localizado em uma janela normal do Microsoft Edge. Abra o Promax no Edge normal e mantenha a sessão logada.";
+  return false;
 }
 
 function readinessError() { return LAST_READINESS_ERROR; }
@@ -1884,120 +1855,32 @@ async function exportInNormalEdge(job, config, rootDir, validateCsv) {
 }
 
 async function export020501(job, config, rootDir, validateCsv) {
-  if (!NORMAL_EDGE_ATTEMPTED) {
-    NORMAL_EDGE_ATTEMPTED = true;
-    try {
-      const file = await exportInNormalEdge(job, config, rootDir, validateCsv);
-      LAST_NORMAL_EDGE_STATUS = "success";
-      NORMAL_EDGE_ATTEMPTED = false;
-      return file;
-    } catch (normalEdgeError) {
-      // Keep the reliable route for subsequent cycles until a new version is
-      // installed. This avoids taking focus every ten minutes after a failure.
-      LAST_NORMAL_EDGE_STATUS = String(normalEdgeError && normalEdgeError.message || normalEdgeError).replace(/[^A-Za-z0-9_-]/g, "_").slice(0,100);
-      LAST_READINESS_ERROR = "Janela normal do Edge: " + LAST_NORMAL_EDGE_STATUS;
-    }
-  }
-  await ensurePromaxHome(config, rootDir);
-  const alreadyGenerated = await currentReportMatches(job);
-  if (!alreadyGenerated) {
-    var report = String(config.promax && config.promax.report || "02.05.01").replace(/\D/g, "");
-    if (report === "020501") report = "02.05.01";
-    await openShortcut(report);
-
-    await waitUntil(async function () {
-      return fillReport(job, config);
-    }, 30000, 600);
-  }
-
-  let d;
   try {
-    d = await waitUntil(async function () {
-      return await csvDescriptor();
-    }, 60000, 700);
-  } catch {
-    throw new Error("CSV_CONTROL_TIMEOUT: o relatório foi gerado, mas o botão CSV não foi localizado na tela de resultados.");
-  }
-
-  let domFailure = "";
-  let textFailure = "";
-  try {
-    return await domReportDownload(rootDir, validateCsv);
-  } catch (domError) {
-    domFailure = domError && domError.message ? domError.message : String(domError);
-  }
-
-  try {
-    return await textReportDownload(rootDir, validateCsv);
-  } catch (textError) {
-    textFailure = textError && textError.message ? textError.message : String(textError);
-  }
-
-  if (d && d.href && !/^javascript:/i.test(d.href) && d.href !== "#") {
-    try {
-      const file = await directDownload(d.href, rootDir);
-      if (typeof validateCsv === "function") validateCsv(file);
-      return file;
-    } catch (error) {
-      try {
-        return await browserDownload(rootDir, validateCsv);
-      } catch (fallbackError) {
-        const directMessage = error && error.message ? error.message : String(error);
-        const fallbackMessage = fallbackError && fallbackError.message ? fallbackError.message : String(fallbackError);
-        throw new Error(fallbackMessage + " Leitura DOM: " + domFailure + ". Leitura texto: " + textFailure + ". Download direto também falhou: " + directMessage);
-      }
-    }
-  }
-  // O Promax legado usa onclick=Excel() e abre um fluxo de download nativo do IE/Edge.
-  // Antes de depender de janelas "Salvar como", capturamos a resposta do próprio
-  // formulário autenticado dentro da sessão do Promax. Isso elimina a dependência
-  // do diretório de Downloads e do diálogo nativo do Windows.
-  try {
-    return await captureAuthenticatedCsv(rootDir, validateCsv);
-  } catch (captureError) {
-    try {
-      return await browserDownload(rootDir, validateCsv);
-    } catch (fallbackError) {
-      const captureMessage = captureError && captureError.message ? captureError.message : String(captureError);
-      const fallbackMessage = fallbackError && fallbackError.message ? fallbackError.message : String(fallbackError);
-      throw new Error(fallbackMessage + " Leitura DOM: " + domFailure + ". Leitura texto: " + textFailure + ". Captura autenticada também falhou: " + captureMessage);
-    }
+    const file = await exportInNormalEdge(job, config, rootDir, validateCsv);
+    LAST_NORMAL_EDGE_STATUS = "success";
+    NORMAL_EDGE_ATTEMPTED = false;
+    return file;
+  } catch (normalEdgeError) {
+    const reason = String(normalEdgeError && normalEdgeError.message || normalEdgeError)
+      .replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 120);
+    LAST_NORMAL_EDGE_STATUS = reason;
+    LAST_READINESS_ERROR = "Janela normal do Edge: " + reason;
+    throw new Error("EDGE_NORMAL_ONLY: " + (normalEdgeError && normalEdgeError.message ? normalEdgeError.message : String(normalEdgeError)));
   }
 }
 
 async function openCalibrationBrowser(config, rootDir) {
+  await retireManagedSession(config, rootDir);
   const url = String(config.promax && config.promax.url || "https://imperio.promaxcloud.com.br").trim();
-  setCalibrationLock(rootDir, true);
+  const edge = edgePath();
+  if (!edge) throw new Error("Microsoft Edge não encontrado.");
   try {
-    await startDriver(rootDir);
-    const nativeMarker=path.resolve(rootDir,'..','data','promax-native-session.json');
-    if(!fs.existsSync(nativeMarker)) {
-      const old=await findExistingSession(config,rootDir);
-      if(old){SESSION_ID=old;await wd('DELETE','',null,15000);}
-      SESSION_ID=null;clearSavedSession(rootDir);
-    }
-    try {
-      await createSession(config, rootDir);
-    } catch (e) {
-      // Another agent process may have opened the single IEDriver session
-      // between discovery and creation. Reuse it rather than destroying the
-      // user's authenticated Promax window or reporting a false failure.
-      const existing = await findExistingSession(config, rootDir);
-      if (!existing) {
-        throw new Error("Falha ao criar sessão controlada do Edge/IE: " + (e && e.message ? e.message : String(e)));
-      }
-    }
-
-    try {
-      await navigate(url);
-    } catch (e) {
-      throw new Error("Sessão criada, mas não foi possível abrir o Promax: " + (e && e.message ? e.message : String(e)));
-    }
-
-    try { await wd("POST", "/window/maximize", {}, 8000); } catch {}
+    const child = childProcess.spawn(edge, [url], { detached: true, stdio: "ignore" });
+    child.unref();
+    LAST_READINESS_ERROR = "Faça login no Promax na janela normal do Edge e mantenha-a aberta.";
     return true;
-  } finally {
-    setCalibrationLock(rootDir, false);
+  } catch (e) {
+    throw new Error("Não foi possível abrir o Promax no Edge normal: " + (e && e.message ? e.message : String(e)));
   }
 }
 
