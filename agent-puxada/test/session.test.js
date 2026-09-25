@@ -17,6 +17,7 @@ async function run() {
   fs.writeFileSync(edge, "");
   fs.writeFileSync(path.join(base, "driver", "IEDriverServer.exe"), "");
   fs.writeFileSync(path.join(base, "data", "promax-session.json"), JSON.stringify({ session_id: "test-session", driver_pid: 999999999 }));
+  fs.writeFileSync(path.join(base, "data", "promax-native-session.json"), JSON.stringify({ enabled: true }));
   const original = process.env["ProgramFiles(x86)"];
   process.env["ProgramFiles(x86)"] = base;
   let page = "LogOff Atalho";
