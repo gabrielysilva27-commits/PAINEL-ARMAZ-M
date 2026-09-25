@@ -87,9 +87,10 @@ static bool IsPromax(IHTMLDocument2* document) {
          (url.size() == prefix.size() || url[prefix.size()] == L'/');
 }
 
-static void InspectEdgeWindow(HWND hwnd, bool* automated, int* tabItems) {
+static void InspectEdgeWindow(HWND hwnd, bool* automated, int* tabItems, bool* hasPromaxTab) {
   *automated = false;
   *tabItems = 0;
+  *hasPromaxTab = false;
   IUIAutomation* automation = nullptr;
   IUIAutomationElement* root = nullptr;
   IUIAutomationCondition* condition = nullptr;
@@ -105,11 +106,13 @@ static void InspectEdgeWindow(HWND hwnd, bool* automated, int* tabItems) {
       IUIAutomationElement* item = nullptr;
       if (FAILED(elements->GetElement(i, &item)) || !item) continue;
       CONTROLTYPEID type = 0;
-      if (SUCCEEDED(item->get_CurrentControlType(&type)) && type == UIA_TabItemControlTypeId) ++(*tabItems);
+      const bool isTab = SUCCEEDED(item->get_CurrentControlType(&type)) && type == UIA_TabItemControlTypeId;
+      if (isTab) ++(*tabItems);
       BSTR raw = nullptr;
       if (SUCCEEDED(item->get_CurrentName(&raw)) && raw) {
         std::wstring name(raw, SysStringLen(raw));
         std::transform(name.begin(), name.end(), name.begin(), towlower);
+        if (isTab && name.find(L"promaxweb") != std::wstring::npos) *hasPromaxTab = true;
         if (name.find(L"automated test") != std::wstring::npos ||
             (name.find(L"controlado") != std::wstring::npos && name.find(L"teste") != std::wstring::npos) ||
             name.find(L"webdriver") != std::wstring::npos) {
@@ -161,12 +164,16 @@ static BOOL CALLBACK VisitWindow(HWND hwnd, LPARAM state) {
   scan->edgeWindow = prior;
   const bool titleLooksPromax = title.find(L"promaxweb") != std::wstring::npos;
   bool automated = false;
+  bool hasPromaxTab = false;
   int tabItems = 0;
-  if (titleLooksPromax) InspectEdgeWindow(hwnd, &automated, &tabItems);
-  if (scan->surfaces.size() > before && titleLooksPromax && !automated &&
+  InspectEdgeWindow(hwnd, &automated, &tabItems, &hasPromaxTab);
+  if ((titleLooksPromax || hasPromaxTab) && !automated &&
       !(title.find(L"movimenta") != std::wstring::npos && title.find(L"estoque") != std::wstring::npos)) {
     ++scan->homeWindows;
-    ProbeAccessibility(hwnd, scan, L"H" + std::to_wstring(scan->homeWindows));
+    // Only map controls when Promax is the active tab; a background Promax tab
+    // is enough for readiness but its window currently exposes another page.
+    if (titleLooksPromax)
+      ProbeAccessibility(hwnd, scan, L"H" + std::to_wstring(scan->homeWindows));
   }
   return TRUE;
 }
@@ -229,16 +236,19 @@ static BOOL CALLBACK FindTarget(HWND hwnd, LPARAM raw) {
   GetWindowTextW(hwnd, title, 512);
   std::wstring name(title);
   std::transform(name.begin(), name.end(), name.begin(), towlower);
-  const bool match = target->home
-      ? name.find(L"promaxweb") != std::wstring::npos
-      : name.find(L"movimenta") != std::wstring::npos && name.find(L"estoque") != std::wstring::npos;
-  if (!match) return TRUE;
-  if (!target->home) { target->hwnd = hwnd; target->score = 1; return FALSE; }
+  const bool reportMatch =
+      name.find(L"movimenta") != std::wstring::npos && name.find(L"estoque") != std::wstring::npos;
+  if (!target->home) {
+    if (!reportMatch) return TRUE;
+    target->hwnd = hwnd; target->score = 1; return FALSE;
+  }
 
   bool automated = false;
+  bool hasPromaxTab = false;
   int tabItems = 0;
-  InspectEdgeWindow(hwnd, &automated, &tabItems);
-  if (automated) return TRUE;
+  InspectEdgeWindow(hwnd, &automated, &tabItems, &hasPromaxTab);
+  const bool match = name.find(L"promaxweb") != std::wstring::npos || hasPromaxTab;
+  if (!match || automated) return TRUE;
 
   const int score = 100 + tabItems;
   if (!target->hwnd || score > target->score) {
@@ -275,6 +285,50 @@ static bool ClickPoint(int x, int y) {
   events[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
   events[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
   return SendInput(2, events, sizeof(INPUT)) == 2;
+}
+static bool ActivatePromaxTab(HWND hwnd) {
+  wchar_t currentTitle[512] = {};
+  GetWindowTextW(hwnd, currentTitle, 512);
+  std::wstring active(currentTitle);
+  std::transform(active.begin(), active.end(), active.begin(), towlower);
+  if (active.find(L"promaxweb") != std::wstring::npos) return true;
+
+  IUIAutomation* automation = nullptr;
+  IUIAutomationElement* root = nullptr;
+  IUIAutomationCondition* condition = nullptr;
+  IUIAutomationElementArray* elements = nullptr;
+  bool activated = false;
+  if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+      IID_IUIAutomation, reinterpret_cast<void**>(&automation))) && automation &&
+      SUCCEEDED(automation->ElementFromHandle(hwnd, &root)) && root &&
+      SUCCEEDED(automation->CreateTrueCondition(&condition)) && condition &&
+      SUCCEEDED(root->FindAll(TreeScope_Descendants, condition, &elements)) && elements) {
+    int count = 0;
+    elements->get_Length(&count);
+    for (int i = 0; i < count && !activated; ++i) {
+      IUIAutomationElement* item = nullptr;
+      if (FAILED(elements->GetElement(i, &item)) || !item) continue;
+      CONTROLTYPEID type = 0;
+      BSTR raw = nullptr;
+      RECT rect = {};
+      if (SUCCEEDED(item->get_CurrentControlType(&type)) && type == UIA_TabItemControlTypeId &&
+          SUCCEEDED(item->get_CurrentName(&raw)) && raw &&
+          SUCCEEDED(item->get_CurrentBoundingRectangle(&rect)) &&
+          rect.right > rect.left && rect.bottom > rect.top) {
+        std::wstring name(raw, SysStringLen(raw));
+        std::transform(name.begin(), name.end(), name.begin(), towlower);
+        if (name.find(L"promaxweb") != std::wstring::npos)
+          activated = ClickPoint((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+      }
+      if (raw) SysFreeString(raw);
+      item->Release();
+    }
+  }
+  if (elements) elements->Release();
+  if (condition) condition->Release();
+  if (root) root->Release();
+  if (automation) automation->Release();
+  return activated;
 }
 static thread_local double coordinateScale = 1.0;
 static bool ClickRelative(const RECT& r, int x, int y) {
@@ -381,6 +435,13 @@ static napi_value Act(napi_env env, napi_callback_info info) {
         GetWindowRect(target.hwnd, &r);
         if (GetForegroundWindow() != target.hwnd) result = L"window-not-foreground";
         else if (stage == L"shortcut") {
+          if (!ActivatePromaxTab(target.hwnd)) {
+            result = L"promax-tab-not-found";
+            CoUninitialize();
+            return;
+          }
+          Sleep(900);
+          GetWindowRect(target.hwnd, &r);
           HDC screen = GetDC(nullptr);
           const COLORREF panel = screen ? GetPixel(screen,
               r.left + static_cast<int>(1150*coordinateScale),
