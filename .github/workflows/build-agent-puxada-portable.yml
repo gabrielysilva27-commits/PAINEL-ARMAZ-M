@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - "agent-puxada/**"
-      - ".github/workflows/build-agent-puxada-portable.yml"
   workflow_dispatch:
 
 permissions:
@@ -147,7 +146,7 @@ jobs:
           name: AgentePuxada-Portatil-Windows-x64-v3.2.49
           path: AgentePuxada-Portatil-Windows-x64-v3.2.49.zip
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
 
       - name: Upload update artifact
         uses: actions/upload-artifact@v4
@@ -155,4 +154,4 @@ jobs:
           name: AgentePuxada-Atualizacao-v3.2.49
           path: AgentePuxada-Atualizacao-v3.2.49.zip
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
