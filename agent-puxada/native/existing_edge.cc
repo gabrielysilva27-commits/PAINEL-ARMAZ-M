@@ -390,8 +390,11 @@ static bool ClickNamedButton(HWND hwnd, const std::wstring& expected, bool downl
           SUCCEEDED(item->get_CurrentBoundingRectangle(&r)) && r.right > r.left && r.bottom > r.top) {
         std::wstring name(raw, SysStringLen(raw));
         std::transform(name.begin(), name.end(), name.begin(), towlower);
+        // In Edge IE mode at 150% zoom the report toolbar is around y=220,
+        // below the old 200-pixel cutoff. Keep the search inside the upper
+        // report area so another CSV control cannot be clicked by accident.
         if (name.find(expected) != std::wstring::npos &&
-            (downloadBar ? r.top-wr.top > 500 : r.top-wr.top < 200))
+            (downloadBar ? r.top-wr.top > 500 : r.top-wr.top < 400))
           clicked = ClickPoint((r.left+r.right)/2, (r.top+r.bottom)/2);
       }
       if (raw) SysFreeString(raw);
