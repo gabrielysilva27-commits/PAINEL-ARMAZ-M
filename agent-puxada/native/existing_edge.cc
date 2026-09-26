@@ -228,7 +228,7 @@ static napi_value Probe(napi_env env, napi_callback_info info) {
   return out;
 }
 
-struct TargetWindow { HWND hwnd; bool home; int score; };
+struct TargetWindow { HWND hwnd; bool home; int score; std::vector<HWND> candidates; };
 static BOOL CALLBACK FindTarget(HWND hwnd, LPARAM raw) {
   TargetWindow* target = reinterpret_cast<TargetWindow*>(raw);
   if (!IsWindowVisible(hwnd) || ClassName(hwnd) != L"Chrome_WidgetWin_1") return TRUE;
@@ -249,6 +249,7 @@ static BOOL CALLBACK FindTarget(HWND hwnd, LPARAM raw) {
   InspectEdgeWindow(hwnd, &automated, &tabItems, &hasPromaxTab);
   const bool match = name.find(L"promaxweb") != std::wstring::npos || hasPromaxTab;
   if (!match || automated) return TRUE;
+  target->candidates.push_back(hwnd);
 
   // A second Edge window can also contain a Promax tab (including an old
   // automation window). Prefer the window the operator is actually using;
@@ -415,7 +416,7 @@ static napi_value Act(napi_env env, napi_callback_info info) {
       const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
       if (FAILED(initialized)) { result = L"com-unavailable"; return; }
       SetProcessDPIAware();
-      TargetWindow target = { nullptr, stage == L"shortcut", -1 };
+      TargetWindow target = { nullptr, stage == L"shortcut", -1, {} };
       EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&target));
       RECT r = {};
       if (!target.hwnd || !GetWindowRect(target.hwnd, &r)) result = L"window-not-found";
@@ -447,25 +448,51 @@ static napi_value Act(napi_env env, napi_callback_info info) {
           }
           Sleep(900);
           GetWindowRect(target.hwnd, &r);
-          HDC screen = GetDC(nullptr);
-          const COLORREF panel = screen ? GetPixel(screen,
-              r.left + static_cast<int>(1150*coordinateScale),
-              r.top + static_cast<int>(198*coordinateScale)) : CLR_INVALID;
-          const COLORREF input = screen ? GetPixel(screen,
-              r.left + static_cast<int>(1150*coordinateScale),
-              r.top + static_cast<int>(220*coordinateScale)) : CLR_INVALID;
-          const COLORREF area = screen ? GetPixel(screen,
-              r.left + static_cast<int>(1000*coordinateScale),
-              r.top + static_cast<int>(350*coordinateScale)) : CLR_INVALID;
-          if (screen) ReleaseDC(nullptr, screen);
-          if (panel == CLR_INVALID || GetRValue(panel) > 110 ||
-              GetGValue(panel) > 110 || GetBValue(panel) < 35) {
+          COLORREF panel = CLR_INVALID, input = CLR_INVALID, area = CLR_INVALID;
+          auto sampleHome = [&]() {
+            HDC screen = GetDC(nullptr);
+            panel = screen ? GetPixel(screen,
+                r.left + static_cast<int>(1150*coordinateScale),
+                r.top + static_cast<int>(198*coordinateScale)) : CLR_INVALID;
+            input = screen ? GetPixel(screen,
+                r.left + static_cast<int>(1150*coordinateScale),
+                r.top + static_cast<int>(220*coordinateScale)) : CLR_INVALID;
+            area = screen ? GetPixel(screen,
+                r.left + static_cast<int>(1000*coordinateScale),
+                r.top + static_cast<int>(350*coordinateScale)) : CLR_INVALID;
+            if (screen) ReleaseDC(nullptr, screen);
+            return panel != CLR_INVALID && GetRValue(panel) <= 110 &&
+                GetGValue(panel) <= 110 && GetBValue(panel) >= 35;
+          };
+          bool homeVisible = sampleHome();
+          // Several Edge windows may have a Promax tab. Only interact with a
+          // window whose visible page matches the actual shortcut panel.
+          for (HWND candidate : target.candidates) {
+            if (homeVisible || candidate == target.hwnd) continue;
+            RECT other = {};
+            if (IsIconic(candidate)) ShowWindow(candidate, SW_RESTORE);
+            if (!GetWindowRect(candidate, &other) ||
+                other.right-other.left < 1200*coordinateScale ||
+                other.bottom-other.top < 650*coordinateScale) continue;
+            SetForegroundWindow(candidate);
+            Sleep(300);
+            if (GetAncestor(GetForegroundWindow(), GA_ROOT) != candidate) continue;
+            if (!ActivatePromaxTab(candidate)) continue;
+            Sleep(900);
+            GetWindowRect(candidate, &r);
+            homeVisible = sampleHome();
+            if (homeVisible) target.hwnd = candidate;
+          }
+          if (!homeVisible) {
             result = L"home-panel-rgb-" + std::to_wstring(GetRValue(panel)) + L"-" +
                 std::to_wstring(GetGValue(panel)) + L"-" + std::to_wstring(GetBValue(panel)) +
                 L"-input-" + std::to_wstring(GetRValue(input)) + L"-" +
                 std::to_wstring(GetGValue(input)) + L"-" + std::to_wstring(GetBValue(input)) +
                 L"-area-" + std::to_wstring(GetRValue(area)) + L"-" +
-                std::to_wstring(GetGValue(area)) + L"-" + std::to_wstring(GetBValue(area));
+                std::to_wstring(GetGValue(area)) + L"-" + std::to_wstring(GetBValue(area)) +
+                L"-rect-" + std::to_wstring(r.left) + L"-" + std::to_wstring(r.top) +
+                L"-" + std::to_wstring(r.right-r.left) + L"-" + std::to_wstring(r.bottom-r.top) +
+                L"-candidates-" + std::to_wstring(target.candidates.size());
             CoUninitialize();
             return;
           }
