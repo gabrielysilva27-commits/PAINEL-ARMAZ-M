@@ -250,7 +250,12 @@ static BOOL CALLBACK FindTarget(HWND hwnd, LPARAM raw) {
   const bool match = name.find(L"promaxweb") != std::wstring::npos || hasPromaxTab;
   if (!match || automated) return TRUE;
 
-  const int score = 100 + tabItems;
+  // A second Edge window can also contain a Promax tab (including an old
+  // automation window). Prefer the window the operator is actually using;
+  // tab count alone selected the wrong background window on the ADM PC.
+  const int score = 100 + tabItems +
+      (name.find(L"promaxweb") != std::wstring::npos ? 100 : 0) +
+      (GetAncestor(GetForegroundWindow(), GA_ROOT) == hwnd ? 1000 : 0);
   if (!target->hwnd || score > target->score) {
     target->hwnd = hwnd;
     target->score = score;
