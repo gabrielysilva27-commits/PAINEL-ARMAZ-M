@@ -83,7 +83,7 @@ jobs:
           AGENTE PUXADA V3 · AUTO-UPDATE
           Extraia por cima da pasta atual do AgentePuxada.
           Nao apague a pasta data: o token protegido permanece no computador.
-          A V3.2.68 usa exclusivamente o Promax aberto na janela normal do Microsoft Edge e inclui atualizacao automatica com validacao SHA-256 e rollback.
+          A V3.2.69 usa exclusivamente o Promax aberto na janela normal do Microsoft Edge e inclui atualizacao automatica com validacao SHA-256 e rollback.
           "@
 
       - name: Verify package
@@ -117,8 +117,8 @@ jobs:
       - name: Create ZIPs
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist\AgentePuxada\*" -DestinationPath "AgentePuxada-Portatil-Windows-x64-v3.2.68.zip" -CompressionLevel Optimal
-          Compress-Archive -Path "dist\AtualizacaoAgentePuxadaV2\*" -DestinationPath "AgentePuxada-Atualizacao-v3.2.68.zip" -CompressionLevel Optimal
+          Compress-Archive -Path "dist\AgentePuxada\*" -DestinationPath "AgentePuxada-Portatil-Windows-x64-v3.2.69.zip" -CompressionLevel Optimal
+          Compress-Archive -Path "dist\AtualizacaoAgentePuxadaV2\*" -DestinationPath "AgentePuxada-Atualizacao-v3.2.69.zip" -CompressionLevel Optimal
 
       - name: Create SHA-256 release manifest
         shell: pwsh
@@ -132,10 +132,10 @@ jobs:
             $target = $file.FullName.Substring($root.Length + 1).Replace('\','/')
             $asset = $target.Replace('/','__')
             Copy-Item $file.FullName "dist/release-assets/$asset"
-            $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/agent-puxada-v3.2.68/$asset"
+            $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/agent-puxada-v3.2.69/$asset"
             @{ target = $target; sha256 = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); url = $url }
           }
-          @{ version = '3.2.68'; commit_sha = $env:GITHUB_SHA; min_updater_version = '2'; capabilities = @('020501_SYNC','PROMAX_NORMAL_EDGE_ONLY','PROMAX_DIRECT_CONTROL_PROBE','PROMAX_CALIBRATION_LOCK','PROMAX_CSV_AUTHENTICATED_CAPTURE','PROMAX_EXCEL_COM_CAPTURE','AUTO_UPDATE_V2','RELEASE_SHA256','UPDATE_ROLLBACK','FUTURE_JOBS_V1'); files = @($entries) } | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 'AgentePuxada-release-manifest-v3.2.68.json'
+          @{ version = '3.2.69'; commit_sha = $env:GITHUB_SHA; min_updater_version = '2'; capabilities = @('020501_SYNC','PROMAX_NORMAL_EDGE_ONLY','PROMAX_DIRECT_CONTROL_PROBE','PROMAX_CALIBRATION_LOCK','PROMAX_CSV_AUTHENTICATED_CAPTURE','PROMAX_EXCEL_COM_CAPTURE','AUTO_UPDATE_V2','RELEASE_SHA256','UPDATE_ROLLBACK','FUTURE_JOBS_V1'); files = @($entries) } | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 'AgentePuxada-release-manifest-v3.2.69.json'
 
       - name: Publish installable release
         if: github.ref == 'refs/heads/main'
@@ -143,25 +143,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "agent-puxada-v3.2.68"
+          $tag = "agent-puxada-v3.2.69"
           if (-not (gh release view $tag 2>$null)) {
-            gh release create $tag --target $env:GITHUB_SHA --title "Agente Puxada 3.2.68" --notes "Instalador portátil ADM/PUXADA com atualizador SHA-256 e rollback. Cada computador usa seu próprio token."
+            gh release create $tag --target $env:GITHUB_SHA --title "Agente Puxada 3.2.69" --notes "Instalador portátil ADM/PUXADA com atualizador SHA-256 e rollback. Cada computador usa seu próprio token."
           }
           $assets = @(Get-ChildItem 'dist/release-assets' -File | ForEach-Object { $_.FullName })
-          gh release upload $tag "AgentePuxada-Portatil-Windows-x64-v3.2.68.zip" "AgentePuxada-Atualizacao-v3.2.68.zip" "AgentePuxada-release-manifest-v3.2.68.json" @assets --clobber
+          gh release upload $tag "AgentePuxada-Portatil-Windows-x64-v3.2.69.zip" "AgentePuxada-Atualizacao-v3.2.69.zip" "AgentePuxada-release-manifest-v3.2.69.json" @assets --clobber
 
       - name: Upload full artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AgentePuxada-Portatil-Windows-x64-v3.2.68
-          path: AgentePuxada-Portatil-Windows-x64-v3.2.68.zip
+          name: AgentePuxada-Portatil-Windows-x64-v3.2.69
+          path: AgentePuxada-Portatil-Windows-x64-v3.2.69.zip
           if-no-files-found: error
           retention-days: 7
 
       - name: Upload update artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AgentePuxada-Atualizacao-v3.2.68
-          path: AgentePuxada-Atualizacao-v3.2.68.zip
+          name: AgentePuxada-Atualizacao-v3.2.69
+          path: AgentePuxada-Atualizacao-v3.2.69.zip
           if-no-files-found: error
           retention-days: 7
