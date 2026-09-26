@@ -292,6 +292,11 @@ static bool ClickPoint(int x, int y) {
   events[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
   return SendInput(2, events, sizeof(INPUT)) == 2;
 }
+static bool HasForeground(HWND hwnd) {
+  const HWND foreground = GetForegroundWindow();
+  return foreground == hwnd || GetAncestor(foreground, GA_ROOT) == hwnd ||
+      IsChild(hwnd, foreground);
+}
 static bool ActivatePromaxTab(HWND hwnd) {
   wchar_t currentTitle[512] = {};
   GetWindowTextW(hwnd, currentTitle, 512);
@@ -439,7 +444,9 @@ static napi_value Act(napi_env env, napi_callback_info info) {
         SetForegroundWindow(target.hwnd);
         Sleep(300);
         GetWindowRect(target.hwnd, &r);
-        if (GetForegroundWindow() != target.hwnd) result = L"window-not-foreground";
+        if (!HasForeground(target.hwnd))
+          result = L"window-not-foreground-" + stage + L"-target-" + ClassName(target.hwnd) +
+              L"-foreground-" + ClassName(GetForegroundWindow());
         else if (stage == L"shortcut") {
           if (!ActivatePromaxTab(target.hwnd)) {
             result = L"promax-tab-not-found";
