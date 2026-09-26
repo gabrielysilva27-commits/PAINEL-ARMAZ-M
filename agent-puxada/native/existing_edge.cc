@@ -364,7 +364,7 @@ static bool ReadString(napi_env env, napi_value object, const char* key, std::ws
   return true;
 }
 
-static bool ClickNamedButton(HWND hwnd, const std::wstring& expected, bool downloadBar) {
+static bool ClickNamedButton(HWND hwnd, const std::wstring& expected, bool downloadBar, bool anyPosition = false) {
   IUIAutomation* automation = nullptr;
   IUIAutomationElement* root = nullptr;
   IUIAutomationCondition* condition = nullptr;
@@ -394,7 +394,7 @@ static bool ClickNamedButton(HWND hwnd, const std::wstring& expected, bool downl
         // below the old 200-pixel cutoff. Keep the search inside the upper
         // report area so another CSV control cannot be clicked by accident.
         if (name.find(expected) != std::wstring::npos &&
-            (downloadBar ? r.top-wr.top > 500 : r.top-wr.top < 400))
+            (anyPosition || (downloadBar ? r.top-wr.top > 500 : r.top-wr.top < 400)))
           clicked = ClickPoint((r.left+r.right)/2, (r.top+r.bottom)/2);
       }
       if (raw) SysFreeString(raw);
@@ -424,6 +424,14 @@ static napi_value Act(napi_env env, napi_callback_info info) {
       const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
       if (FAILED(initialized)) { result = L"com-unavailable"; return; }
       SetProcessDPIAware();
+      // IE mode may show a modal Save As dialog or an Edge download flyout.
+      // Try its explicit Save button before returning to the report window.
+      if (stage == L"save" &&
+          ClickNamedButton(GetForegroundWindow(), L"salvar", false, true)) {
+        result = L"ok";
+        CoUninitialize();
+        return;
+      }
       TargetWindow target = { nullptr, stage == L"shortcut", -1, {} };
       EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&target));
       RECT r = {};
@@ -556,7 +564,8 @@ static napi_value Act(napi_env env, napi_callback_info info) {
         } else if (stage == L"csv") {
           result = ClickNamedButton(target.hwnd, L"csv", false) ? L"ok" : L"csv-not-found";
         } else if (stage == L"save") {
-          result = ClickNamedButton(target.hwnd, L"salvar", true) ? L"ok" : L"save-not-found";
+          result = ClickNamedButton(target.hwnd, L"salvar", true, true) ? L"ok" :
+              L"save-not-found-foreground-" + ClassName(GetForegroundWindow());
         } else result = L"unknown-stage";
       }
       CoUninitialize();

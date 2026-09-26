@@ -1809,9 +1809,11 @@ async function exportInNormalEdge(job, config, rootDir, validateCsv) {
     throw error;
   });
   await sleep(1200);
+  let saveStatus = "automatic";
   if (!newestCandidate(since)) {
-    try { existingEdge.act("save"); } catch (error) {
+    try { existingEdge.act("save"); saveStatus = "save-clicked"; } catch (error) {
       if (!/save-not-found/.test(String(error.message))) throw error;
+      saveStatus = String(error.message).slice(0, 160);
     }
   }
   let prior = null, stable = 0;
@@ -1821,7 +1823,11 @@ async function exportInNormalEdge(job, config, rootDir, validateCsv) {
     stable = prior && prior.path === current.path && prior.size === current.size ? stable + 1 : 0;
     prior = current;
     return stable >= 2 ? current : null;
-  }, 25000, 700);
+  }, 25000, 700).catch(error => {
+    if (/Tempo esgotado/.test(String(error.message)))
+      throw new Error("EDGE_DOWNLOAD_TIMEOUT: " + saveStatus);
+    throw error;
+  });
   const source = candidate.path;
   const sourceText = fs.readFileSync(source, "latin1");
   if (/movimenta.{0,12}o do estoque/i.test(sourceText.slice(0,2000))) {
