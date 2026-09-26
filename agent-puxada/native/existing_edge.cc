@@ -451,9 +451,15 @@ static napi_value Act(napi_env env, napi_callback_info info) {
           COLORREF panel = CLR_INVALID, input = CLR_INVALID, area = CLR_INVALID;
           auto sampleHome = [&]() {
             HDC screen = GetDC(nullptr);
-            panel = screen ? GetPixel(screen,
-                r.left + static_cast<int>(1150*coordinateScale),
-                r.top + static_cast<int>(198*coordinateScale)) : CLR_INVALID;
+            // Maximized Edge extends its window rect beyond the visible top
+            // border. Probe inside the blue Atalho band, not its top edge.
+            bool blueBand = false;
+            for (int y = 202; screen && y <= 210 && !blueBand; y += 4) {
+              panel = GetPixel(screen, r.left + static_cast<int>(1150*coordinateScale),
+                  r.top + static_cast<int>(y*coordinateScale));
+              blueBand = panel != CLR_INVALID && GetRValue(panel) <= 110 &&
+                  GetGValue(panel) <= 110 && GetBValue(panel) >= 35;
+            }
             input = screen ? GetPixel(screen,
                 r.left + static_cast<int>(1150*coordinateScale),
                 r.top + static_cast<int>(220*coordinateScale)) : CLR_INVALID;
@@ -461,8 +467,7 @@ static napi_value Act(napi_env env, napi_callback_info info) {
                 r.left + static_cast<int>(1000*coordinateScale),
                 r.top + static_cast<int>(350*coordinateScale)) : CLR_INVALID;
             if (screen) ReleaseDC(nullptr, screen);
-            return panel != CLR_INVALID && GetRValue(panel) <= 110 &&
-                GetGValue(panel) <= 110 && GetBValue(panel) >= 35;
+            return blueBand;
           };
           bool homeVisible = sampleHome();
           // Several Edge windows may have a Promax tab. Only interact with a
