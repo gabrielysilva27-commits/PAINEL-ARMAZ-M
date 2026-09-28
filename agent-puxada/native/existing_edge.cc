@@ -534,59 +534,143 @@ static bool FillReport(HWND hwnd, const std::wstring* values) {
   auto controls = Controls(hwnd);
   std::vector<VisibleControl> edits;
   std::vector<VisibleControl> combos;
-  const VisibleControl* delivery = nullptr;
-  const VisibleControl* visualize = nullptr;
+  std::vector<VisibleControl> visualizes;
+  const VisibleControl* deliveryAction = nullptr;
+  const VisibleControl* deliveryLabel = nullptr;
+  RECT window = {};
+  if (!GetWindowRect(hwnd, &window)) return false;
+
   for (const auto& c : controls) {
     if (c.type == UIA_EditControlTypeId) edits.push_back(c);
     if (c.type == UIA_ComboBoxControlTypeId) combos.push_back(c);
-    if (c.type == UIA_ButtonControlTypeId && Contains(c.name, L"visualizar")) visualize = &c;
-    if ((c.type == UIA_CheckBoxControlTypeId || c.type == UIA_RadioButtonControlTypeId) &&
-        Contains(c.name, L"entrega")) delivery = &c;
+    if (c.type == UIA_ButtonControlTypeId && Contains(c.name, L"visualizar"))
+      visualizes.push_back(c);
+    if (Contains(c.name, L"entrega")) {
+      if (c.type == UIA_CheckBoxControlTypeId || c.type == UIA_RadioButtonControlTypeId ||
+          c.type == UIA_ButtonControlTypeId)
+        deliveryAction = &c;
+      else if (!deliveryLabel)
+        deliveryLabel = &c;
+    }
   }
-  if (!visualize) return false;
+  if (visualizes.empty()) return false;
+
   std::sort(edits.begin(), edits.end(), [](const VisibleControl& a, const VisibleControl& b) {
     if (abs(a.rect.top-b.rect.top) > 8) return a.rect.top < b.rect.top;
     return a.rect.left < b.rect.left;
   });
-  // Identify the four two-field rows by their controls, regardless of the
-  // popup's position, dimensions, browser zoom, or display resolution.
-  std::vector<std::vector<VisibleControl>> pairs;
+
+  // The ADM and Puxada PCs expose the same 02.05.01 form structure even when
+  // Windows resolution differs. Identify the edit controls by their rows
+  // instead of using absolute screen coordinates.
+  std::vector<std::vector<VisibleControl>> grouped;
   for (const auto& e : edits) {
-    if (e.rect.top >= visualize->rect.top) continue;
-    if (pairs.empty() || abs(e.rect.top-pairs.back()[0].rect.top) > 8)
-      pairs.push_back({e});
-    else pairs.back().push_back(e);
+    if (grouped.empty() || abs(e.rect.top-grouped.back()[0].rect.top) > 8)
+      grouped.push_back({e});
+    else
+      grouped.back().push_back(e);
   }
+
   std::vector<std::vector<VisibleControl>> rows;
-  for (auto& pair : pairs) {
-    std::sort(pair.begin(), pair.end(), [](const VisibleControl& a, const VisibleControl& b) {
+  for (auto& group : grouped) {
+    std::sort(group.begin(), group.end(), [](const VisibleControl& a, const VisibleControl& b) {
       return a.rect.left < b.rect.left;
     });
-    if (pair.size() == 2 && pair[1].rect.left >= pair[0].rect.right-3) rows.push_back(pair);
+    if (group.size() == 2 && group[1].rect.left >= group[0].rect.right-3)
+      rows.push_back(group);
   }
-  if (rows.size() < 4) return false;
-  // The report contains date, warehouse, deposit and operation range rows.
-  // Reject ambiguous forms instead of typing into an unrelated window.
+
+  // Proven ADM order for 02.05.01:
+  // 0 date, 1 warehouse, 2 deposit, 3/4 auxiliary filters, 5 operation.
+  if (rows.size() < 6) return false;
   const auto& date = rows[0];
   const auto& warehouse = rows[1];
   const auto& deposit = rows[2];
-  const auto& operation = rows.back();
-  if (!delivery || combos.empty() || operation[0].rect.top <= deposit[0].rect.top) return false;
-  std::sort(combos.begin(), combos.end(), [](const VisibleControl& a, const VisibleControl& b) {
-    return a.rect.left < b.rect.left;
-  });
-  // The report type selector is left of the date range. Choose D (daily)
-  // using the selector itself rather than a point relative to the window.
-  if (combos[0].rect.left >= date[0].rect.left || !ClickControl(combos[0]) ||
+  const std::vector<VisibleControl>* operation = nullptr;
+
+  // Prefer the row nearest the visible "Operação" label when UI Automation
+  // exposes it; otherwise use the same stable row used on the ADM PC.
+  int bestOperationDistance = 1000000;
+  for (const auto& c : controls) {
+    if (!Contains(c.name, L"opera")) continue;
+    const int labelY = (c.rect.top+c.rect.bottom)/2;
+    for (size_t i = 3; i < rows.size(); ++i) {
+      const int rowY = (rows[i][0].rect.top+rows[i][0].rect.bottom)/2;
+      const int distance = abs(labelY-rowY);
+      if (distance < bestOperationDistance) {
+        bestOperationDistance = distance;
+        operation = &rows[i];
+      }
+    }
+  }
+  if (!operation || bestOperationDistance > 70) operation = &rows[5];
+  if ((*operation)[0].rect.top <= deposit[0].rect.top) return false;
+
+  // Select the report-type combo beside the date rows. Ignore Edge's own
+  // toolbar/address controls, which are also exposed as combo boxes.
+  const VisibleControl* reportType = nullptr;
+  int bestComboScore = 1000000;
+  const int dateY = (date[0].rect.top+warehouse[0].rect.bottom)/2;
+  for (const auto& c : combos) {
+    if (c.rect.right > date[0].rect.left + 24) continue;
+    if (c.rect.top < window.top + 140 || c.rect.bottom > deposit[0].rect.bottom + 50) continue;
+    const int score = abs(((c.rect.top+c.rect.bottom)/2)-dateY) +
+        abs(date[0].rect.left-c.rect.right)/4;
+    if (score < bestComboScore) {
+      bestComboScore = score;
+      reportType = &c;
+    }
+  }
+  if (!reportType) return false;
+
+  // Use the lowest visible "Visualizar" button belonging to the report form.
+  const VisibleControl* visualize = nullptr;
+  for (const auto& c : visualizes) {
+    if (c.rect.top <= (*operation)[0].rect.top) continue;
+    if (!visualize || c.rect.top > visualize->rect.top ||
+        (c.rect.top == visualize->rect.top && c.rect.left > visualize->rect.left))
+      visualize = &c;
+  }
+  if (!visualize) return false;
+
+  if (!ClickControl(*reportType) ||
       !Key(VK_HOME) || !Key(VK_HOME, true) || !Key('D') || !Key('D', true) ||
       !Key(VK_RETURN) || !Key(VK_RETURN, true)) return false;
-  if (!ClickControl(*delivery)) return false;
-  Sleep(300);
-  return FillControl(date[0], values[0]) && FillControl(date[1], values[1]) &&
-      FillControl(warehouse[0], values[2]) && FillControl(warehouse[1], values[2]) &&
-      FillControl(deposit[0], values[3]) && FillControl(deposit[1], values[3]) &&
-      FillControl(operation[0], values[4]) && FillControl(operation[1], values[5]) &&
-      ClickControl(*visualize);
+
+  Sleep(250);
+  if (!FillControl(date[0], values[0]) || !FillControl(date[1], values[1]) ||
+      !FillControl(warehouse[0], values[2]) || !FillControl(warehouse[1], values[2]) ||
+      !FillControl(deposit[0], values[3]) || !FillControl(deposit[1], values[3]) ||
+      !FillControl((*operation)[0], values[4]) || !FillControl((*operation)[1], values[5]))
+    return false;
+
+  bool deliverySelected = false;
+  if (deliveryAction) {
+    deliverySelected = ClickControl(*deliveryAction);
+  } else if (deliveryLabel && deliveryLabel->rect.top > (*operation)[0].rect.top &&
+      deliveryLabel->rect.top < visualize->rect.top) {
+    // HTML labels in IE mode toggle the matching radio/checkbox when clicked.
+    deliverySelected = ClickControl(*deliveryLabel);
+  }
+
+  if (!deliverySelected) {
+    // Some Promax IE-mode builds do not expose the "Entrega" option as a UIA
+    // control. Reuse the ADM interaction, but anchor it to controls already
+    // identified in the form, so monitor resolution and window position do not
+    // matter. Baseline ADM geometry: combo left 206, delivery (212,501),
+    // Visualizar center y 578 at 21px edit height.
+    const int fieldHeight = std::max<int>(12, static_cast<int>(date[0].rect.bottom-date[0].rect.top));
+    const int visualizeY = (visualize->rect.top+visualize->rect.bottom)/2;
+    const int deliveryX = reportType->rect.left + (6*fieldHeight)/21;
+    const int deliveryY = visualizeY - (77*fieldHeight)/21;
+    if (deliveryX <= window.left || deliveryX >= window.right ||
+        deliveryY <= (*operation)[0].rect.bottom || deliveryY >= visualize->rect.top ||
+        !ClickPoint(deliveryX, deliveryY))
+      return false;
+  }
+
+  Sleep(250);
+  return ClickControl(*visualize);
 }
 
 struct SaveWindows { HWND saveAs = nullptr; HWND download = nullptr; };
