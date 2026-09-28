@@ -11,8 +11,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.82";
-// 3.2.82: adiciona leitura automática do 02.05.02 em pasta de rede para atualizar o OOR.
+const VERSION = "3.2.83";
+// 3.2.83: valida a data real do 02.05.02 e evita confundir códigos/campos do CSV com data de referência.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
