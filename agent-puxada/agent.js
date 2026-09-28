@@ -10,8 +10,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.79";
-// 3.2.79: aguarda 30 segundos de inatividade e uma sessão Windows desbloqueada.
+const VERSION = "3.2.80";
+// 3.2.80: aguarda 30 segundos de inatividade e uma sessão Windows desbloqueada.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
