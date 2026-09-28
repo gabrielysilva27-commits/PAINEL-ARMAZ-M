@@ -73,7 +73,12 @@ async function sync(api, installRoot, log) {
   let imported = 0;
   for (const item of selected) {
     const parsed = item.parsed;
-    if (log) log("OOR automático: importando 02.05.02 de " + parsed.reference_date + " · " + item.file.name + " · coluna " + parsed.quantity_column + ".");
+    if (log) log("OOR automático: importando 02.05.02 de " + parsed.reference_date + " · " + item.file.name + " · coluna " + parsed.quantity_column + " · data via " + (parsed.reference_date_source || "desconhecida") + ".");
+    await api.oorScanState({
+      status: "scanning",
+      source_file: item.file.name,
+      reference_date: parsed.reference_date
+    }).catch(function(){});
     const response = await api.oorImport({
       reference_date: parsed.reference_date,
       source_file: item.file.name,
