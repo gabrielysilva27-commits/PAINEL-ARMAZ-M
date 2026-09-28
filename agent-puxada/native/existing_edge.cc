@@ -352,12 +352,12 @@ static bool ReplaceField(const RECT& r, int x, int y, const std::wstring& value)
   if (!Key(VK_CONTROL) || !Key('A') || !Key('A', true) || !Key(VK_CONTROL, true)) return false;
   return TypeText(value);
 }
-static bool ReadString(napi_env env, napi_value object, const char* key, std::wstring* out) {
+static bool ReadString(napi_env env, napi_value object, const char* key, std::wstring* out, size_t maxLength = 40) {
   napi_value value;
   size_t length = 0;
   if (napi_get_named_property(env, object, key, &value) != napi_ok ||
       napi_get_value_string_utf16(env, value, nullptr, 0, &length) != napi_ok ||
-      length > 40) return false;
+      length > maxLength) return false;
   std::vector<char16_t> chars(length + 1);
   if (napi_get_value_string_utf16(env, value, chars.data(), chars.size(), &length) != napi_ok) return false;
   out->assign(reinterpret_cast<const wchar_t*>(chars.data()), length);
@@ -408,12 +408,191 @@ static bool ClickNamedButton(HWND hwnd, const std::wstring& expected, bool downl
   return clicked;
 }
 
+struct SaveWindows { HWND saveAs = nullptr; HWND download = nullptr; };
+static BOOL CALLBACK FindSaveWindow(HWND hwnd, LPARAM raw) {
+  if (!IsWindowVisible(hwnd) || ClassName(hwnd) != L"#32770") return TRUE;
+  wchar_t title[256] = {};
+  GetWindowTextW(hwnd, title, 256);
+  std::wstring name(title);
+  std::transform(name.begin(), name.end(), name.begin(), towlower);
+  SaveWindows* windows = reinterpret_cast<SaveWindows*>(raw);
+  if (name.find(L"salvar como") == 0 || name.find(L"save as") == 0)
+    windows->saveAs = hwnd;
+  else if (name.find(L"download de arquivo") == 0 || name.find(L"file download") == 0)
+    windows->download = hwnd;
+  return TRUE;
+}
+
+// Invoke controls only inside a native Windows dialog. Never search the
+// Promax report or Edge page for a generic button named Save.
+static std::wstring InvokeDialogSave(HWND hwnd, const std::wstring& target, bool setFilename) {
+  IUIAutomation* automation = nullptr;
+  IUIAutomationElement* root = nullptr;
+  IUIAutomationCondition* condition = nullptr;
+  IUIAutomationElementArray* elements = nullptr;
+  IUIAutomationElement* filename = nullptr;
+  IUIAutomationElement* save = nullptr;
+  std::wstring result = L"dialog-controls-missing";
+  if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+      IID_IUIAutomation, reinterpret_cast<void**>(&automation))) && automation &&
+      SUCCEEDED(automation->ElementFromHandle(hwnd, &root)) && root &&
+      SUCCEEDED(automation->CreateTrueCondition(&condition)) && condition &&
+      SUCCEEDED(root->FindAll(TreeScope_Descendants, condition, &elements)) && elements) {
+    int count = 0;
+    elements->get_Length(&count);
+    for (int i = 0; i < count && i < 1000; ++i) {
+      IUIAutomationElement* item = nullptr;
+      if (FAILED(elements->GetElement(i, &item)) || !item) continue;
+      CONTROLTYPEID type = 0;
+      BSTR rawName = nullptr, rawId = nullptr;
+      item->get_CurrentControlType(&type);
+      item->get_CurrentName(&rawName);
+      item->get_CurrentAutomationId(&rawId);
+      std::wstring name = rawName ? std::wstring(rawName, SysStringLen(rawName)) : L"";
+      std::wstring id = rawId ? std::wstring(rawId, SysStringLen(rawId)) : L"";
+      std::transform(name.begin(), name.end(), name.begin(), towlower);
+      if (type == UIA_EditControlTypeId && !filename &&
+          (id == L"1001" || name.find(L"nome do arquivo") != std::wstring::npos ||
+           name.find(L"file name") != std::wstring::npos)) { filename = item; filename->AddRef(); }
+      if (type == UIA_ButtonControlTypeId && !save &&
+          (name == L"salvar" || name == L"&salvar" || name == L"save" || name == L"&save")) {
+        save = item; save->AddRef();
+      }
+      if (rawName) SysFreeString(rawName);
+      if (rawId) SysFreeString(rawId);
+      item->Release();
+    }
+    if (save && (!setFilename || filename)) {
+      bool filenameReady = !setFilename;
+      if (setFilename) {
+        IUIAutomationValuePattern* value = nullptr;
+        if (SUCCEEDED(filename->GetCurrentPatternAs(UIA_ValuePatternId,
+            IID_IUIAutomationValuePattern, reinterpret_cast<void**>(&value))) && value) {
+          BSTR path = SysAllocStringLen(target.c_str(), static_cast<UINT>(target.size()));
+          filenameReady = path && SUCCEEDED(value->SetValue(path));
+          if (path) SysFreeString(path);
+          value->Release();
+        }
+      }
+      if (!filenameReady) result = L"dialog-filename-unavailable";
+      else {
+        IUIAutomationInvokePattern* invoke = nullptr;
+        if (SUCCEEDED(save->GetCurrentPatternAs(UIA_InvokePatternId,
+            IID_IUIAutomationInvokePattern, reinterpret_cast<void**>(&invoke))) && invoke) {
+          result = SUCCEEDED(invoke->Invoke()) ? L"ok" : L"dialog-save-invoke-failed";
+          invoke->Release();
+        } else result = L"dialog-save-invoke-unavailable";
+      }
+    }
+  }
+  if (filename) filename->Release();
+  if (save) save->Release();
+  if (elements) elements->Release();
+  if (condition) condition->Release();
+  if (root) root->Release();
+  if (automation) automation->Release();
+  return result;
+}
+
+// IE mode displays its download confirmation as an Edge notification bar.
+// Require the Open, Save and Cancel controls together in the bottom portion
+// of the report window, so the report toolbar's Save can never match.
+static bool InvokeDownloadBarSave(HWND hwnd) {
+  IUIAutomation* automation = nullptr;
+  IUIAutomationElement* root = nullptr;
+  IUIAutomationCondition* condition = nullptr;
+  IUIAutomationElementArray* elements = nullptr;
+  IUIAutomationElement* save = nullptr;
+  bool open = false, cancel = false, confirmed = false;
+  RECT wr = {};
+  GetWindowRect(hwnd, &wr);
+  if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+      IID_IUIAutomation, reinterpret_cast<void**>(&automation))) && automation &&
+      SUCCEEDED(automation->ElementFromHandle(hwnd, &root)) && root &&
+      SUCCEEDED(automation->CreateTrueCondition(&condition)) && condition &&
+      SUCCEEDED(root->FindAll(TreeScope_Descendants, condition, &elements)) && elements) {
+    int count = 0;
+    elements->get_Length(&count);
+    for (int i = 0; i < count && i < 2000; ++i) {
+      IUIAutomationElement* item = nullptr;
+      if (FAILED(elements->GetElement(i, &item)) || !item) continue;
+      CONTROLTYPEID type = 0;
+      RECT r = {};
+      BSTR raw = nullptr;
+      item->get_CurrentControlType(&type);
+      item->get_CurrentBoundingRectangle(&r);
+      item->get_CurrentName(&raw);
+      if (type == UIA_ButtonControlTypeId && raw && r.right > r.left && r.bottom > r.top &&
+          r.top >= wr.top + (wr.bottom-wr.top)*7/10 && r.bottom <= wr.bottom + 8 &&
+          r.left >= wr.left && r.right <= wr.right + 8) {
+        std::wstring name(raw, SysStringLen(raw));
+        std::transform(name.begin(), name.end(), name.begin(), towlower);
+        name.erase(std::remove(name.begin(), name.end(), L'&'), name.end());
+        if (name == L"abrir" || name == L"open") open = true;
+        else if (name == L"cancelar" || name == L"cancel") cancel = true;
+        else if (name == L"salvar" || name == L"save") {
+          if (save) save->Release();
+          save = item;
+          save->AddRef();
+        }
+      }
+      if (raw) SysFreeString(raw);
+      item->Release();
+    }
+    if (open && cancel && save) {
+      IUIAutomationInvokePattern* invoke = nullptr;
+      if (SUCCEEDED(save->GetCurrentPatternAs(UIA_InvokePatternId,
+          IID_IUIAutomationInvokePattern, reinterpret_cast<void**>(&invoke))) && invoke) {
+        confirmed = SUCCEEDED(invoke->Invoke());
+        invoke->Release();
+      }
+      if (!confirmed) {
+        RECT r = {};
+        if (SUCCEEDED(save->get_CurrentBoundingRectangle(&r)))
+          confirmed = ClickPoint((r.left+r.right)/2, (r.top+r.bottom)/2);
+      }
+    }
+  }
+  if (save) save->Release();
+  if (elements) elements->Release();
+  if (condition) condition->Release();
+  if (root) root->Release();
+  if (automation) automation->Release();
+  return confirmed;
+}
+
+static std::wstring SaveDialog(const std::wstring& target) {
+  bool downloadAccepted = false;
+  for (int i = 0; i < 40; ++i) {
+    SaveWindows windows;
+    EnumWindows(FindSaveWindow, reinterpret_cast<LPARAM>(&windows));
+    if (windows.saveAs) {
+      const std::wstring result = InvokeDialogSave(windows.saveAs, target, true);
+      return result == L"ok" ? L"save-as-confirmed" : result;
+    }
+    TargetWindow report = { nullptr, false, -1, {} };
+    EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&report));
+    if (report.hwnd && InvokeDownloadBarSave(report.hwnd)) return L"download-bar-confirmed";
+    if (windows.download && !downloadAccepted) {
+      const std::wstring result = InvokeDialogSave(windows.download, target, false);
+      if (result != L"ok") return result;
+      downloadAccepted = true;
+    }
+    Sleep(250);
+  }
+  return downloadAccepted ? L"download-accepted-no-save-as" : L"save-dialog-not-found";
+}
+
 static napi_value Act(napi_env env, napi_callback_info info) {
   size_t argc = 2;
   napi_value argv[2] = {};
   napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
   std::wstring stage, values[6];
   bool valid = argc == 2 && ReadString(env, argv[0], "stage", &stage);
+  std::wstring savePath;
+  if (valid && stage == L"save")
+    valid = ReadString(env, argv[1], "path", &savePath, 1024) &&
+        !savePath.empty() && savePath.find(L"..") == std::wstring::npos;
   if (valid && stage == L"filters") {
     const char* names[] = {"dateFrom","dateTo","warehouse","deposit","operationFrom","operationTo"};
     for (int i = 0; i < 6; ++i) valid = ReadString(env, argv[1], names[i], &values[i]) && valid;
@@ -424,11 +603,8 @@ static napi_value Act(napi_env env, napi_callback_info info) {
       const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
       if (FAILED(initialized)) { result = L"com-unavailable"; return; }
       SetProcessDPIAware();
-      // IE mode may show a modal Save As dialog or an Edge download flyout.
-      // Try its explicit Save button before returning to the report window.
-      if (stage == L"save" &&
-          ClickNamedButton(GetForegroundWindow(), L"salvar", false, true)) {
-        result = L"ok";
+      if (stage == L"save") {
+        result = SaveDialog(savePath);
         CoUninitialize();
         return;
       }
@@ -563,9 +739,6 @@ static napi_value Act(napi_env env, napi_callback_info info) {
           result = ok && ClickRelative(r, 736, 578) ? L"ok" : L"input-failed";
         } else if (stage == L"csv") {
           result = ClickNamedButton(target.hwnd, L"csv", false) ? L"ok" : L"csv-not-found";
-        } else if (stage == L"save") {
-          result = ClickNamedButton(target.hwnd, L"salvar", true, true) ? L"ok" :
-              L"save-not-found-foreground-" + ClassName(GetForegroundWindow());
         } else result = L"unknown-stage";
       }
       CoUninitialize();

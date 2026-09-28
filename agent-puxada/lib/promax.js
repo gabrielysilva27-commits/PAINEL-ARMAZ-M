@@ -1813,8 +1813,7 @@ async function exportInNormalEdge(job, config, rootDir, validateCsv) {
   const dialogTarget = path.join(rootDir, "downloads", "020501_edge_" + Date.now() + ".csv.inf");
   fs.mkdirSync(path.dirname(dialogTarget), { recursive: true });
   if (!newestCandidate(since)) {
-    // Never send Save to the active Promax page. Confirm the dedicated
-    // Windows dialog and set an exact path before accepting it.
+    // Confirm the Edge download bar or a native Save As dialog.
     try { saveStatus = existingEdge.saveDialog(dialogTarget); }
     catch (error) {
       if (!/save-dialog-not-found/.test(String(error.message))) throw error;
