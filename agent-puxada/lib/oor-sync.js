@@ -29,7 +29,7 @@ function signature(file) {
 async function sync(api, installRoot, log) {
   const statusResponse = await api.oorStatus();
   const status = statusResponse.oor || {};
-  if (!status.enabled) return { enabled: false, imported: 0 };
+  if (!status.enabled && !status.diagnostic_requested) return { enabled: false, imported: 0 };
   if (!status.root_path) {
     await api.oorScanState({ status: "waiting", error: "Caminho do 02.05.02 ainda não configurado." }).catch(function(){});
     return { enabled: true, imported: 0, waiting: true };
@@ -44,6 +44,33 @@ async function sync(api, installRoot, log) {
     await api.oorScanState({ status: "waiting", error: message }).catch(function(){});
     if (log) log("OOR automático aguardando pasta: " + message);
     return { enabled: true, imported: 0, waiting: true };
+  }
+
+  if (status.diagnostic_requested) {
+    const latestFile = files.slice().sort(function (a, b) { return Number(b.mtime_ms || 0) - Number(a.mtime_ms || 0); })[0];
+    if (!latestFile) {
+      await api.oorScanState({ status: "waiting", error: "Nenhum arquivo LIBERAÇÃO CHEIO encontrado para diagnóstico." }).catch(function(){});
+      return { enabled: !!status.enabled, diagnostic: true, imported: 0 };
+    }
+    try {
+      const parsedDiag = parse020502(latestFile.path);
+      await api.oorDiagnostic({
+        source_file: latestFile.name,
+        reference_date: parsedDiag.reference_date,
+        diagnostic: Object.assign({
+          source_file: latestFile.name,
+          reference_date: parsedDiag.reference_date,
+          file_size: latestFile.size,
+          parsed_rows_sample: parsedDiag.rows.slice(0, 12)
+        }, parsedDiag.diagnostic || {})
+      });
+      if (log) log("OOR diagnóstico enviado: " + latestFile.name + " · coluna " + parsedDiag.quantity_column + ".");
+      if (!status.enabled) return { enabled: false, diagnostic: true, imported: 0 };
+    } catch (e) {
+      const message = e && e.message ? e.message : String(e);
+      await api.oorScanState({ status: "error", error: "Diagnóstico 02.05.02: " + message }).catch(function(){});
+      return { enabled: !!status.enabled, diagnostic: true, imported: 0, error: message };
+    }
   }
 
   const holder = loadState(installRoot);
