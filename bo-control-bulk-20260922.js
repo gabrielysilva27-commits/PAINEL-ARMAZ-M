@@ -190,17 +190,43 @@
     if(!content)return;
     const iframe=document.createElement('iframe');
     iframe.setAttribute('aria-hidden','true');
-    iframe.style.position='fixed';iframe.style.right='0';iframe.style.bottom='0';
-    iframe.style.width='1px';iframe.style.height='1px';iframe.style.border='0';iframe.style.opacity='0';
+    iframe.style.position='fixed';
+    iframe.style.left='-10000px';
+    iframe.style.top='0';
+    iframe.style.width=landscape?'297mm':'210mm';
+    iframe.style.height=landscape?'210mm':'297mm';
+    iframe.style.border='0';
+    iframe.style.background='#fff';
     document.body.appendChild(iframe);
-    const css='@page{size:A4 '+(landscape?'landscape':'portrait')+';margin:10mm}*{box-sizing:border-box}body{margin:0;color:#111;background:#fff;font-family:Arial,sans-serif}'+
-      '.bo-batch-page{page-break-after:always;break-after:page}.bo-batch-page:last-child{page-break-after:auto;break-after:auto}.bo-paper{background:#fff;border:2px solid #171717;color:#171717}.bo-paper-flow{text-align:center;padding:5px 8px;font-size:9px;font-weight:800;border-top:1px solid #111}.bo-paper-flow.source{background:#f3f3f3!important}.bo-paper-flow.official{background:#111!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-paper-title{text-align:center;font-weight:900;font-size:20px;padding:12px 10px 5px}.bo-paper-subtitle{text-align:center;font-weight:900;font-size:18px;padding-bottom:10px}.bo-paper-top{display:grid;grid-template-columns:1fr 1fr;border-top:2px solid #171717;border-bottom:2px solid #171717}.bo-paper-box{padding:10px 12px;min-height:88px}.bo-paper-box+.bo-paper-box{border-left:2px solid #171717}.bo-paper-line{display:flex;align-items:center;gap:7px;margin:4px 0;flex-wrap:wrap}.bo-paper-check{display:inline-flex;align-items:center;gap:5px;margin-right:8px}.bo-paper-check i{width:14px;height:14px;border:2px solid #111;display:inline-block}.bo-paper-check.active i{background:#111;box-shadow:inset 0 0 0 3px #fff}.bo-paper-band{background:#111!important;color:#fff!important;text-align:center;font-weight:800;padding:5px 8px;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-paper-local{display:grid;grid-template-columns:1fr 1fr}.bo-paper-local>div{padding:8px 12px}.bo-paper-local>div+div{border-left:1px solid #111}.bo-paper-local h4{text-align:center;margin:0 0 6px;font-size:10px}.bo-paper-table{width:100%;border-collapse:collapse}.bo-paper-table th,.bo-paper-table td{border:1px solid #111;padding:4px 5px;font-size:9px}.bo-paper-table th{background:#111!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-paper-comments{min-height:48px;border-top:1px solid #111;padding:7px 9px;font-size:10px}.bo-paper-meta-row{display:grid;grid-template-columns:110px 1fr;border-top:1px solid #111}.bo-paper-meta-row strong{background:#111!important;color:#fff!important;padding:5px 7px;font-size:9px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-paper-meta-row span{padding:5px 7px;font-size:10px}.bo-paper-reasons{display:grid;grid-template-columns:repeat(4,1fr);gap:3px 8px;padding:8px 12px;font-size:9px}.bo-paper-footer{display:grid;grid-template-columns:1fr 1fr;border-top:2px solid #111}.bo-paper-footer>div{padding:8px 12px;font-size:10px}.bo-paper-footer>div+div{border-left:1px solid #111}.bo-paper-note{border-top:1px solid #111;background:#efefef!important;padding:4px 7px;font-size:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact}'+
-      '.bo-informativo-sheet{background:#fff;border:1px solid #222;padding:14px}.bo-inf-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-end}.bo-inf-title{font-weight:800;font-size:14px;margin:9px 0}.bo-inf-section{background:#111!important;color:#fff!important;text-align:center;font-weight:800;padding:6px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-inf-table{width:100%;border-collapse:collapse}.bo-inf-table th,.bo-inf-table td{border:1px solid #333;padding:4px;font-size:9px}.bo-inf-table th{background:#111!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.bo-inf-legend{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:8px;font-size:9px}';
+    const screenCss=document.getElementById('boControlCssEmbedded')?.textContent||'';
+    const printCss='@page{size:A4 '+(landscape?'landscape':'portrait')+';margin:10mm}html,body{margin:0!important;padding:0!important;background:#fff!important;color:#111!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}.bo-batch-page{page-break-after:always;break-after:page}.bo-batch-page:last-child{page-break-after:auto;break-after:auto}.bo-paper{width:100%!important;max-width:none!important;margin:0!important}.bo-review-actions,.bo-dialog-tools,button{display:none!important}';
     const doc=iframe.contentDocument||iframe.contentWindow.document;
-    doc.open();doc.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'+css+'</style></head><body>'+content+'</body></html>');doc.close();
-    const cleanup=()=>setTimeout(()=>{if(iframe.parentNode)iframe.remove();},500);
-    try{iframe.contentWindow.onafterprint=cleanup;}catch(e){}
-    setTimeout(()=>{try{iframe.contentWindow.focus();iframe.contentWindow.print();}catch(e){showToast('Não foi possível abrir a impressão.',true);cleanup();}},250);
+    doc.open();
+    doc.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'+screenCss+'\n'+printCss+'</style></head><body>'+content+'</body></html>');
+    doc.close();
+    const cleanup=()=>setTimeout(()=>{if(iframe.parentNode)iframe.remove();},800);
+    const doPrint=()=>{
+      try{
+        const win=iframe.contentWindow;
+        if(!win)throw new Error('Janela de impressão indisponível.');
+        win.onafterprint=cleanup;
+        win.focus();
+        win.print();
+      }catch(e){
+        showToast('Não foi possível abrir a impressão.',true);
+        cleanup();
+      }
+    };
+    const ready=()=>{
+      try{
+        const fonts=doc.fonts&&doc.fonts.ready?doc.fonts.ready:Promise.resolve();
+        fonts.finally(()=>requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(doPrint,120))));
+      }catch(e){
+        setTimeout(doPrint,180);
+      }
+    };
+    if(doc.readyState==='complete')ready();
+    else iframe.onload=ready;
   }
 
   function printBo(){
