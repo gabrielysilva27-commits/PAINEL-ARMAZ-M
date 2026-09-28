@@ -11,8 +11,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.83";
-// 3.2.83: valida a data do 02.05.02 para ignorar códigos numéricos que pareçam datas.
+const VERSION = "3.2.84";
+// 3.2.84: OOR automático usa exclusivamente arquivos LIBERAÇÃO CHEIO do 02.05.02.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");

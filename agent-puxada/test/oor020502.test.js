@@ -2,7 +2,7 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { parse020502 } = require("../lib/csv020502");
+const { parse020502, discover020502Files } = require("../lib/csv020502");
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oor020502-"));
 const file = path.join(dir, "Estoque_22-09-2026.csv");
@@ -37,3 +37,13 @@ const parsed2 = parse020502(file2);
 assert.strictEqual(parsed2.reference_date, "2026-09-23");
 assert.strictEqual(parsed2.aggregated_rows, 2);
 console.log("020502 date guard OK");
+
+const root = path.join(dir, "liberacao");
+const csvDir = path.join(root, "2026", "09 - Setembro - 2026", "CSV");
+fs.mkdirSync(csvDir, { recursive: true });
+for (const name of ["28.09 - LIBERAÇÃO CHEIO.inf","28.09 - LIBERAÇÃO DEVOLUÇÃO.inf","28.09 - LIBERAÇÃO ANÁLISE (PNC).inf"]) {
+  fs.writeFileSync(path.join(csvDir, name), "ITEM;QTDE DISPONIVEL\n988;1\n", "utf8");
+}
+const found = discover020502Files(root).map(x => x.name);
+assert.deepStrictEqual(found, ["28.09 - LIBERAÇÃO CHEIO.inf"]);
+console.log("020502 CHEIO-only discovery OK");
