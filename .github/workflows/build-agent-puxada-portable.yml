@@ -2,10 +2,13 @@ name: Build Agente Puxada Portatil
 
 on:
   push:
-    branches: [main, agent-idle-gate]
+    branches: [main]
     paths:
       - "agent-puxada/**"
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "agent-puxada/**"
 
 permissions:
   contents: write
@@ -43,7 +46,7 @@ jobs:
         run: |
           npm exec --yes --package=node-gyp -- node-gyp rebuild --directory agent-puxada/native
           if (-not (Test-Path 'agent-puxada/native/build/Release/existing_edge.node')) { throw 'Sonda de janelas ausente.' }
-          node -e "const b=require('./agent-puxada/native/build/Release/existing_edge.node'); const r=b.probe(); if (!Number.isInteger(r.promaxSurfaces) || !Number.isInteger(b.idleMilliseconds()) || typeof b.desktopUnlocked() !== 'boolean') process.exit(1)"
+          node -e "const r=require('./agent-puxada/native/build/Release/existing_edge.node').probe(); if (!Number.isInteger(r.promaxSurfaces)) process.exit(1)"
 
       - name: Assemble portable package
         shell: pwsh
@@ -135,7 +138,7 @@ jobs:
             $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/agent-puxada-v3.2.79/$asset"
             @{ target = $target; sha256 = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); url = $url }
           }
-          @{ version = '3.2.79'; commit_sha = $env:GITHUB_SHA; min_updater_version = '2'; capabilities = @('020501_SYNC','PROMAX_NORMAL_EDGE_ONLY','PROMAX_DIRECT_CONTROL_PROBE','PROMAX_CALIBRATION_LOCK','PROMAX_CSV_AUTHENTICATED_CAPTURE','PROMAX_EXCEL_COM_CAPTURE','AUTO_UPDATE_V2','RELEASE_SHA256','UPDATE_ROLLBACK','FUTURE_JOBS_V1','USER_IDLE_GATE'); files = @($entries) } | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 'AgentePuxada-release-manifest-v3.2.79.json'
+          @{ version = '3.2.79'; commit_sha = $env:GITHUB_SHA; min_updater_version = '2'; capabilities = @('020501_SYNC','PROMAX_NORMAL_EDGE_ONLY','PROMAX_DIRECT_CONTROL_PROBE','PROMAX_CALIBRATION_LOCK','PROMAX_CSV_AUTHENTICATED_CAPTURE','PROMAX_EXCEL_COM_CAPTURE','AUTO_UPDATE_V2','RELEASE_SHA256','UPDATE_ROLLBACK','FUTURE_JOBS_V1'); files = @($entries) } | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 'AgentePuxada-release-manifest-v3.2.79.json'
 
       - name: Publish installable release
         if: github.ref == 'refs/heads/main'
