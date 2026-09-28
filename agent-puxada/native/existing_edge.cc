@@ -804,6 +804,33 @@ static napi_value Act(napi_env env, napi_callback_info info) {
   return out;
 }
 
+static napi_value IdleMilliseconds(napi_env env, napi_callback_info info) {
+  LASTINPUTINFO last = { sizeof(LASTINPUTINFO), 0 };
+  napi_value value;
+  if (!GetLastInputInfo(&last)) {
+    napi_get_null(env, &value);
+  } else {
+    const DWORD elapsed = GetTickCount() - last.dwTime;
+    napi_create_double(env, static_cast<double>(elapsed), &value);
+  }
+  return value;
+}
+
+static napi_value DesktopUnlocked(napi_env env, napi_callback_info info) {
+  HDESK desktop = OpenInputDesktop(0, FALSE, DESKTOP_READOBJECTS);
+  bool unlocked = false;
+  if (desktop) {
+    wchar_t name[128] = {};
+    DWORD required = 0;
+    unlocked = GetUserObjectInformationW(desktop, UOI_NAME, name, sizeof(name), &required) &&
+        _wcsicmp(name, L"Default") == 0;
+    CloseDesktop(desktop);
+  }
+  napi_value value;
+  napi_get_boolean(env, unlocked, &value);
+  return value;
+}
+
 static napi_value Init(napi_env env, napi_value exports) {
   napi_value probe;
   napi_create_function(env, "probe", NAPI_AUTO_LENGTH, Probe, nullptr, &probe);
@@ -811,6 +838,12 @@ static napi_value Init(napi_env env, napi_value exports) {
   napi_value act;
   napi_create_function(env, "act", NAPI_AUTO_LENGTH, Act, nullptr, &act);
   napi_set_named_property(env, exports, "act", act);
+  napi_value idle;
+  napi_create_function(env, "idleMilliseconds", NAPI_AUTO_LENGTH, IdleMilliseconds, nullptr, &idle);
+  napi_set_named_property(env, exports, "idleMilliseconds", idle);
+  napi_value unlocked;
+  napi_create_function(env, "desktopUnlocked", NAPI_AUTO_LENGTH, DesktopUnlocked, nullptr, &unlocked);
+  napi_set_named_property(env, exports, "desktopUnlocked", unlocked);
   return exports;
 }
 NAPI_MODULE(NODE_GYP_MODULE_NAME, Init)
