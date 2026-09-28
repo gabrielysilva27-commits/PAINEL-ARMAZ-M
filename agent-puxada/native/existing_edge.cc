@@ -706,15 +706,15 @@ static napi_value Act(napi_env env, napi_callback_info info) {
       EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&target));
       RECT r = {};
       if (!target.hwnd || !GetWindowRect(target.hwnd, &r)) result = L"window-not-found";
-      else if (!((GetSystemMetrics(SM_CXSCREEN) == 1280 && GetSystemMetrics(SM_CYSCREEN) == 720) ||
+      else if (stage != L"shortcut" && !((GetSystemMetrics(SM_CXSCREEN) == 1280 && GetSystemMetrics(SM_CYSCREEN) == 720) ||
                  (GetSystemMetrics(SM_CXSCREEN) == 1920 && GetSystemMetrics(SM_CYSCREEN) == 1080)))
         result = L"unsupported-screen-geometry";
       else {
         coordinateScale = GetSystemMetrics(SM_CXSCREEN) / 1280.0;
         const int width = r.right-r.left, height = r.bottom-r.top;
-        if (target.home ? (width < 1200*coordinateScale || height < 650*coordinateScale) :
+        if (stage != L"shortcut" && (target.home ? (width < 1200*coordinateScale || height < 650*coordinateScale) :
             (width < 790*coordinateScale || width > 820*coordinateScale ||
-             height < 595*coordinateScale || height > 630*coordinateScale)) {
+             height < 595*coordinateScale || height > 630*coordinateScale))) {
           result = L"unsupported-window-geometry";
           CoUninitialize();
           return;
@@ -748,8 +748,7 @@ static napi_value Act(napi_env env, napi_callback_info info) {
             RECT other = {};
             if (IsIconic(candidate)) ShowWindow(candidate, SW_RESTORE);
             if (!GetWindowRect(candidate, &other) ||
-                other.right-other.left < 1200*coordinateScale ||
-                other.bottom-other.top < 650*coordinateScale) continue;
+                other.right <= other.left || other.bottom <= other.top) continue;
             SetForegroundWindow(candidate);
             Sleep(300);
             if (GetAncestor(GetForegroundWindow(), GA_ROOT) != candidate) continue;
