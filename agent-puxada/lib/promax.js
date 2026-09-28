@@ -1810,15 +1810,22 @@ async function exportInNormalEdge(job, config, rootDir, validateCsv) {
   });
   await sleep(1200);
   let saveStatus = "automatic";
+  const dialogTarget = path.join(rootDir, "downloads", "020501_edge_" + Date.now() + ".csv.inf");
+  fs.mkdirSync(path.dirname(dialogTarget), { recursive: true });
   if (!newestCandidate(since)) {
-    try { existingEdge.act("save"); saveStatus = "save-clicked"; } catch (error) {
-      if (!/save-not-found/.test(String(error.message))) throw error;
-      saveStatus = String(error.message).slice(0, 160);
+    // Never send Save to the active Promax page. Confirm the dedicated
+    // Windows dialog and set an exact path before accepting it.
+    try { saveStatus = existingEdge.saveDialog(dialogTarget); }
+    catch (error) {
+      if (!/save-dialog-not-found/.test(String(error.message))) throw error;
+      saveStatus = "sem diálogo Salvar como; aguardando download automático";
     }
   }
   let prior = null, stable = 0;
   const candidate = await waitUntil(async function () {
-    const current = newestCandidate(since);
+    const current = fs.existsSync(dialogTarget)
+      ? { path: dialogTarget, size: fs.statSync(dialogTarget).size, mtimeMs: fs.statSync(dialogTarget).mtimeMs }
+      : newestCandidate(since);
     if (!current) return null;
     stable = prior && prior.path === current.path && prior.size === current.size ? stable + 1 : 0;
     prior = current;

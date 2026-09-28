@@ -10,8 +10,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.72";
-// 3.2.72: execução exclusiva sobre o Promax já aberto no Edge normal.
+const VERSION = "3.2.73";
+// 3.2.73: execução exclusiva sobre o Promax já aberto no Edge normal.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -213,3 +213,4 @@ main().catch(function (err) {
   log(err && err.stack ? err.stack : String(err), true);
   process.exitCode = 1;
 });
+
