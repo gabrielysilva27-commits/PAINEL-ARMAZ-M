@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <cstdlib>
 #include <cwctype>
 #include <thread>
 
@@ -341,6 +342,76 @@ static bool ActivatePromaxTab(HWND hwnd) {
   if (automation) automation->Release();
   return activated;
 }
+
+struct ShortcutControls { RECT field = {}, ok = {}; bool found = false; };
+// The Promax shortcut moves with display scaling and browser zoom. Locate the
+// edit box and its adjacent OK button through UI Automation instead of pixels.
+static ShortcutControls FindShortcutControls(HWND hwnd) {
+  ShortcutControls result;
+  RECT window = {};
+  if (!GetWindowRect(hwnd, &window)) return result;
+  const int width = window.right - window.left;
+  const int height = window.bottom - window.top;
+  IUIAutomation* automation = nullptr;
+  IUIAutomationElement* root = nullptr;
+  IUIAutomationCondition* condition = nullptr;
+  IUIAutomationElementArray* elements = nullptr;
+  std::vector<RECT> fields, buttons;
+  if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+      IID_IUIAutomation, reinterpret_cast<void**>(&automation))) && automation &&
+      SUCCEEDED(automation->ElementFromHandle(hwnd, &root)) && root &&
+      SUCCEEDED(automation->CreateTrueCondition(&condition)) && condition &&
+      SUCCEEDED(root->FindAll(TreeScope_Descendants, condition, &elements)) && elements) {
+    int count = 0;
+    elements->get_Length(&count);
+    for (int i = 0; i < count && i < 2000; ++i) {
+      IUIAutomationElement* item = nullptr;
+      if (FAILED(elements->GetElement(i, &item)) || !item) continue;
+      CONTROLTYPEID type = 0;
+      RECT r = {};
+      if (SUCCEEDED(item->get_CurrentControlType(&type)) &&
+          SUCCEEDED(item->get_CurrentBoundingRectangle(&r)) &&
+          r.right > r.left && r.bottom > r.top &&
+          r.left > window.left + width * 3 / 4 &&
+          r.top > window.top + 100 && r.top < window.top + height / 3 &&
+          r.right <= window.right + 8 && r.bottom <= window.bottom) {
+        if (type == UIA_EditControlTypeId && r.right-r.left >= 65 &&
+            r.right-r.left <= 260 && r.bottom-r.top >= 15 && r.bottom-r.top <= 50)
+          fields.push_back(r);
+        else if (type == UIA_ButtonControlTypeId && r.right-r.left >= 16 &&
+            r.right-r.left <= 65 && r.bottom-r.top >= 15 && r.bottom-r.top <= 50)
+          buttons.push_back(r);
+      }
+      item->Release();
+    }
+  }
+  if (elements) elements->Release();
+  if (condition) condition->Release();
+  if (root) root->Release();
+  if (automation) automation->Release();
+  int matches = 0;
+  for (const RECT& field : fields) for (const RECT& button : buttons) {
+    const int fieldMid = (field.top + field.bottom) / 2;
+    const int buttonMid = (button.top + button.bottom) / 2;
+    if (button.left >= field.right && button.left - field.right <= 24 &&
+        std::abs(buttonMid - fieldMid) <= 8) {
+      result.field = field;
+      result.ok = button;
+      ++matches;
+    }
+  }
+  result.found = matches == 1;
+  return result;
+}
+
+static bool EnterShortcut(const ShortcutControls& controls) {
+  const RECT& field = controls.field;
+  const RECT& button = controls.ok;
+  return ClickPoint((field.left+field.right)/2, (field.top+field.bottom)/2) &&
+      Key(VK_CONTROL) && Key('A') && Key('A', true) && Key(VK_CONTROL, true) &&
+      TypeText(L"02.05.01") &&
+      ClickPoint((button.left+button.right)/2, (button.top+button.bottom)/2);
+}
 static thread_local double coordinateScale = 1.0;
 static bool ClickRelative(const RECT& r, int x, int y) {
   return ClickPoint(r.left + static_cast<int>(x * coordinateScale + 0.5),
@@ -665,32 +736,15 @@ static napi_value Act(napi_env env, napi_callback_info info) {
           }
           Sleep(900);
           GetWindowRect(target.hwnd, &r);
-          COLORREF panel = CLR_INVALID, input = CLR_INVALID, area = CLR_INVALID;
-          auto sampleHome = [&]() {
-            HDC screen = GetDC(nullptr);
-            // Maximized Edge extends its window rect beyond the visible top
-            // border. Probe inside the blue Atalho band, not its top edge.
-            bool blueBand = false;
-            for (int y = 202; screen && y <= 210 && !blueBand; y += 4) {
-              panel = GetPixel(screen, r.left + static_cast<int>(1150*coordinateScale),
-                  r.top + static_cast<int>(y*coordinateScale));
-              blueBand = panel != CLR_INVALID && GetRValue(panel) <= 110 &&
-                  GetGValue(panel) <= 110 && GetBValue(panel) >= 35;
-            }
-            input = screen ? GetPixel(screen,
-                r.left + static_cast<int>(1150*coordinateScale),
-                r.top + static_cast<int>(220*coordinateScale)) : CLR_INVALID;
-            area = screen ? GetPixel(screen,
-                r.left + static_cast<int>(1000*coordinateScale),
-                r.top + static_cast<int>(350*coordinateScale)) : CLR_INVALID;
-            if (screen) ReleaseDC(nullptr, screen);
-            return blueBand;
-          };
-          bool homeVisible = sampleHome();
+          ShortcutControls shortcut;
+          for (int i = 0; i < 12 && !shortcut.found; ++i) {
+            shortcut = FindShortcutControls(target.hwnd);
+            if (!shortcut.found) Sleep(400);
+          }
           // Several Edge windows may have a Promax tab. Only interact with a
-          // window whose visible page matches the actual shortcut panel.
+          // window whose visible page exposes the actual shortcut controls.
           for (HWND candidate : target.candidates) {
-            if (homeVisible || candidate == target.hwnd) continue;
+            if (shortcut.found || candidate == target.hwnd) continue;
             RECT other = {};
             if (IsIconic(candidate)) ShowWindow(candidate, SW_RESTORE);
             if (!GetWindowRect(candidate, &other) ||
@@ -702,25 +756,15 @@ static napi_value Act(napi_env env, napi_callback_info info) {
             if (!ActivatePromaxTab(candidate)) continue;
             Sleep(900);
             GetWindowRect(candidate, &r);
-            homeVisible = sampleHome();
-            if (homeVisible) target.hwnd = candidate;
+            shortcut = FindShortcutControls(candidate);
+            if (shortcut.found) target.hwnd = candidate;
           }
-          if (!homeVisible) {
-            result = L"home-panel-rgb-" + std::to_wstring(GetRValue(panel)) + L"-" +
-                std::to_wstring(GetGValue(panel)) + L"-" + std::to_wstring(GetBValue(panel)) +
-                L"-input-" + std::to_wstring(GetRValue(input)) + L"-" +
-                std::to_wstring(GetGValue(input)) + L"-" + std::to_wstring(GetBValue(input)) +
-                L"-area-" + std::to_wstring(GetRValue(area)) + L"-" +
-                std::to_wstring(GetGValue(area)) + L"-" + std::to_wstring(GetBValue(area)) +
-                L"-rect-" + std::to_wstring(r.left) + L"-" + std::to_wstring(r.top) +
-                L"-" + std::to_wstring(r.right-r.left) + L"-" + std::to_wstring(r.bottom-r.top) +
-                L"-candidates-" + std::to_wstring(target.candidates.size());
+          if (!shortcut.found) {
+            result = L"shortcut-controls-not-found-or-ambiguous";
             CoUninitialize();
             return;
           }
-          if (!ReplaceField(r, 1155, 220, L"02.05.01") ||
-              !Key(VK_TAB) || !Key(VK_TAB, true) ||
-              !ClickRelative(r, 1233, 220)) result = L"input-failed";
+          if (!EnterShortcut(shortcut)) result = L"shortcut-input-failed";
           else {
             result = L"shortcut-no-report-window";
             for (int i = 0; i < 20; ++i) {
