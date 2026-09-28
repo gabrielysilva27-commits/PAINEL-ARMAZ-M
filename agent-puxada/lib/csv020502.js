@@ -71,16 +71,32 @@ function normalizeSku(value) {
   return digits || "";
 }
 
+function validReferenceDate(year, month, day) {
+  const y = Number(year), m = Number(month), d = Number(day);
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return null;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+
+  // A raiz operacional é histórica/corrente. Rejeite números de material,
+  // lotes ou outros campos que por acaso tenham formato de data futura.
+  const tomorrow = new Date();
+  tomorrow.setHours(0, 0, 0, 0);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const iso = String(y).padStart(4, "0") + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+  if (y < 2020 || dt.getTime() > tomorrow.getTime() + 12 * 60 * 60 * 1000) return null;
+  return iso;
+}
+
 function parseDate(value) {
   const s = String(value == null ? "" : value).trim();
   let m = s.match(/\b(\d{2})[\/.\-](\d{2})[\/.\-](\d{4})\b/);
-  if (m) return m[3] + "-" + m[2] + "-" + m[1];
+  if (m) return validReferenceDate(m[3], m[2], m[1]);
   m = s.match(/\b(\d{4})[\/.\-](\d{2})[\/.\-](\d{2})\b/);
-  if (m) return m[1] + "-" + m[2] + "-" + m[3];
+  if (m) return validReferenceDate(m[1], m[2], m[3]);
   m = s.match(/\b(\d{2})(\d{2})(\d{4})\b/);
-  if (m) return m[3] + "-" + m[2] + "-" + m[1];
+  if (m) return validReferenceDate(m[3], m[2], m[1]);
   m = s.match(/\b(\d{4})(\d{2})(\d{2})\b/);
-  if (m) return m[1] + "-" + m[2] + "-" + m[3];
+  if (m) return validReferenceDate(m[1], m[2], m[3]);
   return null;
 }
 
@@ -166,29 +182,38 @@ function findHeaderRow(data) {
 }
 
 function inferReferenceDate(filePath, data, headerRow, dateColumn) {
+  // Nome/pasta é a fonte mais segura: os CSVs ficam separados por mês/dia.
+  const fromPath = parseDate(String(filePath || "").replace(/[\\_]/g, "-"));
+  if (fromPath) return { date: fromPath, source: "path" };
+
+  // Quando o próprio relatório tem uma coluna de data, prefira-a.
   if (dateColumn >= 0) {
     for (let r = headerRow + 1; r < Math.min(data.length, headerRow + 100); r++) {
       const d = parseDate(data[r][dateColumn]);
-      if (d) return d;
+      if (d) return { date: d, source: "column" };
     }
   }
-  for (let r = 0; r < Math.min(data.length, headerRow + 8); r++) {
-    for (const cell of data[r]) {
+
+  // Procure data apenas no cabeçalho/pré-cabeçalho; nunca percorra as linhas
+  // de material como se fossem metadados de referência.
+  for (let r = 0; r <= Math.min(headerRow, 12); r++) {
+    for (const cell of data[r] || []) {
       const d = parseDate(cell);
-      if (d) return d;
+      if (d) return { date: d, source: "header" };
     }
   }
-  const fromPath = parseDate(String(filePath || "").replace(/[\\_]/g, "-"));
-  if (fromPath) return fromPath;
+
+  // Último recurso: data de modificação do arquivo na pasta de rede.
   try {
     const stat = fs.statSync(filePath), d = stat.mtime;
     if (Number.isFinite(d.getTime())) {
-      return String(d.getFullYear()).padStart(4, "0") + "-" +
-        String(d.getMonth() + 1).padStart(2, "0") + "-" +
-        String(d.getDate()).padStart(2, "0");
+      return {
+        date: validReferenceDate(d.getFullYear(), d.getMonth() + 1, d.getDate()),
+        source: "mtime"
+      };
     }
   } catch (_e) {}
-  return null;
+  return { date: null, source: null };
 }
 
 function parse020502(filePath) {
@@ -231,8 +256,10 @@ function parse020502(filePath) {
   });
   if (!rows.length) throw new Error("Nenhum SKU válido encontrado no CSV 02.05.02.");
 
+  const inferredDate = inferReferenceDate(filePath, data, headerRow, dateIndex);
   return {
-    reference_date: inferReferenceDate(filePath, data, headerRow, dateIndex),
+    reference_date: inferredDate.date,
+    reference_date_source: inferredDate.source,
     raw_rows: Math.max(0, data.length - startRow),
     valid_rows: validRows,
     aggregated_rows: rows.length,
@@ -270,4 +297,4 @@ function discover020502Files(rootPath) {
   return out;
 }
 
-module.exports = { parse020502, discover020502Files, normalizeHeader };
+module.exports = { parse020502, discover020502Files, normalizeHeader, parseDate, validReferenceDate };
