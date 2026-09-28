@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { parse020502, discover020502Files } = require("./csv020502");
+const { parse020502, discover020502Files, pathReferenceDate } = require("./csv020502");
 
 function loadState(installRoot) {
   const file = path.join(installRoot, "data", "oor-sync-state.json");
@@ -53,6 +53,19 @@ async function sync(api, installRoot, log) {
   for (const file of files) {
     const sig = signature(file);
     if (holder.data.imported && holder.data.imported[sig]) continue;
+
+    // Não reabra arquivos antigos só para descobrir que estão vazios ou têm outro layout.
+    // A estrutura LIBERAÇÃO (ano/mês/CSV + data no nome) permite descartá-los antes do parse.
+    const pathDate = pathReferenceDate(file.path);
+    if (pathDate && pathDate <= latest) continue;
+    if (!pathDate && file.mtime_ms) {
+      const mtime = new Date(file.mtime_ms);
+      const mtimeDate = String(mtime.getFullYear()).padStart(4, "0") + "-" +
+        String(mtime.getMonth() + 1).padStart(2, "0") + "-" +
+        String(mtime.getDate()).padStart(2, "0");
+      if (mtimeDate <= latest) continue;
+    }
+
     try {
       const parsed = parse020502(file.path);
       if (!parsed.reference_date) { errors.push(file.name + ": data de referência não identificada."); continue; }
