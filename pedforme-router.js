@@ -8,7 +8,7 @@
     const view = document.createElement('section');
     view.id = 'pedformeView';
     view.className = 'view hidden';
-    view.innerHTML = '<iframe title="Pedforme" src="pedforme.html?v=20260928-1" style="display:block;width:100%;height:calc(100vh - 145px);min-height:700px;border:0;border-radius:10px;background:#eef1f5"></iframe>';
+    view.innerHTML = '<iframe title="Pedforme" src="pedforme.html?v=20260928-2" style="display:block;width:100%;height:calc(100vh - 145px);min-height:700px;border:0;border-radius:10px;background:#eef1f5"></iframe>';
     main.appendChild(view);
 
     const nav = document.createElement('button');
@@ -24,8 +24,8 @@
       nav.classList.add('active');
       document.querySelector('.pull-nav-group')?.classList.add('open');
       document.getElementById('sidebar')?.classList.remove('open');
-      document.getElementById('pageTitle').textContent = 'Puxada';
-      document.getElementById('pageSubtitle').textContent = 'Pedforme · pedidos de fornecimento para impressão.';
+      document.getElementById('pageTitle').textContent = 'Pedforme';
+      document.getElementById('pageSubtitle').textContent = 'Pedidos de fornecimento para impressão.';
     };
     document.querySelectorAll('.nav-link').forEach(n => {
       if (n !== nav) n.addEventListener('click', () => view.classList.add('hidden'));
