@@ -21,6 +21,9 @@ Deposito 1 a 1
 Operacao 251 a 314
 Tipo de data Entrega
 
+O agente aguarda 2 minutos sem uso do mouse ou teclado antes de iniciar cada puxada.
+Se voce voltar a usar o computador durante a puxada, a janela ainda podera aparecer.
+
 O Promax gera um arquivo .csv.inf. O agente identifica, processa, consolida e envia ao Painel automaticamente.
 
 NAO E NECESSARIO

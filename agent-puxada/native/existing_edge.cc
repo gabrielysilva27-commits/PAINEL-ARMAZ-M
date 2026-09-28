@@ -774,6 +774,22 @@ static napi_value Act(napi_env env, napi_callback_info info) {
 }
 
 static napi_value Init(napi_env env, napi_value exports) {
+  napi_value idle;
+  napi_create_function(env, "idleMilliseconds", NAPI_AUTO_LENGTH,
+      [](napi_env env, napi_callback_info) -> napi_value {
+        LASTINPUTINFO input = {};
+        input.cbSize = sizeof(input);
+        napi_value result;
+        if (!GetLastInputInfo(&input)) {
+          napi_get_null(env, &result);
+          return result;
+        }
+        // DWORD subtraction remains correct when the Windows tick counter wraps.
+        const DWORD elapsed = GetTickCount() - input.dwTime;
+        napi_create_uint32(env, elapsed, &result);
+        return result;
+      }, nullptr, &idle);
+  napi_set_named_property(env, exports, "idleMilliseconds", idle);
   napi_value probe;
   napi_create_function(env, "probe", NAPI_AUTO_LENGTH, Probe, nullptr, &probe);
   napi_set_named_property(env, exports, "probe", probe);
