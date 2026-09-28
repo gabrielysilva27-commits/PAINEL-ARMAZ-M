@@ -23,7 +23,9 @@ function saveState(holder) {
 }
 
 function signature(file) {
-  return file.path + "|" + String(file.size || 0) + "|" + String(Math.round(file.mtime_ms || 0));
+  // Prefixo muda quando a interpretação do 02.05.02 muda, permitindo
+  // reprocessar arquivos já vistos sem apagar o histórico local do agente.
+  return "020502-packed-v2|" + file.path + "|" + String(file.size || 0) + "|" + String(Math.round(file.mtime_ms || 0));
 }
 
 async function sync(api, installRoot, log) {
