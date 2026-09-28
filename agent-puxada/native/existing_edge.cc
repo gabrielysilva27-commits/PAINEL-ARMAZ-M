@@ -456,27 +456,79 @@ static bool FillControl(const VisibleControl& c, const std::wstring& value) {
 static bool Contains(const std::wstring& text, const wchar_t* fragment) {
   return text.find(fragment) != std::wstring::npos;
 }
-static bool OpenShortcut(HWND hwnd) {
-  const auto controls = Controls(hwnd);
-  const VisibleControl* label = nullptr;
-  const VisibleControl* edit = nullptr;
-  const VisibleControl* button = nullptr;
-  for (const auto& c : controls)
-    if (Contains(c.name, L"atalho") && c.type != UIA_EditControlTypeId) { label = &c; break; }
-  if (!label) return false;
-  int bestEdit = 1000000, bestButton = 1000000;
-  for (const auto& c : controls) {
-    const int dx = abs(c.rect.left-label->rect.left);
-    const int dy = abs(c.rect.top-label->rect.bottom);
-    if (c.type == UIA_EditControlTypeId && dy < 110 && dx < 400 && dy+dx/4 < bestEdit) {
-      edit = &c; bestEdit = dy+dx/4;
+struct ShortcutControls { RECT field = {}, ok = {}; bool found = false; };
+// The Promax shortcut moves with display scaling and browser zoom. Locate the
+// edit box and its adjacent OK button through UI Automation instead of pixels.
+static ShortcutControls FindShortcutControls(HWND hwnd) {
+  ShortcutControls result;
+  RECT window = {};
+  if (!GetWindowRect(hwnd, &window)) return result;
+  const int width = window.right - window.left;
+  const int height = window.bottom - window.top;
+  IUIAutomation* automation = nullptr;
+  IUIAutomationElement* root = nullptr;
+  IUIAutomationCondition* condition = nullptr;
+  IUIAutomationElementArray* elements = nullptr;
+  std::vector<RECT> fields, buttons;
+  if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+      IID_IUIAutomation, reinterpret_cast<void**>(&automation))) && automation &&
+      SUCCEEDED(automation->ElementFromHandle(hwnd, &root)) && root &&
+      SUCCEEDED(automation->CreateTrueCondition(&condition)) && condition &&
+      SUCCEEDED(root->FindAll(TreeScope_Descendants, condition, &elements)) && elements) {
+    int count = 0;
+    elements->get_Length(&count);
+    for (int i = 0; i < count && i < 2000; ++i) {
+      IUIAutomationElement* item = nullptr;
+      if (FAILED(elements->GetElement(i, &item)) || !item) continue;
+      CONTROLTYPEID type = 0;
+      RECT r = {};
+      if (SUCCEEDED(item->get_CurrentControlType(&type)) &&
+          SUCCEEDED(item->get_CurrentBoundingRectangle(&r)) &&
+          r.right > r.left && r.bottom > r.top &&
+          r.left > window.left + width * 3 / 4 &&
+          r.top > window.top + 100 && r.top < window.top + height / 3 &&
+          r.right <= window.right + 8 && r.bottom <= window.bottom) {
+        if (type == UIA_EditControlTypeId && r.right-r.left >= 65 &&
+            r.right-r.left <= 260 && r.bottom-r.top >= 15 && r.bottom-r.top <= 50)
+          fields.push_back(r);
+        else if (type == UIA_ButtonControlTypeId && r.right-r.left >= 16 &&
+            r.right-r.left <= 65 && r.bottom-r.top >= 15 && r.bottom-r.top <= 50)
+          buttons.push_back(r);
+      }
+      item->Release();
     }
-    if (c.type == UIA_ButtonControlTypeId &&
-        (c.name == L"ok" || c.name == L"&ok") && dy < 110 && dx < 400 &&
-        dy+dx/4 < bestButton) { button = &c; bestButton = dy+dx/4; }
   }
-  if (!edit || !button || button->rect.left < edit->rect.left) return false;
-  return FillControl(*edit, L"02.05.01") && ClickControl(*button);
+  if (elements) elements->Release();
+  if (condition) condition->Release();
+  if (root) root->Release();
+  if (automation) automation->Release();
+  int matches = 0;
+  for (const RECT& field : fields) for (const RECT& button : buttons) {
+    const int fieldMid = (field.top + field.bottom) / 2;
+    const int buttonMid = (button.top + button.bottom) / 2;
+    if (button.left >= field.right && button.left - field.right <= 24 &&
+        std::abs(buttonMid - fieldMid) <= 8) {
+      result.field = field;
+      result.ok = button;
+      ++matches;
+    }
+  }
+  result.found = matches == 1;
+  return result;
+}
+
+static bool EnterShortcut(const ShortcutControls& controls) {
+  const RECT& field = controls.field;
+  const RECT& button = controls.ok;
+  return ClickPoint((field.left+field.right)/2, (field.top+field.bottom)/2) &&
+      Key(VK_CONTROL) && Key('A') && Key('A', true) && Key(VK_CONTROL, true) &&
+      TypeText(L"02.05.01") &&
+      ClickPoint((button.left+button.right)/2, (button.top+button.bottom)/2);
+}
+
+static bool OpenShortcut(HWND hwnd) {
+  const ShortcutControls controls = FindShortcutControls(hwnd);
+  return controls.found && EnterShortcut(controls);
 }
 static bool FillReport(HWND hwnd, const std::wstring* values) {
   auto controls = Controls(hwnd);
