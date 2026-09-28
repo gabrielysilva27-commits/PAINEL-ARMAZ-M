@@ -773,7 +773,44 @@ static napi_value Act(napi_env env, napi_callback_info info) {
   return out;
 }
 
+static napi_value DesktopUnlocked(napi_env env, napi_callback_info) {
+  // The Winlogon/UAC desktop cannot accept our Promax mouse and keyboard input.
+  // Failure to inspect the active desktop must never be treated as unlocked.
+  bool unlocked = false;
+  HDESK desktop = OpenInputDesktop(0, FALSE, DESKTOP_READOBJECTS);
+  if (desktop) {
+    wchar_t name[256] = {};
+    DWORD needed = 0;
+    if (GetUserObjectInformationW(desktop, UOI_NAME, name, sizeof(name), &needed))
+      unlocked = _wcsicmp(name, L"Default") == 0;
+    CloseDesktop(desktop);
+  }
+  napi_value result;
+  napi_get_boolean(env, unlocked, &result);
+  return result;
+}
+
 static napi_value Init(napi_env env, napi_value exports) {
+  napi_value unlocked;
+  napi_create_function(env, "desktopUnlocked", NAPI_AUTO_LENGTH,
+      DesktopUnlocked, nullptr, &unlocked);
+  napi_set_named_property(env, exports, "desktopUnlocked", unlocked);
+  napi_value idle;
+  napi_create_function(env, "idleMilliseconds", NAPI_AUTO_LENGTH,
+      [](napi_env env, napi_callback_info) -> napi_value {
+        LASTINPUTINFO input = {};
+        input.cbSize = sizeof(input);
+        napi_value result;
+        if (!GetLastInputInfo(&input)) {
+          napi_get_null(env, &result);
+          return result;
+        }
+        // DWORD subtraction remains correct when the Windows tick counter wraps.
+        const DWORD elapsed = GetTickCount() - input.dwTime;
+        napi_create_uint32(env, elapsed, &result);
+        return result;
+      }, nullptr, &idle);
+  napi_set_named_property(env, exports, "idleMilliseconds", idle);
   napi_value probe;
   napi_create_function(env, "probe", NAPI_AUTO_LENGTH, Probe, nullptr, &probe);
   napi_set_named_property(env, exports, "probe", probe);
