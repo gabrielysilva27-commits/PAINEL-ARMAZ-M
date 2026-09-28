@@ -342,87 +342,6 @@ static bool ActivatePromaxTab(HWND hwnd) {
   if (automation) automation->Release();
   return activated;
 }
-
-struct ShortcutControls { RECT field = {}, ok = {}; bool found = false; };
-// The Promax shortcut moves with display scaling and browser zoom. Locate the
-// edit box and its adjacent OK button through UI Automation instead of pixels.
-static ShortcutControls FindShortcutControls(HWND hwnd) {
-  ShortcutControls result;
-  RECT window = {};
-  if (!GetWindowRect(hwnd, &window)) return result;
-  const int width = window.right - window.left;
-  const int height = window.bottom - window.top;
-  IUIAutomation* automation = nullptr;
-  IUIAutomationElement* root = nullptr;
-  IUIAutomationCondition* condition = nullptr;
-  IUIAutomationElementArray* elements = nullptr;
-  std::vector<RECT> fields, buttons;
-  if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
-      IID_IUIAutomation, reinterpret_cast<void**>(&automation))) && automation &&
-      SUCCEEDED(automation->ElementFromHandle(hwnd, &root)) && root &&
-      SUCCEEDED(automation->CreateTrueCondition(&condition)) && condition &&
-      SUCCEEDED(root->FindAll(TreeScope_Descendants, condition, &elements)) && elements) {
-    int count = 0;
-    elements->get_Length(&count);
-    for (int i = 0; i < count && i < 2000; ++i) {
-      IUIAutomationElement* item = nullptr;
-      if (FAILED(elements->GetElement(i, &item)) || !item) continue;
-      CONTROLTYPEID type = 0;
-      RECT r = {};
-      if (SUCCEEDED(item->get_CurrentControlType(&type)) &&
-          SUCCEEDED(item->get_CurrentBoundingRectangle(&r)) &&
-          r.right > r.left && r.bottom > r.top &&
-          r.left > window.left + width * 3 / 4 &&
-          r.top > window.top + 100 && r.top < window.top + height / 3 &&
-          r.right <= window.right + 8 && r.bottom <= window.bottom) {
-        if (type == UIA_EditControlTypeId && r.right-r.left >= 65 &&
-            r.right-r.left <= 260 && r.bottom-r.top >= 15 && r.bottom-r.top <= 50)
-          fields.push_back(r);
-        else if (type == UIA_ButtonControlTypeId && r.right-r.left >= 16 &&
-            r.right-r.left <= 65 && r.bottom-r.top >= 15 && r.bottom-r.top <= 50)
-          buttons.push_back(r);
-      }
-      item->Release();
-    }
-  }
-  if (elements) elements->Release();
-  if (condition) condition->Release();
-  if (root) root->Release();
-  if (automation) automation->Release();
-  int matches = 0;
-  for (const RECT& field : fields) for (const RECT& button : buttons) {
-    const int fieldMid = (field.top + field.bottom) / 2;
-    const int buttonMid = (button.top + button.bottom) / 2;
-    if (button.left >= field.right && button.left - field.right <= 24 &&
-        std::abs(buttonMid - fieldMid) <= 8) {
-      result.field = field;
-      result.ok = button;
-      ++matches;
-    }
-  }
-  result.found = matches == 1;
-  return result;
-}
-
-static bool EnterShortcut(const ShortcutControls& controls) {
-  const RECT& field = controls.field;
-  const RECT& button = controls.ok;
-  return ClickPoint((field.left+field.right)/2, (field.top+field.bottom)/2) &&
-      Key(VK_CONTROL) && Key('A') && Key('A', true) && Key(VK_CONTROL, true) &&
-      TypeText(L"02.05.01") &&
-      ClickPoint((button.left+button.right)/2, (button.top+button.bottom)/2);
-}
-static thread_local double coordinateScale = 1.0;
-static bool ClickRelative(const RECT& r, int x, int y) {
-  return ClickPoint(r.left + static_cast<int>(x * coordinateScale + 0.5),
-      r.top + static_cast<int>(y * coordinateScale + 0.5));
-}
-static bool ReplaceField(const RECT& r, int x, int y, const std::wstring& value) {
-  if (!ClickRelative(r, x, y)) return false;
-  Sleep(70);
-  if (!Key(VK_CONTROL) || !Key('A') || !Key('A', true) || !Key(VK_CONTROL, true)) return false;
-  return TypeText(value);
-}
 static bool ReadString(napi_env env, napi_value object, const char* key, std::wstring* out, size_t maxLength = 40) {
   napi_value value;
   size_t length = 0;
@@ -477,6 +396,145 @@ static bool ClickNamedButton(HWND hwnd, const std::wstring& expected, bool downl
   if (root) root->Release();
   if (automation) automation->Release();
   return clicked;
+}
+
+struct VisibleControl { CONTROLTYPEID type; std::wstring name; RECT rect; };
+static std::vector<VisibleControl> Controls(HWND hwnd) {
+  std::vector<VisibleControl> found;
+  IUIAutomation* automation = nullptr;
+  IUIAutomationElement* root = nullptr;
+  IUIAutomationCondition* condition = nullptr;
+  IUIAutomationElementArray* elements = nullptr;
+  if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+      IID_IUIAutomation, reinterpret_cast<void**>(&automation))) && automation &&
+      SUCCEEDED(automation->ElementFromHandle(hwnd, &root)) && root &&
+      SUCCEEDED(automation->CreateTrueCondition(&condition)) && condition &&
+      SUCCEEDED(root->FindAll(TreeScope_Descendants, condition, &elements)) && elements) {
+    int count = 0;
+    elements->get_Length(&count);
+    RECT window = {};
+    GetWindowRect(hwnd, &window);
+    for (int i = 0; i < count && i < 2000; ++i) {
+      IUIAutomationElement* item = nullptr;
+      if (FAILED(elements->GetElement(i, &item)) || !item) continue;
+      RECT r = {};
+      CONTROLTYPEID type = 0;
+      BOOL offscreen = TRUE;
+      if (SUCCEEDED(item->get_CurrentControlType(&type)) &&
+          SUCCEEDED(item->get_CurrentBoundingRectangle(&r)) &&
+          SUCCEEDED(item->get_CurrentIsOffscreen(&offscreen)) && !offscreen &&
+          r.left >= window.left && r.right <= window.right &&
+          r.top >= window.top && r.bottom <= window.bottom &&
+          r.right > r.left + 2 && r.bottom > r.top + 2) {
+        BSTR raw = nullptr;
+        std::wstring name;
+        if (SUCCEEDED(item->get_CurrentName(&raw)) && raw) {
+          name.assign(raw, SysStringLen(raw));
+          std::transform(name.begin(), name.end(), name.begin(), towlower);
+        }
+        if (raw) SysFreeString(raw);
+        found.push_back({type, name, r});
+      }
+      item->Release();
+    }
+  }
+  if (elements) elements->Release();
+  if (condition) condition->Release();
+  if (root) root->Release();
+  if (automation) automation->Release();
+  return found;
+}
+static bool ClickControl(const VisibleControl& c) {
+  return ClickPoint((c.rect.left+c.rect.right)/2, (c.rect.top+c.rect.bottom)/2);
+}
+static bool FillControl(const VisibleControl& c, const std::wstring& value) {
+  if (!ClickControl(c)) return false;
+  Sleep(70);
+  return Key(VK_CONTROL) && Key('A') && Key('A', true) &&
+      Key(VK_CONTROL, true) && TypeText(value);
+}
+static bool Contains(const std::wstring& text, const wchar_t* fragment) {
+  return text.find(fragment) != std::wstring::npos;
+}
+static bool OpenShortcut(HWND hwnd) {
+  const auto controls = Controls(hwnd);
+  const VisibleControl* label = nullptr;
+  const VisibleControl* edit = nullptr;
+  const VisibleControl* button = nullptr;
+  for (const auto& c : controls)
+    if (Contains(c.name, L"atalho") && c.type != UIA_EditControlTypeId) { label = &c; break; }
+  if (!label) return false;
+  int bestEdit = 1000000, bestButton = 1000000;
+  for (const auto& c : controls) {
+    const int dx = abs(c.rect.left-label->rect.left);
+    const int dy = abs(c.rect.top-label->rect.bottom);
+    if (c.type == UIA_EditControlTypeId && dy < 110 && dx < 400 && dy+dx/4 < bestEdit) {
+      edit = &c; bestEdit = dy+dx/4;
+    }
+    if (c.type == UIA_ButtonControlTypeId &&
+        (c.name == L"ok" || c.name == L"&ok") && dy < 110 && dx < 400 &&
+        dy+dx/4 < bestButton) { button = &c; bestButton = dy+dx/4; }
+  }
+  if (!edit || !button || button->rect.left < edit->rect.left) return false;
+  return FillControl(*edit, L"02.05.01") && ClickControl(*button);
+}
+static bool FillReport(HWND hwnd, const std::wstring* values) {
+  auto controls = Controls(hwnd);
+  std::vector<VisibleControl> edits;
+  std::vector<VisibleControl> combos;
+  const VisibleControl* delivery = nullptr;
+  const VisibleControl* visualize = nullptr;
+  for (const auto& c : controls) {
+    if (c.type == UIA_EditControlTypeId) edits.push_back(c);
+    if (c.type == UIA_ComboBoxControlTypeId) combos.push_back(c);
+    if (c.type == UIA_ButtonControlTypeId && Contains(c.name, L"visualizar")) visualize = &c;
+    if ((c.type == UIA_CheckBoxControlTypeId || c.type == UIA_RadioButtonControlTypeId) &&
+        Contains(c.name, L"entrega")) delivery = &c;
+  }
+  if (!visualize) return false;
+  std::sort(edits.begin(), edits.end(), [](const VisibleControl& a, const VisibleControl& b) {
+    if (abs(a.rect.top-b.rect.top) > 8) return a.rect.top < b.rect.top;
+    return a.rect.left < b.rect.left;
+  });
+  // Identify the four two-field rows by their controls, regardless of the
+  // popup's position, dimensions, browser zoom, or display resolution.
+  std::vector<std::vector<VisibleControl>> pairs;
+  for (const auto& e : edits) {
+    if (e.rect.top >= visualize->rect.top) continue;
+    if (pairs.empty() || abs(e.rect.top-pairs.back()[0].rect.top) > 8)
+      pairs.push_back({e});
+    else pairs.back().push_back(e);
+  }
+  std::vector<std::vector<VisibleControl>> rows;
+  for (auto& pair : pairs) {
+    std::sort(pair.begin(), pair.end(), [](const VisibleControl& a, const VisibleControl& b) {
+      return a.rect.left < b.rect.left;
+    });
+    if (pair.size() == 2 && pair[1].rect.left >= pair[0].rect.right-3) rows.push_back(pair);
+  }
+  if (rows.size() < 4) return false;
+  // The report contains date, warehouse, deposit and operation range rows.
+  // Reject ambiguous forms instead of typing into an unrelated window.
+  const auto& date = rows[0];
+  const auto& warehouse = rows[1];
+  const auto& deposit = rows[2];
+  const auto& operation = rows.back();
+  if (!delivery || combos.empty() || operation[0].rect.top <= deposit[0].rect.top) return false;
+  std::sort(combos.begin(), combos.end(), [](const VisibleControl& a, const VisibleControl& b) {
+    return a.rect.left < b.rect.left;
+  });
+  // The report type selector is left of the date range. Choose D (daily)
+  // using the selector itself rather than a point relative to the window.
+  if (combos[0].rect.left >= date[0].rect.left || !ClickControl(combos[0]) ||
+      !Key(VK_HOME) || !Key(VK_HOME, true) || !Key('D') || !Key('D', true) ||
+      !Key(VK_RETURN) || !Key(VK_RETURN, true)) return false;
+  if (!ClickControl(*delivery)) return false;
+  Sleep(300);
+  return FillControl(date[0], values[0]) && FillControl(date[1], values[1]) &&
+      FillControl(warehouse[0], values[2]) && FillControl(warehouse[1], values[2]) &&
+      FillControl(deposit[0], values[3]) && FillControl(deposit[1], values[3]) &&
+      FillControl(operation[0], values[4]) && FillControl(operation[1], values[5]) &&
+      ClickControl(*visualize);
 }
 
 struct SaveWindows { HWND saveAs = nullptr; HWND download = nullptr; };
@@ -706,106 +764,35 @@ static napi_value Act(napi_env env, napi_callback_info info) {
       EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&target));
       RECT r = {};
       if (!target.hwnd || !GetWindowRect(target.hwnd, &r)) result = L"window-not-found";
-      else if (!((GetSystemMetrics(SM_CXSCREEN) == 1280 && GetSystemMetrics(SM_CYSCREEN) == 720) ||
-                 (GetSystemMetrics(SM_CXSCREEN) == 1920 && GetSystemMetrics(SM_CYSCREEN) == 1080)))
-        result = L"unsupported-screen-geometry";
       else {
-        coordinateScale = GetSystemMetrics(SM_CXSCREEN) / 1280.0;
-        const int width = r.right-r.left, height = r.bottom-r.top;
-        if (target.home ? (width < 1200*coordinateScale || height < 650*coordinateScale) :
-            (width < 790*coordinateScale || width > 820*coordinateScale ||
-             height < 595*coordinateScale || height > 630*coordinateScale)) {
-          result = L"unsupported-window-geometry";
-          CoUninitialize();
-          return;
-        }
         if (IsIconic(target.hwnd)) ShowWindow(target.hwnd, SW_RESTORE);
         Key(VK_MENU);
         Key(VK_MENU, true);
         SetForegroundWindow(target.hwnd);
         Sleep(300);
-        GetWindowRect(target.hwnd, &r);
-        if (!HasForeground(target.hwnd))
-          result = L"window-not-foreground-" + stage + L"-target-" + ClassName(target.hwnd) +
-              L"-foreground-" + ClassName(GetForegroundWindow());
+        if (!HasForeground(target.hwnd)) result = L"window-not-foreground";
         else if (stage == L"shortcut") {
-          if (!ActivatePromaxTab(target.hwnd)) {
-            result = L"promax-tab-not-found";
-            CoUninitialize();
-            return;
-          }
-          Sleep(900);
-          GetWindowRect(target.hwnd, &r);
-          ShortcutControls shortcut;
-          for (int i = 0; i < 12 && !shortcut.found; ++i) {
-            shortcut = FindShortcutControls(target.hwnd);
-            if (!shortcut.found) Sleep(400);
-          }
-          // Several Edge windows may have a Promax tab. Only interact with a
-          // window whose visible page exposes the actual shortcut controls.
+          result = L"shortcut-controls-not-found";
           for (HWND candidate : target.candidates) {
-            if (shortcut.found || candidate == target.hwnd) continue;
-            RECT other = {};
             if (IsIconic(candidate)) ShowWindow(candidate, SW_RESTORE);
-            if (!GetWindowRect(candidate, &other) ||
-                other.right-other.left < 1200*coordinateScale ||
-                other.bottom-other.top < 650*coordinateScale) continue;
             SetForegroundWindow(candidate);
-            Sleep(300);
-            if (GetAncestor(GetForegroundWindow(), GA_ROOT) != candidate) continue;
-            if (!ActivatePromaxTab(candidate)) continue;
-            Sleep(900);
-            GetWindowRect(candidate, &r);
-            shortcut = FindShortcutControls(candidate);
-            if (shortcut.found) target.hwnd = candidate;
-          }
-          if (!shortcut.found) {
-            result = L"shortcut-controls-not-found-or-ambiguous";
-            CoUninitialize();
-            return;
-          }
-          if (!EnterShortcut(shortcut)) result = L"shortcut-input-failed";
-          else {
+            Sleep(250);
+            if (!HasForeground(candidate) || !ActivatePromaxTab(candidate)) continue;
+            Sleep(350);
+            if (!OpenShortcut(candidate)) continue;
             result = L"shortcut-no-report-window";
             for (int i = 0; i < 20; ++i) {
               Sleep(200);
-              wchar_t title[512] = {};
-              GetWindowTextW(GetForegroundWindow(), title, 512);
-              std::wstring active(title);
-              std::transform(active.begin(), active.end(), active.begin(), towlower);
-              if (active.find(L"movimenta") != std::wstring::npos &&
-                  active.find(L"estoque") != std::wstring::npos) { result = L"ok"; break; }
+              TargetWindow report = { nullptr, false, -1, {} };
+              EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&report));
+              if (report.hwnd) { result = L"ok"; break; }
             }
+            break;
           }
         } else if (stage == L"filters") {
-          HDC screen = GetDC(nullptr);
-          const COLORREF background = screen ? GetPixel(screen,
-              r.left + static_cast<int>(400*coordinateScale),
-              r.top + static_cast<int>(300*coordinateScale)) : CLR_INVALID;
-          if (screen) ReleaseDC(nullptr, screen);
-          if (background == CLR_INVALID || GetRValue(background) < 170 ||
-              GetRValue(background) > 235 || GetGValue(background) < 170 ||
-              GetGValue(background) > 235) {
-            result = L"filters-not-on-form";
-            CoUninitialize();
-            return;
-          }
-          bool ok = ClickRelative(r, 242, 225);
-          ok = Key(VK_HOME) && Key(VK_HOME, true) && Key('D') && Key('D', true) &&
-              Key(VK_RETURN) && Key(VK_RETURN, true) && ok;
-          Sleep(500);
-          ok = ReplaceField(r, 594, 212, values[0]) && ok;
-          ok = ReplaceField(r, 669, 212, values[1]) && ok;
-          ok = ReplaceField(r, 594, 235, values[2]) && ok;
-          ok = ReplaceField(r, 669, 235, values[2]) && ok;
-          ok = ReplaceField(r, 594, 258, values[3]) && ok;
-          ok = ReplaceField(r, 669, 258, values[3]) && ok;
-          ok = ReplaceField(r, 594, 327, values[4]) && ok;
-          ok = ReplaceField(r, 669, 327, values[5]) && ok;
-          ok = ClickRelative(r, 212, 501) && ok;
-          result = ok && ClickRelative(r, 736, 578) ? L"ok" : L"input-failed";
+          result = FillReport(target.hwnd, values) ? L"ok" : L"filter-controls-not-found";
         } else if (stage == L"csv") {
-          result = ClickNamedButton(target.hwnd, L"csv", false) ? L"ok" : L"csv-not-found";
+          result = ClickNamedButton(target.hwnd, L"csv", false, true) ? L"ok" : L"csv-not-found";
         } else result = L"unknown-stage";
       }
       CoUninitialize();
@@ -817,44 +804,7 @@ static napi_value Act(napi_env env, napi_callback_info info) {
   return out;
 }
 
-static napi_value DesktopUnlocked(napi_env env, napi_callback_info) {
-  // The Winlogon/UAC desktop cannot accept our Promax mouse and keyboard input.
-  // Failure to inspect the active desktop must never be treated as unlocked.
-  bool unlocked = false;
-  HDESK desktop = OpenInputDesktop(0, FALSE, DESKTOP_READOBJECTS);
-  if (desktop) {
-    wchar_t name[256] = {};
-    DWORD needed = 0;
-    if (GetUserObjectInformationW(desktop, UOI_NAME, name, sizeof(name), &needed))
-      unlocked = _wcsicmp(name, L"Default") == 0;
-    CloseDesktop(desktop);
-  }
-  napi_value result;
-  napi_get_boolean(env, unlocked, &result);
-  return result;
-}
-
 static napi_value Init(napi_env env, napi_value exports) {
-  napi_value unlocked;
-  napi_create_function(env, "desktopUnlocked", NAPI_AUTO_LENGTH,
-      DesktopUnlocked, nullptr, &unlocked);
-  napi_set_named_property(env, exports, "desktopUnlocked", unlocked);
-  napi_value idle;
-  napi_create_function(env, "idleMilliseconds", NAPI_AUTO_LENGTH,
-      [](napi_env env, napi_callback_info) -> napi_value {
-        LASTINPUTINFO input = {};
-        input.cbSize = sizeof(input);
-        napi_value result;
-        if (!GetLastInputInfo(&input)) {
-          napi_get_null(env, &result);
-          return result;
-        }
-        // DWORD subtraction remains correct when the Windows tick counter wraps.
-        const DWORD elapsed = GetTickCount() - input.dwTime;
-        napi_create_uint32(env, elapsed, &result);
-        return result;
-      }, nullptr, &idle);
-  napi_set_named_property(env, exports, "idleMilliseconds", idle);
   napi_value probe;
   napi_create_function(env, "probe", NAPI_AUTO_LENGTH, Probe, nullptr, &probe);
   napi_set_named_property(env, exports, "probe", probe);
