@@ -307,6 +307,8 @@ function discover020502Files(rootPath) {
       const ext = path.extname(entry.name).toLowerCase();
       if (ext !== ".csv" && ext !== ".inf") continue;
       if (!full.split(/[\\/]+/).some(function (part) { return part.trim().toUpperCase() === "CSV"; })) continue;
+      const baseName = path.basename(entry.name, ext);
+      if (!normalizeHeader(baseName).includes("LIBERACAO CHEIO")) continue;
       let stat = null; try { stat = fs.statSync(full); } catch (_e) {}
       out.push({ path: full, name: entry.name, mtime_ms: stat ? stat.mtimeMs : 0, size: stat ? stat.size : 0 });
     }
