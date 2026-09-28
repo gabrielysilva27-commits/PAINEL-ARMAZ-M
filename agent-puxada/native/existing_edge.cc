@@ -504,6 +504,7 @@ static bool InvokeDownloadBarSave(HWND hwnd) {
   IUIAutomationElementArray* elements = nullptr;
   IUIAutomationElement* save = nullptr;
   bool open = false, cancel = false, confirmed = false;
+  RECT openRect = {}, cancelRect = {};
   RECT wr = {};
   GetWindowRect(hwnd, &wr);
   if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
@@ -528,8 +529,8 @@ static bool InvokeDownloadBarSave(HWND hwnd) {
         std::wstring name(raw, SysStringLen(raw));
         std::transform(name.begin(), name.end(), name.begin(), towlower);
         name.erase(std::remove(name.begin(), name.end(), L'&'), name.end());
-        if (name == L"abrir" || name == L"open") open = true;
-        else if (name == L"cancelar" || name == L"cancel") cancel = true;
+        if (name == L"abrir" || name == L"open") { open = true; openRect = r; }
+        else if (name == L"cancelar" || name == L"cancel") { cancel = true; cancelRect = r; }
         else if (name == L"salvar" || name == L"save") {
           if (save) save->Release();
           save = item;
@@ -552,6 +553,16 @@ static bool InvokeDownloadBarSave(HWND hwnd) {
           confirmed = ClickPoint((r.left+r.right)/2, (r.top+r.bottom)/2);
       }
     }
+    // Edge IE mode may expose the middle split Save control without a UIA
+    // button role. Its two adjacent buttons bound the exact clickable area.
+    if (!confirmed && open && cancel && !save &&
+        cancelRect.left > openRect.right + 35 &&
+        cancelRect.left < openRect.right + 240 &&
+        openRect.top <= cancelRect.bottom && cancelRect.top <= openRect.bottom) {
+      const int x = (openRect.right + cancelRect.left) / 2;
+      const int y = (openRect.top + openRect.bottom) / 2;
+      confirmed = ClickPoint(x, y);
+    }
   }
   if (save) save->Release();
   if (elements) elements->Release();
@@ -559,6 +570,17 @@ static bool InvokeDownloadBarSave(HWND hwnd) {
   if (root) root->Release();
   if (automation) automation->Release();
   return confirmed;
+}
+
+static BOOL CALLBACK FindReportForDownload(HWND hwnd, LPARAM raw) {
+  if (!IsWindowVisible(hwnd) || ClassName(hwnd) != L"Chrome_WidgetWin_1") return TRUE;
+  wchar_t title[512] = {};
+  GetWindowTextW(hwnd, title, 512);
+  std::wstring name(title);
+  std::transform(name.begin(), name.end(), name.begin(), towlower);
+  if (name.find(L"movimenta") != std::wstring::npos && name.find(L"estoque") != std::wstring::npos)
+    reinterpret_cast<std::vector<HWND>*>(raw)->push_back(hwnd);
+  return TRUE;
 }
 
 static std::wstring SaveDialog(const std::wstring& target) {
@@ -570,9 +592,10 @@ static std::wstring SaveDialog(const std::wstring& target) {
       const std::wstring result = InvokeDialogSave(windows.saveAs, target, true);
       return result == L"ok" ? L"save-as-confirmed" : result;
     }
-    TargetWindow report = { nullptr, false, -1, {} };
-    EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&report));
-    if (report.hwnd && InvokeDownloadBarSave(report.hwnd)) return L"download-bar-confirmed";
+    std::vector<HWND> reports;
+    EnumWindows(FindReportForDownload, reinterpret_cast<LPARAM>(&reports));
+    for (HWND report : reports)
+      if (InvokeDownloadBarSave(report)) return L"download-bar-confirmed";
     if (windows.download && !downloadAccepted) {
       const std::wstring result = InvokeDialogSave(windows.download, target, false);
       if (result != L"ok") return result;
