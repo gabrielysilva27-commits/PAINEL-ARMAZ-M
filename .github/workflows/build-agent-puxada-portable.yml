@@ -43,7 +43,7 @@ jobs:
         run: |
           npm exec --yes --package=node-gyp -- node-gyp rebuild --directory agent-puxada/native
           if (-not (Test-Path 'agent-puxada/native/build/Release/existing_edge.node')) { throw 'Sonda de janelas ausente.' }
-          node -e "const r=require('./agent-puxada/native/build/Release/existing_edge.node').probe(); if (!Number.isInteger(r.promaxSurfaces) || !Number.isInteger(r.idleMilliseconds())) process.exit(1)"
+          node -e "const b=require('./agent-puxada/native/build/Release/existing_edge.node'); const r=b.probe(); if (!Number.isInteger(r.promaxSurfaces) || !Number.isInteger(b.idleMilliseconds())) process.exit(1)"
 
       - name: Assemble portable package
         shell: pwsh
