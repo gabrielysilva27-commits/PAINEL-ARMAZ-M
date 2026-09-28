@@ -53,6 +53,18 @@ class AgentApi {
   updateFile(payload) {
     return this.call("agent_update_file", payload);
   }
+
+  oorStatus() {
+    return this.call("agent_oor_status", {});
+  }
+
+  oorScanState(payload) {
+    return this.call("agent_oor_scan_state", payload);
+  }
+
+  oorImport(payload) {
+    return this.call("agent_oor_import", payload);
+  }
 }
 
 module.exports = { AgentApi: AgentApi };
