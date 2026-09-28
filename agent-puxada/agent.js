@@ -11,8 +11,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.85";
-// 3.2.85: coleta diagnóstico leve dos cabeçalhos/colunas do LIBERAÇÃO CHEIO sem importar o arquivo bruto.
+const VERSION = "3.2.86";
+// 3.2.86: corrige o formato inteiro/sobra do DISPONIVEL usando o FATOR do 02.05.02.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");

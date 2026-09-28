@@ -65,6 +65,28 @@ function parseNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function parsePackedQuantity(value, factorValue) {
+  const raw = String(value == null ? "" : value).trim().replace(/\s/g, "");
+  const m = raw.match(/^([+-]?[\d.,]+)\/(\d+)$/);
+  if (!m) return parseNumber(value);
+
+  // O 02.05.02 representa estoque no formato "inteiros/sobra".
+  // Ex.: 5.908/03 = 5.908 caixas + 3 unidades soltas; o campo FATOR
+  // informa quantas unidades compõem uma caixa/dúzia.
+  const wholeText = m[1].replace(/[.,]/g, "");
+  const whole = Number(wholeText);
+  const loose = Number(m[2]);
+  if (!Number.isFinite(whole) || !Number.isFinite(loose)) return null;
+
+  let factorText = String(factorValue == null ? "" : factorValue).trim().replace(/\s/g, "");
+  factorText = factorText.replace(/[^\d.,+-]/g, "");
+  if (factorText.indexOf(",") >= 0) factorText = factorText.replace(/\./g, "").replace(",", ".");
+  const factor = Number(factorText);
+  if (loose === 0) return whole;
+  if (!Number.isFinite(factor) || factor <= 0) return null;
+  return whole + (loose / factor);
+}
+
 function normalizeSku(value) {
   const raw = String(value == null ? "" : value).trim().replace(/^'+/, "").replace(/\.0+$/, "");
   const digits = raw.replace(/\D/g, "").replace(/^0+/, "");
@@ -129,6 +151,7 @@ const QTY_ALIASES = ["QTDE DISPONIVEL","QTD DISPONIVEL","QUANTIDADE DISPONIVEL",
 const NAME_ALIASES = ["DESCRICAO","DESC ITEM","DESCRICAO ITEM","PRODUTO","NOME PRODUTO"];
 const UNIT_ALIASES = ["UNIDADE","UNID","UND","UN","UM"];
 const DATE_ALIASES = ["DATA","DATA REFERENCIA","DATA DE REFERENCIA","DT REFERENCIA","DATA RELATORIO","DT RELATORIO"];
+const FACTOR_ALIASES = ["FATOR","FATOR CONVERSAO","FATOR DE CONVERSAO"];
 
 function exactColumn(headers, aliases) {
   for (const alias of aliases) {
@@ -253,11 +276,12 @@ function parse020502(filePath) {
   const nameIndex = exactColumn(headers, NAME_ALIASES);
   const unitIndex = exactColumn(headers, UNIT_ALIASES);
   const dateIndex = exactColumn(headers, DATE_ALIASES);
+  const factorIndex = exactColumn(headers, FACTOR_ALIASES);
   const aggregate = new Map();
   let validRows = 0;
 
   for (let r = startRow; r < data.length; r++) {
-    const row = data[r], sku = normalizeSku(row[skuIndex]), qty = parseNumber(row[qtyIndex]);
+    const row = data[r], sku = normalizeSku(row[skuIndex]), qty = parsePackedQuantity(row[qtyIndex], factorIndex >= 0 ? row[factorIndex] : null);
     if (!sku || qty == null) continue;
     validRows++;
     const old = aggregate.get(sku) || {
@@ -304,7 +328,10 @@ function parse020502(filePath) {
       sku_column: headers[skuIndex],
       quantity_index: qtyIndex,
       quantity_column: headers[qtyIndex],
-      numeric_columns: numeric_columns.slice(0, 20)
+      factor_index: factorIndex,
+      factor_column: factorIndex >= 0 ? headers[factorIndex] : null,
+      factor_sample: factorIndex >= 0 ? data.slice(startRow, startRow + 8).map(function (row) { return String(row[factorIndex] == null ? "" : row[factorIndex]).trim(); }) : [],
+      numeric_columns: numeric_columns.slice(0, 30)
     }
   };
 }
@@ -337,4 +364,4 @@ function discover020502Files(rootPath) {
   return out;
 }
 
-module.exports = { parse020502, discover020502Files, normalizeHeader };
+module.exports = { parse020502, discover020502Files, normalizeHeader, parsePackedQuantity };
