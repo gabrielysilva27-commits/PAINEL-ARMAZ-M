@@ -67,6 +67,13 @@ async function run() {
     );
     assert.match(promax.readinessError(), /janela normal do Microsoft Edge/i);
 
+    if (process.platform === "win32") {
+      assert.throws(() => existingEdge.act("save"), /EDGE_SAVE_REQUIRES_DIALOG/);
+      const target = path.join(app, "no-dialog.csv.inf");
+      assert.throws(() => existingEdge.saveDialog(target), /EDGE_SAVE_DIALOG: save-dialog-not-found/,
+        "sem uma caixa de salvamento real o agente não deve clicar na página do Promax");
+    }
+
     console.log("Edge normal exclusivo e descarte da sessão controlada: OK");
   } finally {
     existingEdge.probe = originalProbe;

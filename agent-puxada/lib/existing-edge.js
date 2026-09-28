@@ -90,9 +90,12 @@ while([DateTime]::UtcNow -lt $deadline){
 Write-Output $(if($sawDownload){'download-prompt-handled-no-save-as'}else{'save-dialog-not-found'})
 exit 2
 `, "utf8");
-  const result = childProcess.spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", script, "-Target", target],
+  const powershell = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  const result = childProcess.spawnSync(powershell, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-Target", target],
     { encoding: "utf8", timeout: 20000, windowsHide: true });
-  const status = String(result.stdout || "").trim().split(/\r?\n/).pop() || String(result.error && result.error.code || "save-helper-failed");
+  const status = String(result.stdout || "").trim().split(/\r?\n/).pop() ||
+    String(result.error && (result.error.code || result.error.message) ||
+      String(result.stderr || "").trim().replace(/\s+/g, " ").slice(0, 180) || "save-helper-failed");
   if (result.status !== 0) throw new Error("EDGE_SAVE_DIALOG: " + status);
   return status;
 }
