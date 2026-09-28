@@ -275,6 +275,18 @@ function parse020502(filePath) {
   });
   if (!rows.length) throw new Error("Nenhum SKU válido encontrado no CSV 02.05.02.");
 
+  const numeric_columns = [];
+  for (let i = 0; i < headers.length; i++) {
+    const ratio = numericRatio(data, startRow, i);
+    if (ratio < 0.65) continue;
+    const sample = [];
+    for (let rr = startRow; rr < data.length && sample.length < 8; rr++) {
+      const v = String(data[rr][i] == null ? "" : data[rr][i]).trim();
+      if (v) sample.push(v.slice(0, 40));
+    }
+    numeric_columns.push({ index: i, header: headers[i], ratio: Math.round(ratio * 1000) / 1000, sample: sample });
+  }
+
   return {
     reference_date: inferReferenceDate(filePath, data, headerRow, dateIndex),
     raw_rows: Math.max(0, data.length - startRow),
@@ -284,7 +296,16 @@ function parse020502(filePath) {
     delimiter: delimiter,
     header_row: headerRow + 1,
     sku_column: headers[skuIndex],
-    quantity_column: headers[qtyIndex]
+    quantity_column: headers[qtyIndex],
+    diagnostic: {
+      header_row: headerRow + 1,
+      headers: headers,
+      sku_index: skuIndex,
+      sku_column: headers[skuIndex],
+      quantity_index: qtyIndex,
+      quantity_column: headers[qtyIndex],
+      numeric_columns: numeric_columns.slice(0, 20)
+    }
   };
 }
 
