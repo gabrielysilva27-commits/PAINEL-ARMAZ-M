@@ -1,4 +1,4 @@
-AGENTE PUXADA - VERSAO PORTATIL V2
+AGENTE PUXADA - VERSAO PORTATIL 3.2.79
 
 COMO USAR
 
@@ -10,7 +10,7 @@ COMO USAR
 6. Clique em Calibrar Promax para abrir o Microsoft Edge normal e faca login no Promax.
 7. Clique em Iniciar agente.
 
-A V2 usa o Microsoft Edge em Modo Internet Explorer pelo IEDriver oficial.
+Esta versao usa o Promax ja aberto na janela normal do Microsoft Edge.
 Nao usa Playwright nem depuracao remota.
 
 RELATORIO AUTOMATICO
@@ -20,6 +20,9 @@ Armazem 1 a 1
 Deposito 1 a 1
 Operacao 251 a 314
 Tipo de data Entrega
+
+O agente aguarda 30 segundos sem uso do mouse ou teclado e uma sessao Windows desbloqueada antes de iniciar cada puxada.
+Se voce voltar a usar o computador durante a puxada, a janela ainda podera aparecer.
 
 O Promax gera um arquivo .csv.inf. O agente identifica, processa, consolida e envia ao Painel automaticamente.
 
@@ -38,4 +41,4 @@ O token e protegido pelo DPAPI do Windows para o usuario atual.
 
 Se a empresa usar AppLocker, Windows Defender Application Control ou outra politica que bloqueie executaveis nao autorizados, o AgentePuxada.exe ou IEDriverServer.exe pode precisar de liberacao pela TI.
 
-Versao 2.0.0 - Windows x64.
+Versao 3.2.79 - Windows x64.
