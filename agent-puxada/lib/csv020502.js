@@ -314,4 +314,4 @@ function discover020502Files(rootPath) {
   return out;
 }
 
-module.exports = { parse020502, discover020502Files, normalizeHeader };
+module.exports = { parse020502, discover020502Files, normalizeHeader, pathReferenceDate };
