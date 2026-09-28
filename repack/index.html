@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f47a20" />
+  <meta name="description" content="Cronômetro operacional de Repack e Despejo do Armazém Império." />
+  <title>Repack | Armazém Império</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=20260928-1" />
+</head>
+<body>
+  <main class="app">
+    <header class="brand"><img src="../assets/logo-imperio.png" alt="Império" /><div><span>ARMAZÉM</span><strong>REPACK · CRONÔMETRO</strong></div></header>
+    <section id="loginView" class="card">
+      <p class="eyebrow">IDENTIFICAÇÃO DO AJUDANTE</p>
+      <h1>Entrar no Repack</h1>
+      <p class="muted">Use seu nome e PIN de 6 dígitos. O tempo é salvo no servidor, não no cronômetro do celular.</p>
+      <form id="loginForm" class="stack">
+        <label>Ajudante<select id="workerSelect" required><option value="">Carregando...</option></select></label>
+        <label>PIN<input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="6 dígitos" required /></label>
+        <p id="loginError" class="error"></p>
+        <button id="loginButton" class="primary" type="submit">Entrar</button>
+      </form>
+    </section>
+    <section id="homeView" class="hidden">
+      <div class="toolbar">
+        <div><p class="eyebrow">APONTAMENTO OPERACIONAL</p><h1>Repack & Despejo</h1><p id="loggedWorker" class="muted"></p></div>
+        <button id="logoutButton" class="ghost">Sair</button>
+      </div>
+      <section id="newTaskCard" class="card">
+        <p class="eyebrow">NOVA ATIVIDADE</p>
+        <h2>O que você vai fazer?</h2>
+        <div class="choice-grid" id="processChoices">
+          <button type="button" class="choice active" data-process="repack"><span>R</span><strong>Repack</strong><small>Repack, BAG ou Devolução</small></button>
+          <button type="button" class="choice" data-process="despejo"><span>D</span><strong>Despejo</strong><small>Bombona</small></button>
+        </div>
+        <div id="repackFields" class="stack subform">
+          <label>Tipo de Repack<select id="channelSelect"><option value="repack">Repack</option><option value="bag">BAG</option><option value="devolucao">Devolução</option></select></label>
+          <label>Embalagem <span class="optional">opcional</span><select id="packagingSelect"><option value="">Não informar</option></select></label>
+          <div id="targetHint" class="target-hint">Meta base: 2m50s por caixa.</div>
+        </div>
+        <p id="startError" class="error"></p>
+        <button id="startButton" class="primary big">▶ Iniciar cronômetro</button>
+      </section>
+      <section id="activeTaskCard" class="card timer-card hidden">
+        <div class="timer-top"><div><p class="eyebrow">CRONÔMETRO EM ANDAMENTO</p><h2 id="activeLabel">Repack</h2><p id="activeMeta" class="muted"></p></div><span class="live-dot">AO VIVO</span></div>
+        <div id="timerDisplay" class="timer">00:00:00</div>
+        <div class="start-info">Iniciado às <strong id="startedAt">—</strong>. Você pode bloquear a tela ou atualizar a página.</div>
+        <div class="finish-form">
+          <label>Quantidade de caixas<input id="quantityInput" type="number" inputmode="decimal" min="0.001" step="0.001" placeholder="Ex.: 25" /></label>
+          <label>Observação <span class="optional">opcional</span><textarea id="notesInput" rows="3" placeholder="Se houver alguma parada ou observação"></textarea></label>
+        </div>
+        <p id="finishError" class="error"></p>
+        <div class="timer-actions"><button id="cancelButton" class="danger-outline">Cancelar tarefa</button><button id="finishButton" class="primary big">■ Finalizar e salvar</button></div>
+      </section>
+      <section class="card history-card">
+        <div class="section-head"><div><p class="eyebrow">ÚLTIMOS APONTAMENTOS</p><h2>Seu histórico</h2></div><button id="refreshButton" class="secondary">Atualizar</button></div>
+        <div id="historyList" class="history-list"></div>
+      </section>
+    </section>
+  </main>
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js?v=20260928-1"></script>
+</body>
+</html>
