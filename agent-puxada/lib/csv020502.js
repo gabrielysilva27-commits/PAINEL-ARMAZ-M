@@ -71,16 +71,56 @@ function normalizeSku(value) {
   return digits || "";
 }
 
-function parseDate(value) {
+function validDate(year, month, day) {
+  const y = Number(year), m = Number(month), d = Number(day);
+  if (!Number.isInteger(y) || y < 2020 || y > 2100 || !Number.isInteger(m) || m < 1 || m > 12 || !Number.isInteger(d) || d < 1 || d > 31) return null;
+  const x = new Date(Date.UTC(y, m - 1, d));
+  if (x.getUTCFullYear() !== y || x.getUTCMonth() + 1 !== m || x.getUTCDate() !== d) return null;
+  return String(y).padStart(4, "0") + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+}
+
+function parseDate(value, allowCompact) {
   const s = String(value == null ? "" : value).trim();
-  let m = s.match(/\b(\d{2})[\/.\-](\d{2})[\/.\-](\d{4})\b/);
-  if (m) return m[3] + "-" + m[2] + "-" + m[1];
-  m = s.match(/\b(\d{4})[\/.\-](\d{2})[\/.\-](\d{2})\b/);
-  if (m) return m[1] + "-" + m[2] + "-" + m[3];
-  m = s.match(/\b(\d{2})(\d{2})(\d{4})\b/);
-  if (m) return m[3] + "-" + m[2] + "-" + m[1];
-  m = s.match(/\b(\d{4})(\d{2})(\d{2})\b/);
-  if (m) return m[1] + "-" + m[2] + "-" + m[3];
+  let m = s.match(/\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})\b/);
+  if (m) return validDate(m[3], m[2], m[1]);
+  m = s.match(/\b(\d{4})[\/.\-](\d{1,2})[\/.\-](\d{1,2})\b/);
+  if (m) return validDate(m[1], m[2], m[3]);
+  if (allowCompact) {
+    m = s.match(/\b(\d{2})(\d{2})(\d{4})\b/);
+    if (m) return validDate(m[3], m[2], m[1]);
+    m = s.match(/\b(\d{4})(\d{2})(\d{2})\b/);
+    if (m) return validDate(m[1], m[2], m[3]);
+  }
+  return null;
+}
+
+function pathReferenceDate(filePath) {
+  const full = String(filePath || "");
+  const parts = full.split(/[\\/]+/);
+  const base = path.basename(full, path.extname(full));
+
+  // Full dates in the file or folder name are the strongest signal.
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const d = parseDate(parts[i], true);
+    if (d) return d;
+  }
+
+  // Support the common LIBERAÇÃO structure: year / month folder / CSV / day-named file.
+  let year = null, month = null;
+  const monthNames = {
+    JANEIRO:1, FEVEREIRO:2, MARCO:3, ABRIL:4, MAIO:5, JUNHO:6,
+    JULHO:7, AGOSTO:8, SETEMBRO:9, OUTUBRO:10, NOVEMBRO:11, DEZEMBRO:12
+  };
+  for (const part of parts) {
+    const normalized = normalizeHeader(part);
+    const ym = normalized.match(/\b(20\d{2})\b/);
+    if (ym) year = Number(ym[1]);
+    for (const key of Object.keys(monthNames)) if (normalized.includes(key)) month = monthNames[key];
+    const mm = normalized.match(/^(0?[1-9]|1[0-2])\s*[-_. ]/);
+    if (mm && /20\d{2}/.test(normalized)) month = Number(mm[1]);
+  }
+  const dayMatch = base.match(/^(?:DIA\s*)?(0?[1-9]|[12]\d|3[01])(?:\b|\s*[-_.])/i);
+  if (year && month && dayMatch) return validDate(year, month, Number(dayMatch[1]));
   return null;
 }
 
@@ -168,25 +208,29 @@ function findHeaderRow(data) {
 function inferReferenceDate(filePath, data, headerRow, dateColumn) {
   if (dateColumn >= 0) {
     for (let r = headerRow + 1; r < Math.min(data.length, headerRow + 100); r++) {
-      const d = parseDate(data[r][dateColumn]);
+      const d = parseDate(data[r][dateColumn], true);
       if (d) return d;
     }
   }
+
+  // Prefer a date encoded in the LIBERAÇÃO file/folder name over free-form report cells.
+  const fromPath = pathReferenceDate(filePath);
+  if (fromPath) return fromPath;
+
+  // In free-form report headings accept only separated dates; compact 8-digit values
+  // may be product/material codes and caused false dates such as 2067-03-00.
   for (let r = 0; r < Math.min(data.length, headerRow + 8); r++) {
     for (const cell of data[r]) {
-      const d = parseDate(cell);
+      const d = parseDate(cell, false);
       if (d) return d;
     }
   }
-  const fromPath = parseDate(String(filePath || "").replace(/[\\_]/g, "-"));
-  if (fromPath) return fromPath;
+
+  // Last resort: file modification date. This keeps the automation usable when the
+  // report itself omits a date, but only after every explicit source above failed.
   try {
     const stat = fs.statSync(filePath), d = stat.mtime;
-    if (Number.isFinite(d.getTime())) {
-      return String(d.getFullYear()).padStart(4, "0") + "-" +
-        String(d.getMonth() + 1).padStart(2, "0") + "-" +
-        String(d.getDate()).padStart(2, "0");
-    }
+    if (Number.isFinite(d.getTime())) return validDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
   } catch (_e) {}
   return null;
 }
