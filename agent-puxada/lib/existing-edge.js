@@ -31,6 +31,11 @@ function idleMilliseconds() {
   } catch (_) { return null; }
 }
 
+function desktopUnlocked() {
+  if (!bridge || typeof bridge.desktopUnlocked !== "function") return false;
+  try { return bridge.desktopUnlocked() === true; } catch (_) { return false; }
+}
+
 function act(stage, values = {}) {
   if (stage === "save") throw new Error("EDGE_SAVE_REQUIRES_DIALOG");
   if (!bridge || typeof bridge.act !== "function") throw new Error("EDGE_NATIVE_ACTION_UNAVAILABLE");
@@ -47,4 +52,4 @@ function saveDialog(target) {
   return result;
 }
 
-module.exports = { probe, act, saveDialog, idleMilliseconds };
+module.exports = { probe, act, saveDialog, idleMilliseconds, desktopUnlocked };

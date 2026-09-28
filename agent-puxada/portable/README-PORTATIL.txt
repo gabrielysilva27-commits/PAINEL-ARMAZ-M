@@ -1,4 +1,4 @@
-AGENTE PUXADA - VERSAO PORTATIL 3.2.77
+AGENTE PUXADA - VERSAO PORTATIL 3.2.78
 
 COMO USAR
 
@@ -21,7 +21,7 @@ Deposito 1 a 1
 Operacao 251 a 314
 Tipo de data Entrega
 
-O agente aguarda 2 minutos sem uso do mouse ou teclado antes de iniciar cada puxada.
+O agente aguarda 30 segundos sem uso do mouse ou teclado e uma sessao Windows desbloqueada antes de iniciar cada puxada.
 Se voce voltar a usar o computador durante a puxada, a janela ainda podera aparecer.
 
 O Promax gera um arquivo .csv.inf. O agente identifica, processa, consolida e envia ao Painel automaticamente.
@@ -41,4 +41,4 @@ O token e protegido pelo DPAPI do Windows para o usuario atual.
 
 Se a empresa usar AppLocker, Windows Defender Application Control ou outra politica que bloqueie executaveis nao autorizados, o AgentePuxada.exe ou IEDriverServer.exe pode precisar de liberacao pela TI.
 
-Versao 3.2.77 - Windows x64.
+Versao 3.2.78 - Windows x64.

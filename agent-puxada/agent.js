@@ -10,8 +10,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.77";
-// 3.2.77: aguarda inatividade antes de iniciar a puxada no Edge normal.
+const VERSION = "3.2.78";
+// 3.2.78: aguarda 30 segundos de inatividade e uma sessão Windows desbloqueada.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -29,17 +29,19 @@ function sleep(ms) {
   return new Promise(function (resolve) { setTimeout(resolve, ms); });
 }
 
-const IDLE_REQUIRED_MS = 120000;
+const IDLE_REQUIRED_MS = 30000;
 async function waitForQuietComputer(stopping) {
-  let reported = false;
+  let lastReason = "";
   while (!stopping()) {
+    const unlocked = existingEdge.desktopUnlocked();
     const idle = existingEdge.idleMilliseconds();
-    if (idle !== null && idle >= IDLE_REQUIRED_MS) return true;
-    if (!reported) {
-      log("Puxada aguardando 2 minutos sem uso do mouse ou teclado para não interromper o trabalho.");
-      reported = true;
-    }
-    await sleep(15000);
+    if (unlocked && idle !== null && idle >= IDLE_REQUIRED_MS) return true;
+    const reason = unlocked
+      ? "Puxada aguardando 30 segundos sem uso do mouse ou teclado."
+      : "Puxada aguardando o desbloqueio da sessão Windows.";
+    if (reason !== lastReason) log(reason);
+    lastReason = reason;
+    await sleep(5000);
   }
   return false;
 }
