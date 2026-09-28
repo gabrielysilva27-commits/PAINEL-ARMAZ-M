@@ -1,4 +1,4 @@
-AGENTE PUXADA - VERSAO PORTATIL 3.2.79
+AGENTE PUXADA - VERSAO PORTATIL 3.2.80
 
 COMO USAR
 
@@ -41,4 +41,4 @@ O token e protegido pelo DPAPI do Windows para o usuario atual.
 
 Se a empresa usar AppLocker, Windows Defender Application Control ou outra politica que bloqueie executaveis nao autorizados, o AgentePuxada.exe ou IEDriverServer.exe pode precisar de liberacao pela TI.
 
-Versao 3.2.79 - Windows x64.
+Versao 3.2.80 - Windows x64.
