@@ -65,26 +65,24 @@ function parseNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-function parsePackedQuantity(value, factorValue) {
+function parseOorQuantity(value, unitValue) {
   const raw = String(value == null ? "" : value).trim().replace(/\s/g, "");
-  const m = raw.match(/^([+-]?[\d.,]+)\/(\d+)$/);
-  if (!m) return parseNumber(value);
+  if (!raw) return null;
 
-  // O 02.05.02 representa estoque no formato "inteiros/sobra".
-  // Ex.: 5.908/03 = 5.908 caixas + 3 unidades soltas; o campo FATOR
-  // informa quantas unidades compõem uma caixa/dúzia.
-  const wholeText = m[1].replace(/[.,]/g, "");
-  const whole = Number(wholeText);
-  const loose = Number(m[2]);
-  if (!Number.isFinite(whole) || !Number.isFinite(loose)) return null;
+  // A planilha OOR original usa a coluna DISPONIVEL do 02.05.02,
+  // considera apenas a parte inteira antes de "/xx" e, quando a
+  // unidade é Dz, divide a quantidade por 2.
+  const left = raw.split("/")[0];
+  let s = left;
+  if (s.indexOf(",") >= 0) s = s.replace(/\./g, "").replace(",", ".");
+  else s = s.replace(/\./g, "");
+  s = s.replace(/[^\d+\-.]/g, "");
+  let qty = Number(s);
+  if (!Number.isFinite(qty)) return null;
 
-  let factorText = String(factorValue == null ? "" : factorValue).trim().replace(/\s/g, "");
-  factorText = factorText.replace(/[^\d.,+-]/g, "");
-  if (factorText.indexOf(",") >= 0) factorText = factorText.replace(/\./g, "").replace(",", ".");
-  const factor = Number(factorText);
-  if (loose === 0) return whole;
-  if (!Number.isFinite(factor) || factor <= 0) return null;
-  return whole + (loose / factor);
+  const unit = normalizeHeader(unitValue);
+  if (unit === "DZ") qty = qty / 2;
+  return qty;
 }
 
 function normalizeSku(value) {
@@ -146,7 +144,7 @@ function pathReferenceDate(filePath) {
   return null;
 }
 
-const SKU_ALIASES = ["ITEM","COD ITEM","CODIGO ITEM","CODIGO DO ITEM","MATERIAL","COD MATERIAL","CODIGO MATERIAL","COD PRODUTO","CODIGO PRODUTO","COD PROD","CODIGO"];
+const SKU_ALIASES = ["PRODUTO","COD","CODIGO","ITEM","COD ITEM","CODIGO ITEM","CODIGO DO ITEM","MATERIAL","COD MATERIAL","CODIGO MATERIAL","COD PRODUTO","CODIGO PRODUTO","COD PROD"];
 const QTY_ALIASES = ["QTDE DISPONIVEL","QTD DISPONIVEL","QUANTIDADE DISPONIVEL","DISPONIVEL","ESTOQUE DISPONIVEL","SALDO DISPONIVEL","QTDE ESTOQUE","QTD ESTOQUE","QUANTIDADE ESTOQUE","SALDO ESTOQUE","SALDO","ESTOQUE","QTDE","QTD","QUANTIDADE"];
 const NAME_ALIASES = ["DESCRICAO","DESC ITEM","DESCRICAO ITEM","PRODUTO","NOME PRODUTO"];
 const UNIT_ALIASES = ["UNIDADE","UNID","UND","UN","UM"];
@@ -281,7 +279,7 @@ function parse020502(filePath) {
   let validRows = 0;
 
   for (let r = startRow; r < data.length; r++) {
-    const row = data[r], sku = normalizeSku(row[skuIndex]), qty = parsePackedQuantity(row[qtyIndex], factorIndex >= 0 ? row[factorIndex] : null);
+    const row = data[r], sku = normalizeSku(row[skuIndex]), qty = parseOorQuantity(row[qtyIndex], unitIndex >= 0 ? row[unitIndex] : null);
     if (!sku || qty == null) continue;
     validRows++;
     const old = aggregate.get(sku) || {
@@ -331,6 +329,8 @@ function parse020502(filePath) {
       factor_index: factorIndex,
       factor_column: factorIndex >= 0 ? headers[factorIndex] : null,
       factor_sample: factorIndex >= 0 ? data.slice(startRow, startRow + 8).map(function (row) { return String(row[factorIndex] == null ? "" : row[factorIndex]).trim(); }) : [],
+      aggregated_rows: rows.length,
+      oor_rule: "PRODUTO=codigo; DISPONIVEL=parte inteira; unidade Dz divide por 2",
       numeric_columns: numeric_columns.slice(0, 30)
     }
   };
@@ -364,4 +364,4 @@ function discover020502Files(rootPath) {
   return out;
 }
 
-module.exports = { parse020502, discover020502Files, normalizeHeader, parsePackedQuantity };
+module.exports = { parse020502, discover020502Files, normalizeHeader, parseOorQuantity };

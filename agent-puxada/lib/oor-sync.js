@@ -25,7 +25,7 @@ function saveState(holder) {
 function signature(file) {
   // Prefixo muda quando a interpretação do 02.05.02 muda, permitindo
   // reprocessar arquivos já vistos sem apagar o histórico local do agente.
-  return "020502-packed-v2|" + file.path + "|" + String(file.size || 0) + "|" + String(Math.round(file.mtime_ms || 0));
+  return "020502-oor-original-v3|" + file.path + "|" + String(file.size || 0) + "|" + String(Math.round(file.mtime_ms || 0));
 }
 
 async function sync(api, installRoot, log) {
@@ -63,6 +63,7 @@ async function sync(api, installRoot, log) {
           source_file: latestFile.name,
           reference_date: parsedDiag.reference_date,
           file_size: latestFile.size,
+          aggregated_rows: parsedDiag.aggregated_rows,
           parsed_rows_sample: parsedDiag.rows.slice(0, 12)
         }, parsedDiag.diagnostic || {})
       });

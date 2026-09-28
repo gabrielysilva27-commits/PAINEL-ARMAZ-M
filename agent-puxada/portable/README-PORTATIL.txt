@@ -1,4 +1,4 @@
-AGENTE PUXADA - VERSAO PORTATIL 3.2.86
+AGENTE PUXADA - VERSAO PORTATIL 3.2.87
 
 COMO USAR
 
@@ -41,6 +41,6 @@ O token e protegido pelo DPAPI do Windows para o usuario atual.
 
 Se a empresa usar AppLocker, Windows Defender Application Control ou outra politica que bloqueie executaveis nao autorizados, o AgentePuxada.exe ou IEDriverServer.exe pode precisar de liberacao pela TI.
 
-Versao 3.2.86 - Windows x64.
+Versao 3.2.87 - Windows x64.
 
-O agente lê automaticamente apenas os arquivos LIBERAÇÃO CHEIO do relatório 02.05.02 na pasta de rede configurada pelo Painel para atualizar o OOR. O campo DISPONÍVEL é convertido do formato inteiro/sobra com o FATOR do próprio relatório. Arquivos DEVOLUÇÃO, ANÁLISE/PNC, FALTAS e outros tipos são ignorados. O arquivo bruto não é enviado nem armazenado; somente os saldos consolidados por SKU.
+O agente lê automaticamente apenas os arquivos LIBERAÇÃO CHEIO do relatório 02.05.02. O universo do OOR vem dos códigos de produto do próprio 02.05.02. A quantidade replica a planilha original: usa DISPONÍVEL, considera a parte inteira antes de /xx e, para unidade Dz, divide por 2. Arquivos DEVOLUÇÃO, ANÁLISE/PNC, FALTAS e outros tipos são ignorados. O arquivo bruto não é enviado nem armazenado; somente os saldos consolidados por SKU.
