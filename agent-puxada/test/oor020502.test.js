@@ -2,7 +2,7 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { parse020502, discover020502Files, parsePackedQuantity } = require("../lib/csv020502");
+const { parse020502, discover020502Files, parseOorQuantity } = require("../lib/csv020502");
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oor020502-"));
 const file = path.join(dir, "Estoque_22-09-2026.csv");
@@ -49,13 +49,13 @@ assert.deepStrictEqual(found, ["28.09 - LIBERAÇÃO CHEIO.inf"]);
 console.log("020502 CHEIO-only discovery OK");
 
 
-assert.strictEqual(parsePackedQuantity("5.908/03", "6"), 5908.5);
-assert.strictEqual(parsePackedQuantity("4.652/02", "6"), 4652 + 2/6);
-assert.strictEqual(parsePackedQuantity("255/10", "12"), 255 + 10/12);
-assert.strictEqual(parsePackedQuantity("30/00", "1"), 30);
-assert.strictEqual(parsePackedQuantity("1.100/00", "1"), 1100);
+assert.strictEqual(parseOorQuantity("5.908/03", "cx"), 5908);
+assert.strictEqual(parseOorQuantity("4.652/02", "cx"), 4652);
+assert.strictEqual(parseOorQuantity("255/10", "Dz"), 127.5);
+assert.strictEqual(parseOorQuantity("30/00", "L"), 30);
+assert.strictEqual(parseOorQuantity("1.100/00", "L"), 1100);
 
-const packed = path.join(csvDir, "28.09 - LIBERAÇÃO CHEIO - packed.inf");
+const packed = path.join(csvDir, "28.09 - LIBERAÇÃO CHEIO - oor.inf");
 fs.writeFileSync(packed,
   "ARMAZEM;DEPOSITO;;PRODUTO;DESCRICAO;UNIDADE;SALDO ANTERIOR;ENTRADAS;SAIDAS;SALDO ATUAL;TRANSITO;DISPONIVEL;INVENTARIO;DIFERENCA;DIFERENCA CONGELAMENTO;TRANS_ANT;TRANS_ANT_NAO_CARREGADO;TRANS_DIA_NAO_CARREGADO;COMODATO OP03;VENDA VAS OP85;VALORIZACAO;SINAL;TIPO;FATOR\n" +
   "01;01;000;00000503;SUKITA PET 2L CAIXA C/6;cx;6.000/04;0/00;0/00;6.000/04;92/01;5.908/03;5.913/02;;;0/00;0/00;0/00;0/00;0/00;00000000133,7383333;;PA;6\n" +
@@ -65,8 +65,7 @@ fs.writeFileSync(packed,
 );
 const packedParsed = parse020502(packed);
 assert.strictEqual(packedParsed.quantity_column, "DISPONIVEL");
-assert.strictEqual(packedParsed.diagnostic.factor_column, "FATOR");
-assert.strictEqual(packedParsed.rows.find(x => x.sku_code === "503").available_qty, 5908.5);
-assert.strictEqual(packedParsed.rows.find(x => x.sku_code === "982").available_qty, 255.833);
+assert.strictEqual(packedParsed.rows.find(x => x.sku_code === "503").available_qty, 5908);
+assert.strictEqual(packedParsed.rows.find(x => x.sku_code === "982").available_qty, 127.5);
 assert.strictEqual(packedParsed.rows.find(x => x.sku_code === "838").available_qty, 1100);
-console.log("020502 packed quantity/FATOR OK");
+console.log("020502 OOR original quantity rule OK");
