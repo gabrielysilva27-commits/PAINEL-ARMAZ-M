@@ -659,7 +659,7 @@ static bool FillReport(HWND hwnd, const std::wstring* values) {
     // identified in the form, so monitor resolution and window position do not
     // matter. Baseline ADM geometry: combo left 206, delivery (212,501),
     // Visualizar center y 578 at 21px edit height.
-    const int fieldHeight = std::max(12, date[0].rect.bottom-date[0].rect.top);
+    const int fieldHeight = std::max<int>(12, static_cast<int>(date[0].rect.bottom-date[0].rect.top));
     const int visualizeY = (visualize->rect.top+visualize->rect.bottom)/2;
     const int deliveryX = reportType->rect.left + (6*fieldHeight)/21;
     const int deliveryY = visualizeY - (77*fieldHeight)/21;
