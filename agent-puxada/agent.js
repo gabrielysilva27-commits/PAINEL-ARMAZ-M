@@ -5,13 +5,14 @@ const path = require("path");
 const { AgentApi } = require("./lib/api");
 const { loadAgentToken } = require("./lib/secrets");
 const { parse020501 } = require("./lib/csv020501");
+const oorSync = require("./lib/oor-sync");
 const promax = require("./lib/promax");
 const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.81";
-// 3.2.81: aguarda 30 segundos de inatividade e uma sessão Windows desbloqueada.
+const VERSION = "3.2.82";
+// 3.2.82: adiciona leitura automática do 02.05.02 em pasta de rede para atualizar o OOR.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -69,7 +70,7 @@ async function main() {
       await api.updateState({
         agent_version: VERSION,
         updater_version: updater.UPDATER_VERSION,
-        capabilities: ["EDGE_NORMAL_STATUS_" + promax.normalEdgeStatus(),"020501_SYNC","PROMAX_NORMAL_EDGE_ONLY","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","PROMAX_CSV_AUTHENTICATED_CAPTURE","PROMAX_EXCEL_COM_CAPTURE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
+        capabilities: ["EDGE_NORMAL_STATUS_" + promax.normalEdgeStatus(),"020501_SYNC","PROMAX_NORMAL_EDGE_ONLY","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","PROMAX_CSV_AUTHENTICATED_CAPTURE","PROMAX_EXCEL_COM_CAPTURE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1","OOR_020502_AUTO"],
         update_status: "current",
         update_target_version: VERSION
       }).catch(function(){});
@@ -79,7 +80,7 @@ async function main() {
       await api.updateState({
         agent_version: VERSION,
         updater_version: updater.UPDATER_VERSION,
-        capabilities: ["EDGE_NORMAL_STATUS_" + promax.normalEdgeStatus(),"020501_SYNC","PROMAX_NORMAL_EDGE_ONLY","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","PROMAX_CSV_AUTHENTICATED_CAPTURE","PROMAX_EXCEL_COM_CAPTURE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1"],
+        capabilities: ["EDGE_NORMAL_STATUS_" + promax.normalEdgeStatus(),"020501_SYNC","PROMAX_NORMAL_EDGE_ONLY","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","PROMAX_CSV_AUTHENTICATED_CAPTURE","PROMAX_EXCEL_COM_CAPTURE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1","OOR_020502_AUTO"],
         update_status: "failed",
         update_target_version: VERSION,
         update_error: "Abrir Promax: " + message
@@ -112,7 +113,7 @@ async function main() {
       hostname: os.hostname(),
       agent_version: VERSION,
       updater_version: updater.UPDATER_VERSION,
-      capabilities: ["EDGE_NORMAL_STATUS_" + promax.normalEdgeStatus(),"020501_SYNC","PROMAX_NORMAL_EDGE_ONLY","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","PROMAX_CSV_AUTHENTICATED_CAPTURE","PROMAX_EXCEL_COM_CAPTURE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1","USER_IDLE_GATE", edgeProbe.available ? "EDGE_IE_SURFACES_" + Math.min(edgeProbe.ieModeSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_ACCESSIBLE_SURFACES_" + Math.min(edgeProbe.accessibleSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_REPORT_WINDOWS_" + Math.min(edgeProbe.reportWindows, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_HOME_WINDOWS_" + Math.min(edgeProbe.homeWindows, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_ATALHO_CONTROLS_" + Math.min(edgeProbe.shortcutControls, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_UIA_CONTROLS_" + Math.min(edgeProbe.uiaElements, 9999) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_CSV_CONTROLS_" + Math.min(edgeProbe.csvControls, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_VISUALIZAR_CONTROLS_" + Math.min(edgeProbe.visualizeControls, 99) : "EDGE_PROBE_UNAVAILABLE"].concat((edgeProbe.layout || []).map(x => "EDGE_LAYOUT_" + x)),
+      capabilities: ["EDGE_NORMAL_STATUS_" + promax.normalEdgeStatus(),"020501_SYNC","PROMAX_NORMAL_EDGE_ONLY","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","PROMAX_CSV_AUTHENTICATED_CAPTURE","PROMAX_EXCEL_COM_CAPTURE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1","OOR_020502_AUTO","USER_IDLE_GATE", edgeProbe.available ? "EDGE_IE_SURFACES_" + Math.min(edgeProbe.ieModeSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_ACCESSIBLE_SURFACES_" + Math.min(edgeProbe.accessibleSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_REPORT_WINDOWS_" + Math.min(edgeProbe.reportWindows, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_HOME_WINDOWS_" + Math.min(edgeProbe.homeWindows, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_ATALHO_CONTROLS_" + Math.min(edgeProbe.shortcutControls, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_UIA_CONTROLS_" + Math.min(edgeProbe.uiaElements, 9999) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_CSV_CONTROLS_" + Math.min(edgeProbe.csvControls, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_VISUALIZAR_CONTROLS_" + Math.min(edgeProbe.visualizeControls, 99) : "EDGE_PROBE_UNAVAILABLE"].concat((edgeProbe.layout || []).map(x => "EDGE_LAYOUT_" + x)),
       calibration_ready: calibrationReady,
       readiness_error: readinessError
     };
@@ -144,6 +145,19 @@ async function main() {
     }
   }
 
+  let lastOorCheck = 0;
+  async function maybeSyncOor(force) {
+    if (!force && Date.now() - lastOorCheck < 5 * 60 * 1000) return;
+    lastOorCheck = Date.now();
+    try {
+      await oorSync.sync(api, path.resolve(ROOT, ".."), log);
+    } catch (e) {
+      const message = e && e.message ? e.message : String(e);
+      log("Falha no OOR automático: " + message, true);
+      await api.oorScanState({ status: "error", error: message }).catch(function(){});
+    }
+  }
+
   if (process.argv.indexOf("--check") >= 0) {
     // Update health checks validate the agent and API. Browser readiness is
     // evaluated by the normal polling loop and must not block installation.
@@ -164,6 +178,7 @@ async function main() {
     let job = null;
     try {
       if (await maybeUpdate(false)) return;
+      await maybeSyncOor(false);
       if (!await waitForQuietComputer(() => stopping)) break;
       const response = await api.poll(await info());
       job = response.job;
