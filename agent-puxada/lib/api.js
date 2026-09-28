@@ -62,6 +62,10 @@ class AgentApi {
     return this.call("agent_oor_scan_state", payload);
   }
 
+  oorDiagnostic(payload) {
+    return this.call("agent_oor_diagnostic", payload);
+  }
+
   oorImport(payload) {
     return this.call("agent_oor_import", payload);
   }
