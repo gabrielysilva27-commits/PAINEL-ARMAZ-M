@@ -42,7 +42,7 @@ export function isValidator(user) {
   if (!user) return false;
   if (user.role === "admin") return true;
   const firstName = normalizeMatch(user.display_name || user.username).split(" ")[0];
-  return firstName === "diego" || firstName === "joseph";
+  return firstName === "diego" || firstName === "joseph" || firstName === "jose";
 }
 
 function validIsoDate(value) {
