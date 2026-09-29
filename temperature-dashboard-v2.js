@@ -122,9 +122,9 @@
   function rulesBlock(area){
     const r=RULES[area]||RULES['Retornável'];
     return '<div class="temp-rule-bar">'+
-      '<div class="ok"><span>OK</span><strong>'+esc(r.ok)+'</strong><small>Operação normal</small></div>'+
-      '<div class="attention"><span>Atenção</span><strong>'+esc(r.attention)+'</strong><small>Atenção na movimentação</small></div>'+
-      '<div class="critical"><span>Crítico</span><strong>'+esc(r.criticalText)+'</strong><small>Aplicar plano de ação</small></div>'+
+      '<div class="ok"><span>OK</span><strong>'+esc(r.ok)+'</strong><small>OK</small></div>'+
+      '<div class="attention"><span>Atenção</span><strong>'+esc(r.attention)+'</strong><small>Solicitar atenção dos ajudantes na movimentação</small></div>'+
+      '<div class="critical"><span>Crítico</span><strong>'+esc(r.criticalText)+'</strong><small>Não realizar movimentação manual de caixaria / localizar os SKUs de caixaria nas áreas mais frescas do armazém</small></div>'+
     '</div>';
   }
 
