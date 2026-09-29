@@ -77,7 +77,7 @@
   function historyPanelHtml(area, items) {
     const valid = (items || []).filter(x => x.method === 'distance_to_picking' || String(x.method_version || '').startsWith('distance-picking'));
     if (!valid.length) {
-      return '<section class="panel abc-history-panel"><div class="panel-heading"><div><h2>Histórico de aderência</h2><small>Acompanhamento da aderência da Curva ABC nas posições físicas.</small></div></div><div class="abc-history-loading">Nenhuma medição registrada para este filtro.</div></section>';
+      return '<section class="panel abc-history-panel"><div class="panel-heading"><h2>Histórico</h2></div><div class="abc-history-loading">Ainda não há medições para este filtro.</div></section>';
     }
 
     const byMonth = new Map();
@@ -93,12 +93,12 @@
       const values = list.map(x=>Number(x.rate)).filter(Number.isFinite);
       const avg = values.length ? values.reduce((sum,x)=>sum+x,0)/values.length : null;
       const latest = [...list].sort((a,b)=>String(a.observed_date||'').localeCompare(String(b.observed_date||''))).at(-1);
-      return '<tr class="'+(month===state.currentMonth?'current':'')+'"><td><strong>'+esc(monthLabel(month))+'</strong></td><td><strong>'+(avg==null?'—':pct(avg))+'</strong></td><td>'+(latest&&latest.rate!=null?pct(Number(latest.rate)):'—')+'</td><td>'+values.length+'</td><td>'+(values.length?pct(Math.min(...values))+' → '+pct(Math.max(...values)):'—')+'</td></tr>';
+      return '<tr class="'+(month===state.currentMonth?'current':'')+'"><td><strong>'+esc(monthLabel(month))+'</strong></td><td class="abc-rate-cell">'+(avg==null?'—':pct(avg))+'</td><td>'+(latest&&latest.rate!=null?pct(Number(latest.rate)):'—')+'</td><td>'+values.length+'</td></tr>';
     }).join('');
 
     return '<section class="panel abc-history-panel">' +
-      '<div class="panel-heading"><div><h2>Histórico de aderência</h2><small>Curva A mais próxima do Picking, B intermediária e C mais distante.</small></div></div>' +
-      '<div class="stock-table-wrap"><table><thead><tr><th>Mês</th><th>Média</th><th>Última medição</th><th>Medições</th><th>Faixa</th></tr></thead><tbody>'+rows+'</tbody></table></div>' +
+      '<div class="panel-heading"><h2>Histórico</h2></div>' +
+      '<div class="stock-table-wrap"><table><thead><tr><th>Mês</th><th>Aderência</th><th>Última</th><th>Medições</th></tr></thead><tbody>'+rows+'</tbody></table></div>' +
     '</section>';
   }
 
@@ -486,56 +486,54 @@
 
   function matrixHtml(area, matrix) {
     if (area === 'Câmara Fria') {
-      return '<section class="panel abc-matrix-panel">' +
-        '<div class="panel-heading"><div><h2>Câmara Fria · Curva A</h2><small>SKU 838 é o único barril puxado para esta área.</small></div></div>' +
-        '<div class="abc-zone-grid"><article class="abc-zone-card zone-a"><div><span>Zona A</span><strong>' + matrix.candidates.length + ' posições</strong></div><small>100% da área</small><p>Todas as posições ocupadas são destinadas ao SKU 838, classificado como Curva A.</p></article></div>' +
-        '<p class="abc-method-note">A Câmara Fria é tratada como área dedicada ao SKU 838. Por isso, enquanto o produto físico da área permanecer o 838, a aderência é 100%.</p>' +
+      return '<section class="panel abc-matrix-panel abc-cold-room-card">' +
+        '<div class="panel-heading"><h2>Distribuição da curva</h2></div>' +
+        '<div class="abc-cold-room-line"><span class="abc-zone-dot zone-a"></span><strong>Curva A</strong><span>SKU 838 · ' + matrix.candidates.length + ' posições</span><b>100%</b></div>' +
       '</section>';
     }
-    const rows = classOrder.map(c => {
-      const positions = matrix.candidates.filter(p=>matrix.zoneByKey.get(p.key)===c).map(p=>p.address);
-      const preview = positions.slice(0,12).join(', ') + (positions.length>12 ? '…' : '');
-      return '<tr><td><strong>Zona ' + c + '</strong></td><td>Curva ' + c + '</td><td>' + (matrix.allocation[c]||0) + '</td><td>' + esc(preview || '—') + '</td></tr>';
-    }).join('');
+
     return '<section class="panel abc-matrix-panel">' +
-      '<div class="panel-heading"><div><h2>Faixas por distância · ' + esc(areaLabel(area)) + '</h2><small>Mais próximo do Picking → A · intermediário → B · mais distante → C</small></div></div>' +
-      '<div class="abc-zone-grid">' + classOrder.map(c=>zoneCard(c,matrix)).join('') + '</div>' +
-      '<div class="stock-table-wrap"><table><thead><tr><th>Zona</th><th>Curva esperada</th><th>Posições</th><th>Endereços priorizados</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '<p class="abc-method-note">Regra da aderência: os endereços físicos são ordenados pela distância ao Picking. A capacidade de cada faixa A/B/C acompanha a necessidade física observada de cada curva; quando não há ocupação suficiente, usa-se a distribuição de SKUs da curva do mês. A classificação ABC usada é sempre a de ' + esc(areaLabel(area)) + '.</p>' +
+      '<div class="panel-heading"><h2>Distribuição física</h2></div>' +
+      '<div class="abc-zone-grid">' + classOrder.map(c => {
+        const positions = matrix.candidates.filter(p=>matrix.zoneByKey.get(p.key)===c).map(p=>p.address);
+        const preview = positions.slice(0,8).join(' · ') + (positions.length>8 ? ' …' : '');
+        return '<article class="abc-zone-card zone-'+c.toLowerCase()+'"><div class="abc-zone-head"><span>Curva '+c+'</span><strong>'+(matrix.allocation[c]||0)+'</strong></div><small>'+esc(preview || 'Sem posições')+'</small></article>';
+      }).join('') + '</div>' +
     '</section>';
   }
 
   function actionsHtml(matrix) {
-    const list = matrix.actions.slice(0,15);
+    const list = matrix.actions.slice(0,12);
     if (!list.length) {
-      return '<section class="panel abc-actions-panel"><div class="panel-heading"><h2>Plano de ação</h2></div><div class="abc-all-good">Nenhum desvio de Curva ABC identificado nas posições ocupadas.</div></section>';
+      return '<section class="panel abc-actions-panel"><div class="panel-heading"><h2>Ajustes</h2></div><div class="abc-all-good">Nenhum ajuste prioritário.</div></section>';
     }
-    const rows = list.map((x,i) => {
-      const products = x.rows.slice(0,3).map(r => String(r.sku_code || '') + (r.sku_name ? ' · ' + r.sku_name : '')).join(' / ');
-      return '<tr><td><strong>' + (i+1) + '</strong></td><td><strong>' + esc(x.address) + '</strong></td><td>Zona ' + esc(x.zone) + '</td><td>' + esc(x.actualClass) + '</td><td>' + statusBadge(x.status) + '</td><td><small>' + esc(products || '—') + '</small></td><td>' + esc(x.suggestion) + '</td></tr>';
+    const rows = list.map(x => {
+      const products = x.rows.slice(0,2).map(r => String(r.sku_code || '') + (r.sku_name ? ' · ' + r.sku_name : '')).join(' / ');
+      return '<tr><td><strong>' + esc(x.address) + '</strong></td><td><span class="abc-curve-pill curve-'+String(x.actualClass||'').charAt(0).toLowerCase()+'">'+esc(x.actualClass)+'</span></td><td>Curva '+esc(x.zone)+'</td><td><small>' + esc(products || '—') + '</small></td><td>' + esc(x.suggestion) + '</td></tr>';
     }).join('');
     return '<section class="panel abc-actions-panel">' +
-      '<div class="panel-heading"><div><h2>Plano de ação priorizado</h2><small>Prioridade de correção: Curva A distante do Picking; depois B e C fora da faixa correspondente.</small></div></div>' +
-      '<div class="stock-table-wrap"><table><thead><tr><th>#</th><th>Endereço</th><th>Zona</th><th>Curva real</th><th>Status</th><th>Produto</th><th>Ação sugerida</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="panel-heading"><div><h2>Ajustes prioritários</h2><small>'+matrix.actions.length+' desvio'+(matrix.actions.length===1?'':'s')+'</small></div></div>' +
+      '<div class="stock-table-wrap"><table><thead><tr><th>Endereço</th><th>Atual</th><th>Ideal</th><th>Produto</th><th>Ação</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
     '</section>';
   }
 
   function physicalHtml(area, month, stock, curveItems, allCurveItems) {
-    if (!stock.snapshot) return '<div class="abc-adherence-empty">Nenhuma fotografia de estoque disponível para cruzar com a Curva ABC.</div>';
+    if (!stock.snapshot) return '<div class="abc-adherence-empty">Nenhuma posição de estoque disponível para este período.</div>';
     const matrix = matrixForArea(stock,area,curveItems,allCurveItems);
     const asOf = stock.snapshot.as_of ? String(stock.snapshot.as_of).split('-').reverse().join('/') : '—';
-    const cards =
-      '<section class="abc-adherence-kpis">' +
-        '<article><span>Aderência ABC</span><strong>' + (matrix.rate==null?'—':pct(matrix.rate)) + '</strong><small>somente posições ocupadas e classificadas</small></article>' +
-        '<article><span>Posições corretas</span><strong>' + matrix.adherent + '</strong><small>produto na zona da própria curva</small></article>' +
-        '<article><span>Não aderentes</span><strong>' + matrix.non + '</strong><small>realocação recomendada</small></article>' +
-        '<article><span>Posições avaliadas</span><strong>' + matrix.checks.length + '</strong><small>todas com classificação ABC aplicada</small></article>' +
-      '</section>';
+    const reference = monthLabel(month);
+    const evaluated = matrix.checks.length;
 
     return '<div class="abc-adherence-shell">' +
-      '<div class="abc-adherence-intro"><div><p class="eyebrow">ADERÊNCIA ABC</p><h2>' + esc(areaLabel(area)) + '</h2><p>' + (area === 'Câmara Fria' ? 'Câmara Fria dedicada ao SKU 838, Curva A.' : 'Curva ABC de ' + esc(month.split('-').reverse().join('/')) + ' × posição física de ' + esc(asOf) + '. Aderência medida pela distância ao Picking.') + '</p></div><span class="abc-area-rule">Regra: <strong>' + (area === 'Câmara Fria' ? 'SKU 838 · Curva A' : 'A próxima · B média · C distante') + '</strong></span></div>' +
-      cards +
-      evidenceHtml(area,matrix,month) +
+      '<section class="abc-adherence-intro">' +
+        '<div><h2>' + esc(areaLabel(area)) + '</h2><p>' + esc(reference) + ' · posição de ' + esc(asOf) + ' · ' + evaluated + ' posições avaliadas</p></div>' +
+        '<span class="abc-area-rule">' + (area === 'Câmara Fria' ? '<strong>838 · Curva A</strong>' : '<strong>A</strong> próxima&nbsp;&nbsp; <strong>B</strong> média&nbsp;&nbsp; <strong>C</strong> distante') + '</span>' +
+      '</section>' +
+      '<section class="abc-adherence-kpis">' +
+        '<article class="abc-kpi-primary"><span>Aderência</span><strong>' + (matrix.rate==null?'—':pct(matrix.rate)) + '</strong></article>' +
+        '<article><span>Corretas</span><strong>' + matrix.adherent + '</strong></article>' +
+        '<article class="abc-kpi-alert"><span>Desvios</span><strong>' + matrix.non + '</strong></article>' +
+      '</section>' +
       '<div id="abcHistoryPanel"></div>' +
       matrixHtml(area,matrix) +
       actionsHtml(matrix) +
@@ -590,29 +588,28 @@
   function pickingHtml(month, curveItems, data) {
     const plan = data.plan || {};
     const matrix = pickingDistanceMatrix(plan);
-    const info = typeof monthInfo === 'function' ? monthInfo(month) : null;
     const curveCounts = curveStats(curveItems).counts;
-    const actions = matrix.actions.slice(0,15);
-
-    const actionRows = actions.map((x,i)=>
-      '<tr><td><strong>'+(i+1)+'</strong></td><td>'+esc(x.address)+'</td><td>Zona '+esc(x.zone)+'</td><td>Curva '+esc(x.curve)+'</td><td>'+statusBadge(x.status)+'</td><td><small>'+esc(String(x.sku||'')+(x.name?' · '+x.name:''))+'</small></td><td>Reposicionar este SKU para uma vaga compatível com a distância esperada da Curva '+esc(x.curve)+'.</td></tr>'
+    const actions = matrix.actions.slice(0,12);
+    const actionRows = actions.map(x =>
+      '<tr><td><strong>'+esc(x.address)+'</strong></td><td><span class="abc-curve-pill curve-'+String(x.curve||'').toLowerCase()+'">'+esc(x.curve)+'</span></td><td>Curva '+esc(x.zone)+'</td><td><small>'+esc(String(x.sku||'')+(x.name?' · '+x.name:''))+'</small></td><td>Reposicionar para a faixa da Curva '+esc(x.curve)+'.</td></tr>'
     ).join('');
 
     return '<div class="abc-adherence-shell">' +
-      '<div class="abc-adherence-intro"><div><p class="eyebrow">ADERÊNCIA ABC POR DISTÂNCIA</p><h2>Picking</h2><p>Aderência calculada pela distância à entrada do Picking: Curva A na frente, B no meio e C no fundo.</p></div><span class="abc-area-rule planned">Referência: <strong>entrada do Picking</strong></span></div>' +
-      '<section class="abc-adherence-kpis">' +
-        '<article><span>Aderência ABC</span><strong>' + (matrix.rate==null?'—':pct(matrix.rate)) + '</strong><small>posições na faixa correta por distância</small></article>' +
-        '<article><span>Posições corretas</span><strong>' + matrix.adherent + '</strong><small>curva compatível com a distância</small></article>' +
-        '<article><span>Não aderentes</span><strong>' + matrix.non + '</strong><small>reposicionamento recomendado</small></article>' +
-        '<article><span>SKUs ABC</span><strong>' + curveItems.length + '</strong><small>A ' + curveCounts.A + ' · B ' + curveCounts.B + ' · C ' + curveCounts.C + '</small></article>' +
+      '<section class="abc-adherence-intro">' +
+        '<div><h2>Picking</h2><p>'+esc(monthLabel(month))+' · '+matrix.checks.length+' posições avaliadas</p></div>' +
+        '<span class="abc-area-rule"><strong>A</strong> frente&nbsp;&nbsp; <strong>B</strong> meio&nbsp;&nbsp; <strong>C</strong> fundo</span>' +
       '</section>' +
-      '<section class="panel abc-matrix-panel"><div class="panel-heading"><div><h2>Faixas por distância</h2><small>Entrada do Picking → A · meio → B · fundo → C</small></div></div>' +
-        '<div class="abc-zone-grid">' + classOrder.map(c=>'<article class="abc-zone-card zone-'+c.toLowerCase()+'"><div><span>Zona '+c+'</span><strong>'+matrix.counts[c]+' posições</strong></div><small>Curva '+c+'</small><p>Faixa física dimensionada pela quantidade de posições ocupadas por esta curva.</p></article>').join('') + '</div>' +
-        '<p class="abc-method-note">A aderência compara a Curva ABC de cada SKU com sua posição no fluxo físico do Picking. Quanto maior o giro, menor deve ser a distância até a entrada/saída operacional.</p>' +
+      '<section class="abc-adherence-kpis">' +
+        '<article class="abc-kpi-primary"><span>Aderência</span><strong>' + (matrix.rate==null?'—':pct(matrix.rate)) + '</strong></article>' +
+        '<article><span>Corretas</span><strong>' + matrix.adherent + '</strong></article>' +
+        '<article class="abc-kpi-alert"><span>Desvios</span><strong>' + matrix.non + '</strong></article>' +
+      '</section>' +
+      '<section class="panel abc-matrix-panel"><div class="panel-heading"><h2>Distribuição física</h2></div>' +
+        '<div class="abc-zone-grid">' + classOrder.map(c=>'<article class="abc-zone-card zone-'+c.toLowerCase()+'"><div class="abc-zone-head"><span>Curva '+c+'</span><strong>'+matrix.counts[c]+'</strong></div><small>'+(c==='A'?'Frente':c==='B'?'Intermediária':'Fundo')+'</small></article>').join('') + '</div>' +
       '</section>' +
       (actions.length
-        ? '<section class="panel abc-actions-panel"><div class="panel-heading"><div><h2>Plano de ação priorizado</h2><small>Curva A distante da entrada recebe prioridade de correção.</small></div></div><div class="stock-table-wrap"><table><thead><tr><th>#</th><th>Posição</th><th>Faixa esperada</th><th>Curva real</th><th>Status</th><th>Produto</th><th>Ação sugerida</th></tr></thead><tbody>'+actionRows+'</tbody></table></div></section>'
-        : '<section class="panel abc-actions-panel"><div class="panel-heading"><h2>Plano de ação</h2></div><div class="abc-all-good">Nenhum desvio de distância identificado no Picking.</div></section>') +
+        ? '<section class="panel abc-actions-panel"><div class="panel-heading"><div><h2>Ajustes prioritários</h2><small>'+matrix.actions.length+' desvios</small></div></div><div class="stock-table-wrap"><table><thead><tr><th>Posição</th><th>Atual</th><th>Ideal</th><th>Produto</th><th>Ação</th></tr></thead><tbody>'+actionRows+'</tbody></table></div></section>'
+        : '<section class="panel abc-actions-panel"><div class="panel-heading"><h2>Ajustes</h2></div><div class="abc-all-good">Nenhum ajuste prioritário.</div></section>') +
     '</div>';
   }
 
@@ -623,7 +620,7 @@
     const request = ++A.request;
     const month = state.currentMonth;
     const area = state.currentArea;
-    root.innerHTML = '<div class="abc-adherence-loading">Cruzando Curva ABC de ' + esc(areaLabel(area)) + ' com o layout…</div>';
+    root.innerHTML = '<div class="abc-adherence-loading">Carregando aderência…</div>';
     try {
       const curveItems = await curveData(month,area);
       if (request !== A.request) return;
