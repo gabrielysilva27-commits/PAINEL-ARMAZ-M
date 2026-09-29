@@ -91,13 +91,13 @@
 .stock-control-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .stock-control-head p { margin: 0; color: #858b94; font-size: 9px; }
 .stock-control-head .stock-actions button { min-height: 32px; padding: 7px 10px; font-size: 10px; }
-.stock-control-row { display: grid; grid-template-columns: 130px minmax(240px, 1fr) auto; gap: 10px; align-items: end; margin-top: 10px; }
+.stock-control-row { display: grid; grid-template-columns: 120px minmax(240px,1fr) auto auto; gap: 8px; align-items: end; margin-top: 2px; }
 .stock-control-row label { display: grid; gap: 4px; color: #6b717a; font-size: 9px; font-weight: 700; }
 .stock-control-row input,
 .stock-control-row select { width: 100%; min-height: 33px; padding: 7px 9px; border: 1px solid #dce0e5; border-radius: 7px; background: #fff; color: #30343b; font: 500 10px "DM Sans", sans-serif; box-sizing: border-box; }
 .stock-control-row .stock-view-toggle { align-self: end; }
 .stock-control-row .stock-view-toggle button { padding: 7px 9px; font-size: 10px; }
-.stock-summary-strip { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 9px; padding-top: 8px; border-top: 1px solid #edf0f3; }
+.stock-summary-strip { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 8px; padding-top: 7px; border-top: 1px solid #edf0f3; }
 .stock-summary-strip > div:first-child { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
 .stock-summary-strip span { color: #7c828b; font-size: 9px; }
 .stock-summary-strip b { color: #333942; font-size: 11px; }
@@ -123,3 +123,5 @@
   .stock-flow-direction strong { white-space: nowrap; }
   .stock-map-scroll.fit { max-height: none; }
 }
+
+.stock-layout-actions{display:flex;align-items:center}.stock-layout-actions .stock-layout-import{min-height:33px;padding:7px 10px;font-size:10px;white-space:nowrap;background:#fff;color:#b75c1d;border-color:#ead7ca}.stock-layout-actions .stock-layout-import:hover{background:#fff7f1}.compact-layout .stock-map-header{margin-top:1px}.compact-layout .stock-map-header strong{font-size:11px;color:#4b4f55}.compact-layout .stock-flow-direction{margin:0 2px 5px}.compact-layout .stock-flow-direction strong{font-size:8px;font-weight:700;letter-spacing:.06em}.stock-area-tabs{margin-bottom:6px}.stock-summary-strip>div:first-child{gap:15px}
