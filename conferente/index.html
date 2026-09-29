@@ -4,12 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#f47a20" />
-  <meta name="description" content="Portal único dos conferentes do Armazém Império." />
+  <meta name="description" content="Portal de rotinas dos conferentes do Armazém Império." />
+  <meta name="conferente-build" content="20260929-2" />
   <title>Portal do Conferente | Armazém Império</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260921-1" />
+  <link rel="stylesheet" href="styles.css?v=20260929-2" />
 </head>
 <body>
   <main class="portal">
@@ -22,36 +23,66 @@
     </header>
 
     <section class="hero">
-      <p class="eyebrow">ACESSO ÚNICO</p>
-      <h1>Conferentes</h1>
-      <p>Um único link e QR para as rotinas do conferente. Escolha abaixo o processo que deseja abrir.</p>
+      <div>
+        <p class="eyebrow">ROTINAS OPERACIONAIS</p>
+        <h1>O que você precisa fazer?</h1>
+      </div>
+      <p>Escolha uma rotina. Seu mesmo PIN de conferente é usado nos acessos abaixo.</p>
     </section>
 
     <section class="modules">
       <a class="module-card bo" href="../bo/">
-        <div class="icon">B.O.</div>
-        <div>
-          <span class="tag">B.O. DIGITAL</span>
-          <h2>Registrar B.O.</h2>
-          <p>Registro permanente de ocorrências operacionais do armazém.</p>
+        <div class="module-top">
+          <span class="icon">B.O.</span>
+          <span class="arrow">→</span>
         </div>
-        <b>→</b>
+        <span class="tag">B.O. DIGITAL</span>
+        <h2>Ocorrências</h2>
+        <p>Registre e acompanhe ocorrências do armazém.</p>
+        <div class="module-actions">
+          <span>Novo B.O.</span>
+          <span>Meus B.O.s</span>
+          <span>Confronto Turno C</span>
+          <span>Editar pendentes</span>
+        </div>
       </a>
 
       <a class="module-card receiving" href="../recebimento/">
-        <div class="icon">NRI</div>
-        <div>
-          <span class="tag">RECEBIMENTO</span>
-          <h2>Conferência cega / NRI</h2>
-          <p>Conferência física de carretas e geração das NRIs.</p>
+        <div class="module-top">
+          <span class="icon">NRI</span>
+          <span class="arrow">→</span>
         </div>
-        <b>→</b>
+        <span class="tag">RECEBIMENTO</span>
+        <h2>Conferência / NRI</h2>
+        <p>Faça a conferência cega e conclua o fluxo do recebimento.</p>
+        <div class="module-actions">
+          <span>Conferência cega</span>
+          <span>Salvar / corrigir</span>
+          <span>Ordem de Guarda</span>
+          <span>Validar endereços</span>
+          <span>Meu histórico</span>
+        </div>
+      </a>
+
+      <a class="module-card temperature" href="../temperatura/">
+        <div class="module-top">
+          <span class="icon">°C</span>
+          <span class="arrow">→</span>
+        </div>
+        <span class="tag">TEMPERATURA</span>
+        <h2>Controle de temperatura</h2>
+        <p>Registre as temperaturas das áreas e consulte seus lançamentos.</p>
+        <div class="module-actions">
+          <span>Registro por turno</span>
+          <span>Áreas do armazém</span>
+          <span>Meus registros</span>
+        </div>
       </a>
     </section>
 
     <section class="notice">
-      <strong>Mesmo PIN de conferente.</strong>
-      <span>As credenciais continuam sendo as mesmas usadas hoje em cada processo.</span>
+      <span class="notice-dot"></span>
+      <div><strong>Um PIN, três rotinas.</strong><span>Use seu PIN de 6 dígitos em B.O., Recebimento e Temperatura.</span></div>
     </section>
   </main>
 </body>
