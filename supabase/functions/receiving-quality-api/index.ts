@@ -17,7 +17,7 @@ const monthName=(m:number)=>["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago",
 const isoWeek=(date:string)=>{const d=new Date(date+"T12:00:00Z");const day=(d.getUTCDay()+6)%7;d.setUTCDate(d.getUTCDate()-day+3);const first=new Date(Date.UTC(d.getUTCFullYear(),0,4));return 1+Math.round(((d.getTime()-first.getTime())/86400000-3+(first.getUTCDay()+6)%7)/7);};
 const PERIOD_YEAR=2026;
 const PALLETS_PER_TRUCK=28;
-const PULL_VEHICLES=["229","231","246","264","271","289","298","312"];
+const PULL_VEHICLES=["225","229","231","246","264","271","289","298","312"];
 
 
 const PULL_VEHICLE_SET=new Set(PULL_VEHICLES);
