@@ -596,7 +596,7 @@
     }).join('');
     return '<section class="panel abc-actions-panel">' +
       '<div class="panel-heading"><div><h2>Ajustes prioritários</h2><small>'+matrix.actions.length+' desvio'+(matrix.actions.length===1?'':'s')+'</small></div></div>' +
-      '<div class="stock-table-wrap"><table><thead><tr><th>Endereço</th><th>Curva do produto</th><th>Faixa atual</th><th>Produto</th><th>Ação</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="stock-table-wrap"><table class="abc-actions-table"><colgroup><col class="col-address"><col class="col-curve"><col class="col-zone"><col class="col-product"><col class="col-action"></colgroup><thead><tr><th>Endereço</th><th>Curva</th><th>Faixa atual</th><th>Produto</th><th>Ação</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
     '</section>';
   }
 
