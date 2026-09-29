@@ -12,9 +12,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.93";
-// 3.2.93: corrige ativação da janela normal do Edge para o backfill 03.11.20 e demais rotinas.
-// Build final 3.2.93 após atualização do workflow.
+const VERSION = "3.2.94";
+// 3.2.94: usa a tela 03.11.20 já aberta no Edge e só volta ao Atalho quando necessário.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");

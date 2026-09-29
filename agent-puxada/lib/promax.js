@@ -1882,9 +1882,22 @@ async function export031120(job, config, rootDir, validateCsv) {
     throw new Error("031120_FILTERS_UNSUPPORTED");
   }
   const since = Date.now();
-  existingEdge.act("shortcut031120");
-  await sleep(1800);
-  existingEdge.act("filters031120", vals);
+  // Se a tela 03.11.20 já estiver aberta (como no uso normal da operação),
+  // aproveite-a diretamente. Isso evita voltar ao Atalho e também torna o
+  // backfill mais confiável quando o usuário já deixou o relatório pronto.
+  let formReady = false;
+  try {
+    existingEdge.act("filters031120", vals);
+    formReady = true;
+  } catch (error) {
+    const message = String(error && error.message || error);
+    if (!/window-not-found/.test(message)) throw error;
+  }
+  if (!formReady) {
+    existingEdge.act("shortcut031120");
+    await sleep(1800);
+    existingEdge.act("filters031120", vals);
+  }
   await sleep(2200);
 
   await waitUntil(async function () {
