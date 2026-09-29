@@ -5,8 +5,8 @@
     if(window.__temperatureModule)return Promise.resolve(window.__temperatureModule);
     if(loading)return loading;
     loading=new Promise((resolve,reject)=>{
-      if(!$('temperatureCss')){const l=document.createElement('link');l.id='temperatureCss';l.rel='stylesheet';l.href='temperature-dashboard-v2.css?v=20260929-3';document.head.appendChild(l);}
-      const s=document.createElement('script');s.src='temperature-dashboard-v2.js?v=20260929-3';s.async=true;s.onload=()=>resolve(window.__temperatureModule);s.onerror=()=>reject(new Error('Falha ao carregar Temperatura'));document.body.appendChild(s);
+      if(!$('temperatureCss')){const l=document.createElement('link');l.id='temperatureCss';l.rel='stylesheet';l.href='temperature-dashboard-v2.css?v=20260929-4';document.head.appendChild(l);}
+      const s=document.createElement('script');s.src='temperature-dashboard-v2.js?v=20260929-4';s.async=true;s.onload=()=>resolve(window.__temperatureModule);s.onerror=()=>reject(new Error('Falha ao carregar Temperatura'));document.body.appendChild(s);
     });
     return loading;
   }
