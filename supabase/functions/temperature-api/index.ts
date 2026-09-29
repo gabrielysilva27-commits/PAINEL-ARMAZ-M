@@ -92,6 +92,28 @@ function monthly(rows:any[],area:string){
     ok:x.ok,attention:x.attention,critical:x.critical
   }));
 }
+
+function controlSeries(rows:any[]){
+  const grouped=new Map<string,Map<string,any>>();
+  for(const area of AREAS)grouped.set(area,new Map());
+  for(const r of rows){
+    if(!grouped.has(r.area))continue;
+    const day=String(r.reading_date).slice(0,10),byDay=grouped.get(r.area)!;
+    if(!byDay.has(day))byDay.set(day,{date:day,sum:0,readings:0,max:null});
+    const x=byDay.get(day),v=Number(r.temperature);
+    x.sum+=v;x.readings++;x.max=x.max==null?v:Math.max(x.max,v);
+  }
+  return AREAS.map(area=>({
+    area,
+    points:[...(grouped.get(area)?.values()||[])].sort((a:any,b:any)=>a.date.localeCompare(b.date)).map((x:any)=>({
+      date:x.date,
+      avg_temp:Number((x.sum/x.readings).toFixed(2)),
+      max_temp:Number(x.max.toFixed(2)),
+      readings:x.readings
+    }))
+  }));
+}
+
 Deno.serve(async(req:Request)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
   if(req.method!=="POST")return json({error:"Método não permitido."},405);
@@ -107,7 +129,7 @@ Deno.serve(async(req:Request)=>{
       const agg=aggregate(detail);
       const recent=detail.slice(0,80).map(r=>({...r,guidance:guidance(r.status)}));
       const months=[...new Set(yearRows.map(r=>String(r.reading_date).slice(0,7)))].sort();
-      return json({month,area,summary:agg.summary,by_area:agg.areas,monthly:monthly(yearRows,area),recent,months,areas:AREAS,config:CONFIG});
+      return json({month,area,summary:agg.summary,by_area:agg.areas,monthly:monthly(yearRows,area),recent,months,areas:AREAS,config:CONFIG,control:controlSeries(detail)});
     }
 
     const conf=await requireBoUser(req);if(!conf)return json({error:"PIN expirado. Identifique-se novamente."},401);
