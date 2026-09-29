@@ -576,6 +576,9 @@
 .temp-rule-bar .ok span{color:#287254}
 .temp-rule-bar .attention span{color:#9d6918}
 .temp-rule-bar .critical span{color:#a4474c}
+.temp-rule-bar .attention small,
+.temp-rule-bar .critical small{line-height:1.35}
+.temp-rule-bar .critical small{max-width:330px;justify-self:center}
 
 .temp-history-panel{
   padding:0!important;
