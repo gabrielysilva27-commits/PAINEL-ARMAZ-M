@@ -96,7 +96,10 @@
     const rows = (items || []).map(item => {
       const month = String(item.reference_month || '').slice(0,7);
       const value = item.rate == null ? null : Number(item.rate);
-      const rendered = Number.isFinite(value) ? pct(value) : '<span class="abc-no-base">Sem base</span>';
+      const estimated = String(item.source_type || '') === 'estimated_historical_baseline';
+      const rendered = Number.isFinite(value)
+        ? pct(value) + (estimated ? '<small class="abc-estimated-tag">estimado</small>' : '')
+        : '<span class="abc-no-base">—</span>';
       return '<tr class="'+(month===state.currentMonth?'current':'')+'"><td><strong>'+esc(monthLabel(month))+'</strong></td><td class="abc-rate-cell">'+rendered+'</td></tr>';
     }).join('');
 
@@ -546,11 +549,15 @@
     '</section>';
   }
 
-  function physicalHtml(area, month, stock, curveItems, allCurveItems) {
+  function physicalHtml(area, month, stock, curveItems, allCurveItems, historicalResult) {
     if (!stock.snapshot) {
+      const value = historicalResult && historicalResult.rate != null ? Number(historicalResult.rate) : null;
       return '<div class="abc-adherence-shell">' +
-        '<section class="abc-adherence-intro"><div><h2>' + esc(areaLabel(area)) + '</h2><p>' + esc(monthLabel(month)) + '</p></div><span class="abc-area-rule"><strong>Meta ' + pct(ADHERENCE_TARGET) + '</strong></span></section>' +
-        '<div class="abc-adherence-empty">Sem base física de Estoque x Estoque para este mês.</div>' +
+        '<section class="abc-adherence-intro"><div><h2>' + esc(areaLabel(area)) + '</h2><p>' + esc(monthLabel(month)) + '</p></div><span class="abc-area-rule"><strong>Estimativa retroativa</strong></span></section>' +
+        '<section class="abc-adherence-kpis abc-estimated-kpis">' +
+          '<article class="abc-kpi-primary"><span>Aderência</span><strong>' + (Number.isFinite(value) ? pct(value) : '—') + '</strong><small>Estimativa histórica</small></article>' +
+          '<article><span>Meta</span><strong>' + pct(ADHERENCE_TARGET) + '</strong></article>' +
+        '</section>' +
         '<div id="abcHistoryPanel"></div>' +
       '</div>';
     }
@@ -614,7 +621,12 @@
       } else {
         const [stock,allCurveItems] = await Promise.all([stockData(month),monthCurveData(month)]);
         if (request !== A.request) return;
-        root.innerHTML = physicalHtml(area,month,stock,curveItems,allCurveItems);
+        let historicalResult = null;
+        if (!stock.snapshot) {
+          const history = await historyData(area);
+          historicalResult = history.find(x => String(x.reference_month || '').slice(0,7) === month) || null;
+        }
+        root.innerHTML = physicalHtml(area,month,stock,curveItems,allCurveItems,historicalResult);
         try { await captureMonthly(stock); } catch (e) { console.warn('Falha ao registrar resultado mensal',e); }
       }
       if (request !== A.request) return;
