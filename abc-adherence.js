@@ -10,6 +10,24 @@
   const compact = value => String(value || '').trim().toUpperCase().replace(/^([A-Z]+)0+(\d)/,'$1$2').replace(/[^A-Z0-9]/g,'');
   const areaLabel = area => area === 'Regulador' ? 'Estoque Geral' : area;
   const classOrder = ['A','B','C'];
+  const GUARAVITA_SKU = '22209';
+
+  // Regra física do Estoque Geral:
+  // - prateleiras: ruas A/B/C/G com lado -A/-B;
+  // - Curva A vai para rua fechada, exceto Guaravita 22209;
+  // - Curvas B/C usam prateleiras;
+  // - Guaravita 22209 usa prateleira mesmo sendo Curva A, por fragilidade/empilhamento.
+  const isShelfAddress = address => /^[ABCG]\d{1,3}-[AB]$/i.test(String(address || '').trim());
+  const storageCompatible = (area,address,sku,curve) => {
+    if (area !== 'Regulador') return true;
+    const shelf = isShelfAddress(address);
+    const code = String(sku || '');
+    if (code === GUARAVITA_SKU) return shelf;
+    if (curve === 'A') return !shelf;
+    if (curve === 'B' || curve === 'C') return shelf;
+    return true;
+  };
+
   // Pegada física do Picking no croqui do Regulador.
   // Limites convertidos do retângulo real indicado no mapa para a mesma malha col/row dos endereços.
   const REGULADOR_PICKING_RECT = { minX: 74, maxX: 99, minY: 16, maxY: 50 };
@@ -278,7 +296,8 @@
         locations.set(compact(loc.address),{address:loc.address,occupied:false,classes:[],rows:[]});
         return;
       }
-      const classes = rows.map(r => resolveCurve(String(r.sku_code || ''))).filter(c=>classOrder.includes(c));
+      const resolvedRows = rows.map(r => Object.assign({},r,{_curve:resolveCurve(String(r.sku_code || ''))}));
+      const classes = resolvedRows.map(r => r._curve).filter(c=>classOrder.includes(c));
       const unique = [...new Set(classes)];
       const highest = classOrder.find(c => unique.includes(c));
       if (highest) demand[highest]++;
@@ -286,7 +305,7 @@
         address:loc.address,
         occupied:true,
         classes:unique,
-        rows:rows
+        rows:resolvedRows
       });
     });
     return {locations:locations,demand:demand,curveMap:curveMap};
@@ -382,24 +401,22 @@
       occupiedKeys.add(key);
       let status = 'Não aderente';
       let actualClass = 'Mista';
+      const structureOk = area !== 'Regulador' || loc.rows.every(r =>
+        storageCompatible(area,loc.address,r.sku_code,r._curve || 'C')
+      );
       if (loc.classes.length === 1) {
         actualClass = loc.classes[0];
-        status = loc.classes[0] === zone ? 'Aderente' : 'Não aderente';
+        status = loc.classes[0] === zone && structureOk ? 'Aderente' : 'Não aderente';
       } else if (!loc.classes.length) {
         actualClass = 'C';
-        status = zone === 'C' ? 'Aderente' : 'Não aderente';
+        status = zone === 'C' && structureOk ? 'Aderente' : 'Não aderente';
       }
       checks.push({
-        key:key,address:loc.address,zone:zone,actualClass:actualClass,status:status,rows:loc.rows
+        key:key,address:loc.address,zone:zone,actualClass:actualClass,status:status,rows:loc.rows,structureOk:structureOk
       });
     });
 
     const empty = ranked.items.filter(p => !occupiedKeys.has(p.key));
-    const emptyByZone = {A:[],B:[],C:[]};
-    empty.forEach(p => {
-      const z = zoneByKey.get(p.key);
-      if (z) emptyByZone[z].push(p.address);
-    });
 
     const adherent = checks.filter(x=>x.status==='Aderente').length;
     const non = checks.filter(x=>x.status==='Não aderente').length;
@@ -416,11 +433,31 @@
     const actions = checks.filter(x=>x.status!=='Aderente').map(x => {
       let suggestion;
       const desired = classOrder.includes(x.actualClass) ? x.actualClass : null;
+      const guaravitaOnly = x.rows.length > 0 && x.rows.every(r => String(r.sku_code || '') === GUARAVITA_SKU);
       if (desired) {
-        const free = emptyByZone[desired] && emptyByZone[desired][0];
-        suggestion = free ? 'Mover para ' + free + ' (Faixa ' + desired + ').' : 'Mover para uma posição da Faixa ' + desired + '.';
+        const compatible = empty.filter(p => {
+          if (zoneByKey.get(p.key) !== desired) return false;
+          if (area !== 'Regulador') return true;
+          if (guaravitaOnly) return isShelfAddress(p.address);
+          if (desired === 'A') return !isShelfAddress(p.address);
+          return isShelfAddress(p.address);
+        });
+        const free = compatible[0];
+        if (free) {
+          suggestion = 'Mover para ' + free.address + ' (Faixa ' + desired + ').';
+        } else if (area === 'Regulador' && guaravitaOnly) {
+          suggestion = 'Mover para uma prateleira da Faixa A.';
+        } else if (area === 'Regulador' && desired === 'A') {
+          suggestion = 'Mover para uma rua fechada da Faixa A.';
+        } else if (area === 'Regulador') {
+          suggestion = 'Mover para uma prateleira da Faixa ' + desired + '.';
+        } else {
+          suggestion = 'Mover para uma posição da Faixa ' + desired + '.';
+        }
       } else {
-        suggestion = 'Separar os produtos e mover cada SKU para a faixa da sua curva.';
+        suggestion = area === 'Regulador'
+          ? 'Separar os produtos respeitando rua fechada para A e prateleira para B/C.'
+          : 'Separar os produtos e mover cada SKU para a faixa da sua curva.';
       }
       return Object.assign({},x,{suggestion:suggestion,severity:severity(x)});
     }).sort((a,b)=>b.severity-a.severity || a.address.localeCompare(b.address,'pt-BR',{numeric:true}));
