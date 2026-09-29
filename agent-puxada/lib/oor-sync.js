@@ -22,6 +22,13 @@ function saveState(holder) {
   fs.writeFileSync(holder.file, JSON.stringify(holder.data, null, 2));
 }
 
+function localDateIso(date) {
+  const d = date || new Date();
+  return String(d.getFullYear()).padStart(4, "0") + "-" +
+    String(d.getMonth() + 1).padStart(2, "0") + "-" +
+    String(d.getDate()).padStart(2, "0");
+}
+
 function signature(file) {
   // Prefixo muda quando a interpretação do 02.05.02 muda, permitindo
   // reprocessar arquivos já vistos sem apagar o histórico local do agente.
@@ -35,6 +42,12 @@ async function sync(api, installRoot, log) {
   if (!status.root_path) {
     await api.oorScanState({ status: "waiting", error: "Caminho do 02.05.02 ainda não configurado." }).catch(function(){});
     return { enabled: true, imported: 0, waiting: true };
+  }
+
+  const today = localDateIso();
+  const latest = String(status.latest_date || "0000-00-00");
+  if (!status.diagnostic_requested && latest >= today) {
+    return { enabled: true, imported: 0, completed_today: true, reference_date: today };
   }
 
   await api.oorScanState({ status: "scanning" }).catch(function(){});
@@ -77,7 +90,6 @@ async function sync(api, installRoot, log) {
   }
 
   const holder = loadState(installRoot);
-  const latest = String(status.latest_date || "0000-00-00");
   const candidates = [], errors = [];
 
   for (const file of files) {
@@ -86,7 +98,9 @@ async function sync(api, installRoot, log) {
     try {
       const parsed = parse020502(file.path);
       if (!parsed.reference_date) { errors.push(file.name + ": data de referência não identificada."); continue; }
-      if (parsed.reference_date <= latest) continue;
+      // Automação diária: somente o LIBERAÇÃO CHEIO do dia corrente entra.
+      // Dias anteriores ficam exclusivamente para a contingência manual.
+      if (parsed.reference_date !== today) continue;
       candidates.push({ file, sig, parsed });
     } catch (e) {
       errors.push(file.name + ": " + (e && e.message ? e.message : String(e)));
@@ -98,7 +112,7 @@ async function sync(api, installRoot, log) {
     const old = byDate.get(item.parsed.reference_date);
     if (!old || item.file.mtime_ms > old.file.mtime_ms) byDate.set(item.parsed.reference_date, item);
   }
-  const selected = Array.from(byDate.values()).sort(function (a, b) { return a.parsed.reference_date.localeCompare(b.parsed.reference_date); });
+  const selected = Array.from(byDate.values()).sort(function (a, b) { return a.parsed.reference_date.localeCompare(b.parsed.reference_date); }).slice(0, 1);
 
   let imported = 0;
   for (const item of selected) {
@@ -127,7 +141,14 @@ async function sync(api, installRoot, log) {
   }
 
   await api.oorScanState({ status: "idle" }).catch(function(){});
-  return { enabled: true, imported, files: files.length, candidates: selected.length };
+  return {
+    enabled: true,
+    imported,
+    files: files.length,
+    candidates: selected.length,
+    completed_today: imported > 0,
+    reference_date: imported > 0 ? today : null
+  };
 }
 
-module.exports = { sync };
+module.exports = { sync, localDateIso };
