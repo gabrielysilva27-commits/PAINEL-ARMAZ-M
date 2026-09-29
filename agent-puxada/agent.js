@@ -12,8 +12,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.91";
-// 3.2.91: registra telemetria completa da tarefa 03.11.20 para diagnóstico e validação do backfill.
+const VERSION = "3.2.92";
+// 3.2.92: tenta o backfill 03.11.20 imediatamente após iniciar e prioriza a tarefa antes das demais rotinas.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -218,6 +218,7 @@ async function main() {
   if (await maybeUpdate(true)) return;
 
   log("Agente Puxada iniciado em " + os.hostname() + ".");
+  await maybeSync031120(true);
   let stopping = false;
   process.on("SIGINT", function () { stopping = true; });
   process.on("SIGTERM", function () { stopping = true; });
@@ -226,8 +227,8 @@ async function main() {
     let job = null;
     try {
       if (await maybeUpdate(false)) return;
-      await maybeSyncOor(false);
       await maybeSync031120(false);
+      await maybeSyncOor(false);
       if (!await waitForQuietComputer(() => stopping)) break;
       const response = await api.poll(await info());
       job = response.job;
