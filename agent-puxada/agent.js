@@ -11,8 +11,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.87";
-// 3.2.87: OOR usa todos os códigos do LIBERAÇÃO CHEIO e replica a regra original de DISPONÍVEL/Dz.
+const VERSION = "3.2.88";
+// 3.2.88: OOR automático importa no máximo um LIBERAÇÃO CHEIO por dia e encerra a busca após concluir o dia.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -146,11 +146,19 @@ async function main() {
   }
 
   let lastOorCheck = 0;
+  let oorCompletedDate = null;
   async function maybeSyncOor(force) {
+    const today = oorSync.localDateIso();
+    if (oorCompletedDate && oorCompletedDate !== today) oorCompletedDate = null;
+    if (!force && oorCompletedDate === today) return;
     if (!force && Date.now() - lastOorCheck < 5 * 60 * 1000) return;
     lastOorCheck = Date.now();
     try {
-      await oorSync.sync(api, path.resolve(ROOT, ".."), log);
+      const result = await oorSync.sync(api, path.resolve(ROOT, ".."), log);
+      if (result && result.completed_today) {
+        oorCompletedDate = today;
+        if (result.imported > 0) log("OOR automático do dia concluído. Nova busca somente no próximo dia.");
+      }
     } catch (e) {
       const message = e && e.message ? e.message : String(e);
       log("Falha no OOR automático: " + message, true);
