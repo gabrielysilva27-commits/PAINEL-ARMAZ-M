@@ -12,8 +12,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.98";
-// 3.2.98: no 03.11.20 classificação Mapa, aceita exportação sem coluna explícita de paletes (1 linha = 1 palete).\n// 3.2.98 build trigger: publicar pacote após atualização do workflow.
+const VERSION = "3.2.99";
+// 3.2.99: 03.11.20 só assume o Edge após 30 s de inatividade; retry rápido do backfill sem disputar foco com o operador.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -169,7 +169,7 @@ async function main() {
 
   let last031120Check = 0;
   async function maybeSync031120(force) {
-    if (!force && Date.now() - last031120Check < 5 * 60 * 1000) return;
+    if (!force && Date.now() - last031120Check < 60 * 1000) return;
     last031120Check = Date.now();
     let task = null;
     try {
