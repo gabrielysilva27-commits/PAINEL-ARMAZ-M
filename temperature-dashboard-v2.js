@@ -4,7 +4,7 @@
   const $=id=>document.getElementById(id);
   const AREAS=['Câmara Fria','Retornável','Descartável','Repack','Marketplace'];
   const RULES={
-    'Câmara Fria':{okMax:5,critical:9,ok:'≤ 5,0 °C',attention:'5,1–8,9 °C',criticalText:'≥ 9,0 °C',measure:'1 ponto · manhã'},
+    'Câmara Fria':{okMax:5,critical:9,ok:'≤ 5,0 °C',attention:'5,1–8,9 °C',criticalText:'> 9,0 °C',measure:'1 ponto · manhã'},
     'Retornável':{okMax:22,critical:25,ok:'≤ 22,0 °C',attention:'22,1–25,0 °C',criticalText:'> 25,0 °C',measure:'2 pontos · maior leitura'},
     'Descartável':{okMax:22,critical:25,ok:'≤ 22,0 °C',attention:'22,1–25,0 °C',criticalText:'> 25,0 °C',measure:'2 pontos · maior leitura'},
     'Repack':{okMax:22,critical:25,ok:'≤ 22,0 °C',attention:'22,1–25,0 °C',criticalText:'> 25,0 °C',measure:'1 ponto · 3 turnos'},
@@ -22,7 +22,7 @@
   function statusForValue(area,value){
     if(value==null||!Number.isFinite(Number(value)))return 'none';
     const v=Number(value);
-    if(area==='Câmara Fria')return v<=5?'ok':v<9?'attention':'critical';
+    if(area==='Câmara Fria')return v<=5?'ok':v<=9?'attention':'critical';
     return v<=22?'ok':v<=25?'attention':'critical';
   }
 
@@ -92,7 +92,7 @@
     const x=i=>L+(pts.length===1?plotW/2:(i/(pts.length-1))*plotW);
     const okY=Math.max(Tp,Math.min(Tp+plotH,y(rule.okMax)));
     const critY=Math.max(Tp,Math.min(Tp+plotH,y(rule.critical)));
-    const pointStatus=v=>area==='Câmara Fria'?(v<=5?'ok':v<9?'attention':'critical'):(v<=22?'ok':v<=25?'attention':'critical');
+    const pointStatus=v=>area==='Câmara Fria'?(v<=5?'ok':v<=9?'attention':'critical'):(v<=22?'ok':v<=25?'attention':'critical');
     const line=pts.map((p,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(Number(p.avg_temp)).toFixed(1)).join(' ');
     const pointsMarkup=pts.map((p,i)=>{
       const v=Number(p.avg_temp),px=x(i),py=y(v),status=pointStatus(v);
