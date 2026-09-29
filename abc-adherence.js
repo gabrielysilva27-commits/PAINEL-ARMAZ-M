@@ -437,10 +437,21 @@
     // O plano de ação precisa ser executável: cada desvio recebe uma vaga livre
     // específica e a mesma vaga não pode aparecer em duas ações. A ordem das vagas
     // segue a própria ordenação física (mais próxima do Picking primeiro).
+    const rankBySku = new Map();
+    (allCurveItems || []).forEach(item => {
+      const code = String(item.sku_code || '');
+      const rank = Number(item.rank);
+      if (!code || !Number.isFinite(rank)) return;
+      if (!rankBySku.has(code) || rank < rankBySku.get(code)) rankBySku.set(code,rank);
+    });
+    const rowPriority = row => rankBySku.get(String(row?.sku_code || '')) || 999999;
     const pendingActions = checks
       .filter(x=>x.status!=='Aderente')
-      .map(x=>Object.assign({},x,{severity:severity(x)}))
-      .sort((a,b)=>b.severity-a.severity || a.address.localeCompare(b.address,'pt-BR',{numeric:true}));
+      .map(x=>Object.assign({},x,{
+        severity:severity(x),
+        productPriority:Math.min(...((x.rows || []).map(rowPriority).concat([999999])))
+      }))
+      .sort((a,b)=>b.severity-a.severity || a.productPriority-b.productPriority || a.address.localeCompare(b.address,'pt-BR',{numeric:true}));
 
     const claimedDestinations = new Set();
     const destinationFits = (p,desired,sku,strictZone) => {
@@ -469,21 +480,14 @@
 
     const actions = pendingActions.map(x => {
       let suggestion;
-      const desired = classOrder.includes(x.actualClass) ? x.actualClass : null;
-      if (desired) {
-        const sku = x.rows.length === 1 ? String(x.rows[0].sku_code || '') : '';
-        const destination = takeDestination(desired,sku);
-        if (destination) {
-          suggestion = destination.inZone
-            ? 'Mover para ' + destination.free.address + ' — vaga livre da Faixa ' + desired + '.'
-            : 'Mover para ' + destination.free.address + ' — próxima vaga livre compatível com Curva ' + desired + '.';
-        } else {
-          suggestion = 'Sem vaga livre compatível para Curva ' + desired + '; liberar uma posição antes da movimentação.';
-        }
-      } else {
-        const uniqueRows = [...new Map(
-          (x.rows || []).filter(r=>r.sku_code).map(r=>[String(r.sku_code),r])
-        ).values()];
+      const uniqueRows = [...new Map(
+        (x.rows || []).filter(r=>r.sku_code).map(r=>[String(r.sku_code),r])
+      ).values()].sort((a,b)=>rowPriority(a)-rowPriority(b) || String(a.sku_code).localeCompare(String(b.sku_code),'pt-BR',{numeric:true}));
+
+      // Quando há mais de um SKU no endereço, direciona produto por produto.
+      // Isso evita uma ação genérica para uma rua mista e preserva a sequência
+      // das vagas livres: 1º produto -> 1ª vaga, 2º -> 2ª vaga, etc.
+      if (uniqueRows.length > 1) {
         const moves = [];
         uniqueRows.forEach(r => {
           const desiredRow = classOrder.includes(r._curve) ? r._curve : 'C';
@@ -493,6 +497,23 @@
         suggestion = moves.length
           ? 'Separar: ' + moves.join(' · ') + '.'
           : 'Sem vagas livres compatíveis para separar os SKUs desta posição.';
+      } else {
+        const desired = classOrder.includes(x.actualClass)
+          ? x.actualClass
+          : (uniqueRows[0] && classOrder.includes(uniqueRows[0]._curve) ? uniqueRows[0]._curve : null);
+        const sku = uniqueRows[0] ? String(uniqueRows[0].sku_code || '') : '';
+        if (desired) {
+          const destination = takeDestination(desired,sku);
+          if (destination) {
+            suggestion = destination.inZone
+              ? 'Mover para ' + destination.free.address + ' — vaga livre da Faixa ' + desired + '.'
+              : 'Mover para ' + destination.free.address + ' — próxima vaga livre compatível com Curva ' + desired + '.';
+          } else {
+            suggestion = 'Sem vaga livre compatível para Curva ' + desired + '; liberar uma posição antes da movimentação.';
+          }
+        } else {
+          suggestion = 'Sem classificação suficiente para indicar um destino seguro.';
+        }
       }
       return Object.assign({},x,{suggestion:suggestion});
     });
