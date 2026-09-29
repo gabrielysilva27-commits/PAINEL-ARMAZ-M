@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260921-3" />
+  <link rel="stylesheet" href="styles.css?v=20260929-1" />
 </head>
 <body>
   <main class="app">
@@ -24,7 +24,7 @@
       <p class="muted">Entre com seu PIN para realizar a conferência cega. A impressão será feita depois no computador da sala.</p>
       <form id="loginForm" class="stack">
         <label>Conferente<select id="conferencerSelect" required><option value="">Carregando...</option></select></label>
-        <label>PIN<input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="4 dígitos" required /></label>
+        <label>PIN<input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="6 dígitos" required /></label>
         <p id="loginError" class="error"></p>
         <button class="primary" id="loginButton" type="submit">Entrar</button>
       </form>
@@ -126,6 +126,6 @@
   </dialog>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="app.js?v=20260921-3"></script>
+  <script src="app.js?v=20260929-1"></script>
 </body>
 </html>
