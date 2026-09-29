@@ -80,7 +80,7 @@
 
       <section class="repack-summary-grid">
         <article class="repack-process-card">
-          <div class="repack-process-head"><div><span>REPACK</span><strong>Produtividade</strong></div><small>${nfi.format(rep.tasks)} apontamentos</small></div>
+          <div class="repack-process-head"><div><span>REPACK</span><strong>Produtividade</strong></div></div>
           <div class="repack-process-metrics">
             <div class="repack-mini-metric"><span>Caixas</span><strong>${nfi.format(rep.boxes)}</strong><small>volume apontado</small></div>
             <div class="repack-mini-metric"><span>Tempo médio</span><strong>${fmtDuration(repAvg)}</strong><small>por apontamento</small></div>
@@ -89,7 +89,7 @@
         </article>
 
         <article class="repack-process-card despejo">
-          <div class="repack-process-head"><div><span>DESPEJO</span><strong>Produtividade</strong></div><small>${nfi.format(desDays)} dias com despejo</small></div>
+          <div class="repack-process-head"><div><span>DESPEJO</span><strong>Produtividade</strong></div></div>
           <div class="repack-process-metrics">
             <div class="repack-mini-metric"><span>Unidades</span><strong>${nfi.format(des.boxes)}</strong><small>volume apontado</small></div>
             <div class="repack-mini-metric"><span>Tempo médio</span><strong>${fmtDuration(desAvg)}</strong><small>média diária · meta 50 min <b class="repack-inline-status ${desAvg&&desAvg<=DESPEJO_DAILY_TARGET?'ok':'bad'}">${desStatus}</b></small></div>
