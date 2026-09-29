@@ -77,6 +77,10 @@ class AgentApi {
   pull031120Import(payload) {
     return this.call("agent_031120_import", payload);
   }
+
+  pull031120State(payload) {
+    return this.call("agent_031120_state", payload);
+  }
 }
 
 module.exports = { AgentApi: AgentApi };
