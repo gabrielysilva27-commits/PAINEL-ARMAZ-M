@@ -12,8 +12,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.102";
-// 3.2.102: reforça ativação do Edge com retries; pacote completo adiciona Parar/Reiniciar no launcher.\n// 3.2.102 final build: pacote consolidado após todas as alterações.
+const VERSION = "3.2.103";
+// 3.2.102: reforça ativação do Edge com retries; pacote completo adiciona Parar/Reiniciar no launcher.\n// 3.2.102 final build: pacote consolidado após todas as alterações.\n// 3.2.103: 03.11.20 considera somente carretas oficiais 229,231,246,264,271,289,298,312.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
