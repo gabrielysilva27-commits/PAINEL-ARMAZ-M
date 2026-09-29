@@ -25,7 +25,7 @@
     if(!r.ok)throw new Error(d.error||'Falha no módulo Repack');
     return d;
   }
-  function ensureAssets(){if(!$('repackCss')){const l=document.createElement('link');l.id='repackCss';l.rel='stylesheet';l.href='repack-v3.css?v=20260929-1';document.head.appendChild(l)}}
+  function ensureAssets(){if(!$('repackCss')){const l=document.createElement('link');l.id='repackCss';l.rel='stylesheet';l.href='repack-v2.css?v=20260929-2';document.head.appendChild(l)}}
   function ensureView(){let v=$('repackView');if(v)return v;v=document.createElement('section');v.id='repackView';v.className='view hidden';document.querySelector('main')?.appendChild(v);return v}
   function addNav(){
     if(document.querySelector('[data-view="repack"]'))return;
