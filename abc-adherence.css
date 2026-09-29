@@ -344,3 +344,57 @@
 .abc-estimated-kpis{
   grid-template-columns:1.25fr 1fr;
 }
+
+
+.abc-intro-right{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-left:auto;
+}
+.abc-current-score{
+  min-width:94px;
+  text-align:right;
+}
+.abc-current-score span{
+  display:block;
+  color:#989ea6;
+  font-size:8.5px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+.abc-current-score strong{
+  display:block;
+  margin-top:1px;
+  font:700 22px Montserrat,sans-serif;
+  letter-spacing:-.03em;
+  color:#b95818;
+  line-height:1.05;
+}
+.abc-current-score small{
+  display:block;
+  margin-top:3px;
+  color:#9a9fa7;
+  font-size:8.5px;
+  font-weight:600;
+}
+.abc-adherence-kpis-compact{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+.abc-adherence-kpis-compact article{
+  min-height:64px;
+  padding:13px 16px;
+}
+.abc-adherence-kpis-compact strong{
+  font-size:22px;
+}
+@media(max-width:760px){
+  .abc-intro-right{
+    width:100%;
+    justify-content:space-between;
+    margin-left:0;
+  }
+  .abc-current-score{text-align:left}
+  .abc-adherence-kpis-compact{grid-template-columns:1fr 1fr}
+}
