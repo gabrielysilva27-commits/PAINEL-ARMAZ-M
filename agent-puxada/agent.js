@@ -12,8 +12,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.103";
-// 3.2.102: reforça ativação do Edge com retries; pacote completo adiciona Parar/Reiniciar no launcher.\n// 3.2.102 final build: pacote consolidado após todas as alterações.\n// 3.2.103: 03.11.20 considera somente carretas oficiais 229,231,246,264,271,289,298,312.\n// 3.2.103 final build: pacote consolidado com filtro oficial de carretas.
+const VERSION = "3.2.104";
+// 3.2.102: reforça ativação do Edge com retries; pacote completo adiciona Parar/Reiniciar no launcher.\n// 3.2.102 final build: pacote consolidado após todas as alterações.\n// 3.2.103: 03.11.20 considera somente carretas oficiais 225,229,231,246,264,271,289,298,312.\n// 3.2.103 final build: pacote consolidado com filtro oficial de carretas.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -307,3 +307,5 @@ main().catch(function (err) {
   log(err && err.stack ? err.stack : String(err), true);
   process.exitCode = 1;
 });
+
+// 3.2.104: inclui a carreta histórica 225 no cálculo do 03.11.20 e amplia a faixa consultada para 225–312.
