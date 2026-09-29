@@ -96,9 +96,8 @@
     const rows = (items || []).map(item => {
       const month = String(item.reference_month || '').slice(0,7);
       const value = item.rate == null ? null : Number(item.rate);
-      const estimated = String(item.source_type || '') === 'estimated_historical_baseline';
       const rendered = Number.isFinite(value)
-        ? pct(value) + (estimated ? '<small class="abc-estimated-tag">estimado</small>' : '')
+        ? pct(value)
         : '<span class="abc-no-base">—</span>';
       return '<tr class="'+(month===state.currentMonth?'current':'')+'"><td><strong>'+esc(monthLabel(month))+'</strong></td><td class="abc-rate-cell">'+rendered+'</td></tr>';
     }).join('');
@@ -553,9 +552,9 @@
     if (!stock.snapshot) {
       const value = historicalResult && historicalResult.rate != null ? Number(historicalResult.rate) : null;
       return '<div class="abc-adherence-shell">' +
-        '<section class="abc-adherence-intro"><div><h2>' + esc(areaLabel(area)) + '</h2><p>' + esc(monthLabel(month)) + '</p></div><span class="abc-area-rule"><strong>Estimativa retroativa</strong></span></section>' +
+        '<section class="abc-adherence-intro"><div><h2>' + esc(areaLabel(area)) + '</h2><p>' + esc(monthLabel(month)) + '</p></div><span class="abc-area-rule"><strong>Meta ' + pct(ADHERENCE_TARGET) + '</strong></span></section>' +
         '<section class="abc-adherence-kpis abc-estimated-kpis">' +
-          '<article class="abc-kpi-primary"><span>Aderência</span><strong>' + (Number.isFinite(value) ? pct(value) : '—') + '</strong><small>Estimativa histórica</small></article>' +
+          '<article class="abc-kpi-primary"><span>Aderência</span><strong>' + (Number.isFinite(value) ? pct(value) : '—') + '</strong></article>' +
           '<article><span>Meta</span><strong>' + pct(ADHERENCE_TARGET) + '</strong></article>' +
         '</section>' +
         '<div id="abcHistoryPanel"></div>' +
