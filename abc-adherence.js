@@ -308,6 +308,39 @@
     const ranked = rankCandidates(stock,area,candidates);
     const stats = curveStats(curveItems);
     const actual = actualLocationData(stock,area,curveItems);
+
+    if (area === 'Câmara Fria') {
+      const zoneByKey = new Map();
+      ranked.items.forEach(p=>zoneByKey.set(p.key,'A'));
+      const checks = [];
+      const occupiedKeys = new Set();
+      actual.locations.forEach((loc,key) => {
+        if (!loc.occupied) return;
+        occupiedKeys.add(key);
+        const actualClass = loc.classes.length === 1 ? loc.classes[0] : (loc.classes.length ? loc.classes.join('/') : 'Sem curva');
+        const status = actualClass === 'A' ? 'Aderente' : (loc.unknown.length || actualClass === 'Sem curva' ? 'Sem curva' : 'Não aderente');
+        checks.push({key:key,address:loc.address,zone:'A',actualClass:actualClass,status:status,rows:loc.rows,unknown:loc.unknown});
+      });
+      const adherent = checks.filter(x=>x.status==='Aderente').length;
+      const non = checks.filter(x=>x.status==='Não aderente').length;
+      const unknown = checks.filter(x=>x.status==='Sem curva').length;
+      return {
+        candidates:ranked.items,
+        basis:'Câmara Fria dedicada ao SKU 838 · Curva A',
+        allocation:{A:ranked.items.length,B:0,C:0,base:{A:ranked.items.length,B:0,C:0}},
+        zoneByKey:zoneByKey,
+        stats:stats,
+        actual:actual,
+        checks:checks,
+        empty:ranked.items.filter(p=>!occupiedKeys.has(p.key)),
+        adherent:adherent,
+        non:non,
+        unknown:unknown,
+        rate:adherent + non ? adherent/(adherent+non)*100 : null,
+        actions:checks.filter(x=>x.status!=='Aderente').map(x=>Object.assign({},x,{suggestion:'Manter somente o SKU 838 nas posições da Câmara Fria.',severity:100}))
+      };
+    }
+
     const allocation = allocateZones(ranked.items.length,stats.counts,actual.demand);
 
     const zoneByKey = new Map();
@@ -412,16 +445,26 @@
   function evidenceHtml(area, matrix, month) {
     const info = typeof monthInfo === 'function' ? monthInfo(month) : null;
     const updated = info && info.status === 'imported';
+    const ruleText = area === 'Câmara Fria'
+      ? 'Câmara Fria dedicada ao SKU 838 · Curva A'
+      : 'A na faixa mais próxima · B intermediária · C mais distante';
     return '<section class="abc-audit-evidence">' +
       '<article><b>1</b><div><strong>Atualização ABC</strong><span>' + (updated ? 'Curva ' + esc(month.split('-').reverse().join('/')) + ' atualizada' : 'Curva do mês pendente') + '</span></div></article>' +
       '<article><b>2</b><div><strong>Localização verificada</strong><span>' + matrix.checks.length + ' posições ocupadas avaliadas em ' + esc(areaLabel(area)) + '</span></div></article>' +
-      '<article><b>3</b><div><strong>Distância ao Picking</strong><span>A na faixa mais próxima · B intermediária · C mais distante</span></div></article>' +
+      '<article><b>3</b><div><strong>' + (area === 'Câmara Fria' ? 'Regra da Câmara Fria' : 'Distância ao Picking') + '</strong><span>' + ruleText + '</span></div></article>' +
       '<article><b>4</b><div><strong>Adesão ao padrão</strong><span>' + (matrix.rate == null ? 'Sem base suficiente' : pct(matrix.rate)) + ' de aderência física</span></div></article>' +
       '<article><b>5</b><div><strong>Plano de ação</strong><span>' + matrix.actions.length + ' ocorrência(s) priorizada(s) para correção</span></div></article>' +
     '</section>';
   }
 
   function matrixHtml(area, matrix) {
+    if (area === 'Câmara Fria') {
+      return '<section class="panel abc-matrix-panel">' +
+        '<div class="panel-heading"><div><h2>Câmara Fria · Curva A</h2><small>SKU 838 é o único barril puxado para esta área.</small></div></div>' +
+        '<div class="abc-zone-grid"><article class="abc-zone-card zone-a"><div><span>Zona A</span><strong>' + matrix.candidates.length + ' posições</strong></div><small>100% da área</small><p>Todas as posições ocupadas são destinadas ao SKU 838, classificado como Curva A.</p></article></div>' +
+        '<p class="abc-method-note">A Câmara Fria é tratada como área dedicada ao SKU 838. Por isso, enquanto o produto físico da área permanecer o 838, a aderência é 100%.</p>' +
+      '</section>';
+    }
     const rows = classOrder.map(c => {
       const positions = matrix.candidates.filter(p=>matrix.zoneByKey.get(p.key)===c).map(p=>p.address);
       const preview = positions.slice(0,12).join(', ') + (positions.length>12 ? '…' : '');
@@ -463,7 +506,7 @@
       '</section>';
 
     return '<div class="abc-adherence-shell">' +
-      '<div class="abc-adherence-intro"><div><p class="eyebrow">ADERÊNCIA ABC POR DISTÂNCIA</p><h2>' + esc(areaLabel(area)) + '</h2><p>Curva ABC de ' + esc(month.split('-').reverse().join('/')) + ' × posição física de ' + esc(asOf) + '. Aderência medida pela distância ao Picking.</p></div><span class="abc-area-rule">Regra: <strong>A próxima · B média · C distante</strong></span></div>' +
+      '<div class="abc-adherence-intro"><div><p class="eyebrow">ADERÊNCIA ABC</p><h2>' + esc(areaLabel(area)) + '</h2><p>' + (area === 'Câmara Fria' ? 'Câmara Fria dedicada ao SKU 838, Curva A.' : 'Curva ABC de ' + esc(month.split('-').reverse().join('/')) + ' × posição física de ' + esc(asOf) + '. Aderência medida pela distância ao Picking.') + '</p></div><span class="abc-area-rule">Regra: <strong>' + (area === 'Câmara Fria' ? 'SKU 838 · Curva A' : 'A próxima · B média · C distante') + '</strong></span></div>' +
       cards +
       evidenceHtml(area,matrix,month) +
       '<div id="abcHistoryPanel"></div>' +
