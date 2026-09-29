@@ -104,6 +104,7 @@
     catch{token='';sessionStorage.removeItem('bo_token');show('loginView');}
   }
   $('pinForm').onsubmit=async e=>{e.preventDefault();const b=$('pinButton');b.disabled=true;$('loginError').textContent='';try{const d=await boCall('pin_login',{conferencer_id:$('conferencerSelect').value,pin:$('pinInput').value},false);token=d.token;conferencer=d.conferencer;sessionStorage.setItem('bo_token',token);$('pinInput').value='';enter();}catch(err){$('loginError').textContent=err.message;}finally{b.disabled=false;}};
+  $('openBoButton').onclick=()=>{location.href='../bo/';};
   $('logoutButton').onclick=()=>{token='';conferencer=null;sessionStorage.removeItem('bo_token');show('loginView');};
   $('shiftOptions').querySelectorAll('button').forEach(b=>b.onclick=()=>setShift(b.dataset.value));
   $('readingDate').onchange=loadExisting;
