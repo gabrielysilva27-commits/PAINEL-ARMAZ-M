@@ -19,12 +19,93 @@ const PERIOD_YEAR=2026;
 const PALLETS_PER_TRUCK=28;
 const PULL_VEHICLES=["229","231","246","264","271","289","298","312"];
 
+
+const PULL_VEHICLE_SET=new Set(PULL_VEHICLES);
+const normPull=(v:any)=>String(v??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toUpperCase();
+function pullDate(v:any){
+  const s=String(v??"").trim();
+  let m=s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);if(m)return m[3]+"-"+m[2]+"-"+m[1];
+  m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);return m?m[1]+"-"+m[2]+"-"+m[3]:"";
+}
+function parseDelimitedLine(line:string,sep:string){
+  const out:string[]=[];let cur="",q=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(ch==='"'){if(q&&line[i+1]==='"'){cur+='"';i++;}else q=!q;}
+    else if(ch===sep&&!q){out.push(cur);cur="";}else cur+=ch;
+  }
+  out.push(cur);return out;
+}
+function choosePullSep(lines:string[]){
+  const seps=[";","\t",","];let best=";",score=-1;
+  for(const sep of seps){const s=lines.slice(0,30).reduce((n,l)=>n+(l.split(sep).length-1),0);if(s>score){score=s;best=sep;}}
+  return best;
+}
+function findPullCol(headers:string[],tests:string[]){
+  for(let i=0;i<headers.length;i++){const h=normPull(headers[i]);if(tests.some(t=>h===t||h.includes(t)))return i;}return -1;
+}
+function nextPullDay(v:string){const d=new Date(v+"T12:00:00Z");d.setUTCDate(d.getUTCDate()+1);return d.toISOString().slice(0,10);}
+function parse031120Text(text:string){
+  const lines=String(text||"").replace(/^\uFEFF/,"").split(/\r?\n/).filter(x=>x.trim());
+  if(!lines.length)throw new Error("O arquivo 03.11.20 está vazio.");
+  const sep=choosePullSep(lines),matrix=lines.map(l=>parseDelimitedLine(l,sep));
+  let headerRow=-1,cols:any=null;
+  for(let r=0;r<Math.min(matrix.length,60);r++){
+    const h=matrix[r].map(normPull);
+    const date=findPullCol(h,["DATA","DT"]),vehicle=findPullCol(h,["VEICULO"]),map=findPullCol(h,["MAPA"]);
+    if(date>=0&&vehicle>=0&&map>=0){headerRow=r;cols={date,vehicle,map};break;}
+  }
+  if(headerRow<0)throw new Error("Cabeçalho Data / Veículo / Mapa não encontrado no 03.11.20.");
+  const days=new Map<string,{trips:Set<string>,vehicles:Map<string,Set<string>>}>();
+  const allDates:string[]=[];let rawRows=0,entradaRows=0,trailerRows=0;
+  for(let r=headerRow+1;r<matrix.length;r++){
+    const row=matrix[r],d=pullDate(row[cols.date]),vehicle=String(row[cols.vehicle]||"").replace(/\D/g,""),mapRaw=String(row[cols.map]||"").trim();
+    if(!d||!vehicle||!mapRaw)continue;
+    rawRows++;allDates.push(d);
+    if(!normPull(row.join(" | ")).includes("ENTRADA CDD"))continue;
+    entradaRows++;
+    if(!PULL_VEHICLE_SET.has(vehicle))continue;
+    trailerRows++;
+    const digits=mapRaw.replace(/\D/g,""),map=digits?String(Number(digits)):normPull(mapRaw),tripKey=vehicle+"|"+map;
+    const day=days.get(d)||{trips:new Set<string>(),vehicles:new Map<string,Set<string>>()};
+    day.trips.add(tripKey);
+    const maps=day.vehicles.get(vehicle)||new Set<string>();maps.add(map);day.vehicles.set(vehicle,maps);days.set(d,day);
+  }
+  if(!rawRows)throw new Error("Nenhuma linha válida foi reconhecida no 03.11.20.");
+  if(!entradaRows)throw new Error("Nenhuma linha ENTRADA CDD foi encontrada no 03.11.20.");
+  if(!allDates.length)throw new Error("Não foi possível identificar o período do 03.11.20.");
+  allDates.sort();const minDate=allDates[0],maxDate=allDates[allDates.length-1];
+  const rows:any[]=[];let cursor=minDate,guard=0;
+  while(cursor<=maxDate&&guard++<370){
+    const day=days.get(cursor),vehicle_counts:any={};
+    if(day)for(const [vehicle,maps] of day.vehicles)vehicle_counts[vehicle]=maps.size;
+    const pulls=day?day.trips.size:0;
+    rows.push({pull_date:cursor,truck_count:pulls,pallets_pulled:pulls*PALLETS_PER_TRUCK,vehicle_counts});
+    cursor=nextPullDay(cursor);
+  }
+  if(guard>=370)throw new Error("O período do 03.11.20 excede o limite seguro de 1 ano.");
+  return{raw_rows:rawRows,entrada_cdd_rows:entradaRows,trailer_rows:trailerRows,min_date:minDate,max_date:maxDate,rows};
+}
+async function manual031120Import(user:any,body:any){
+  if(user.role!=="admin")throw new Error("A contingência manual do 03.11.20 é restrita ao ADM.");
+  const text=String(body.text||"");if(!text||text.length>6_000_000)throw new Error("Arquivo 03.11.20 inválido ou muito grande.");
+  const parsed=parse031120Text(text);
+  const name=String(body.source_file||"03.11.20.csv").replace(/[^\w.\- ()]/g,"_").slice(0,140);
+  const source="agent_031120_manual_"+name,now=new Date().toISOString();
+  const upserts=parsed.rows.map((x:any)=>({...x,source_file:source,imported_at:now}));
+  const {error:ue}=await db.from("receiving_pull_daily").upsert(upserts,{onConflict:"pull_date"});if(ue)throw ue;
+  const truckTotal=upserts.reduce((s:number,x:any)=>s+Number(x.truck_count||0),0),palletTotal=truckTotal*PALLETS_PER_TRUCK;
+  const {error:ie}=await db.from("receiving_pull_imports").insert({source_file:source,min_date:parsed.min_date,max_date:parsed.max_date,truck_count:truckTotal,pallets_pulled:palletTotal,imported_at:now});if(ie)throw ie;
+  return{source_file:source,min_date:parsed.min_date,max_date:parsed.max_date,days:upserts.length,truck_count:truckTotal,pallets_pulled:palletTotal,raw_rows:parsed.raw_rows,entrada_cdd_rows:parsed.entrada_cdd_rows,trailer_rows:parsed.trailer_rows,vehicles:PULL_VEHICLES};
+}
+
 Deno.serve(async(req:Request)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
   if(req.method!=="POST")return json({error:"Método não permitido"},405);
   try{
     const user=await requireSession(req);if(!user)return json({error:"Sessão inválida ou expirada"},401);
     const body=await req.json().catch(()=>({}));
+    if(body.action==="import_031120")return json({import:await manual031120Import(user,body)});
     if(body.action!=="dashboard")return json({error:"Ação inválida"},400);
 
     const month=String(body.month||"all"),checker=String(body.checker||"").trim(),origin=String(body.origin||"").trim();
