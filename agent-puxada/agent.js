@@ -12,8 +12,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.99";
-// 3.2.99: 03.11.20 só assume o Edge após 30 s de inatividade; retry rápido do backfill sem disputar foco com o operador.
+const VERSION = "3.2.100";
+// 3.2.100: 03.11.20 conta apenas ENTRADA CDD; cada combinação única carreta+mapa = 1 puxada = 28 paletes.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
