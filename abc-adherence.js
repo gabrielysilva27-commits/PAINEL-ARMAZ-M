@@ -434,37 +434,68 @@
       return {'AC':100,'AB':90,'CA':85,'BA':75,'CB':60,'BC':50}[pair] || 40;
     };
 
-    const actions = checks.filter(x=>x.status!=='Aderente').map(x => {
+    // O plano de ação precisa ser executável: cada desvio recebe uma vaga livre
+    // específica e a mesma vaga não pode aparecer em duas ações. A ordem das vagas
+    // segue a própria ordenação física (mais próxima do Picking primeiro).
+    const pendingActions = checks
+      .filter(x=>x.status!=='Aderente')
+      .map(x=>Object.assign({},x,{severity:severity(x)}))
+      .sort((a,b)=>b.severity-a.severity || a.address.localeCompare(b.address,'pt-BR',{numeric:true}));
+
+    const claimedDestinations = new Set();
+    const destinationFits = (p,desired,sku,strictZone) => {
+      if (!p || claimedDestinations.has(p.key)) return false;
+      if (strictZone && zoneByKey.get(p.key) !== desired) return false;
+      if (area !== 'Regulador') return true;
+      if (String(sku || '') === GUARAVITA_SKU) return isShelfAddress(p.address);
+      if (desired === 'A') return !isShelfAddress(p.address);
+      if (desired === 'B' || desired === 'C') return isShelfAddress(p.address);
+      return true;
+    };
+    const takeDestination = (desired,sku) => {
+      if (!classOrder.includes(desired)) return null;
+      // Primeiro preserva a faixa calculada. Se a faixa estiver cheia, usa a
+      // próxima vaga física compatível, ainda respeitando A=rua fechada e B/C=prateleira.
+      let free = empty.find(p=>destinationFits(p,desired,sku,true));
+      let inZone = true;
+      if (!free) {
+        free = empty.find(p=>destinationFits(p,desired,sku,false));
+        inZone = false;
+      }
+      if (!free) return null;
+      claimedDestinations.add(free.key);
+      return {free,inZone};
+    };
+
+    const actions = pendingActions.map(x => {
       let suggestion;
       const desired = classOrder.includes(x.actualClass) ? x.actualClass : null;
-      const guaravitaOnly = x.rows.length > 0 && x.rows.every(r => String(r.sku_code || '') === GUARAVITA_SKU);
       if (desired) {
-        const compatible = empty.filter(p => {
-          if (zoneByKey.get(p.key) !== desired) return false;
-          if (area !== 'Regulador') return true;
-          if (guaravitaOnly) return isShelfAddress(p.address);
-          if (desired === 'A') return !isShelfAddress(p.address);
-          return isShelfAddress(p.address);
-        });
-        const free = compatible[0];
-        if (free) {
-          suggestion = 'Mover para ' + free.address + ' (Faixa ' + desired + ').';
-        } else if (area === 'Regulador' && guaravitaOnly) {
-          suggestion = 'Mover para uma prateleira da Faixa A.';
-        } else if (area === 'Regulador' && desired === 'A') {
-          suggestion = 'Mover para uma rua fechada da Faixa A.';
-        } else if (area === 'Regulador') {
-          suggestion = 'Mover para uma prateleira da Faixa ' + desired + '.';
+        const sku = x.rows.length === 1 ? String(x.rows[0].sku_code || '') : '';
+        const destination = takeDestination(desired,sku);
+        if (destination) {
+          suggestion = destination.inZone
+            ? 'Mover para ' + destination.free.address + ' — vaga livre da Faixa ' + desired + '.'
+            : 'Mover para ' + destination.free.address + ' — próxima vaga livre compatível com Curva ' + desired + '.';
         } else {
-          suggestion = 'Mover para uma posição da Faixa ' + desired + '.';
+          suggestion = 'Sem vaga livre compatível para Curva ' + desired + '; liberar uma posição antes da movimentação.';
         }
       } else {
-        suggestion = area === 'Regulador'
-          ? 'Separar os produtos respeitando rua fechada para A e prateleira para B/C.'
-          : 'Separar os produtos e mover cada SKU para a faixa da sua curva.';
+        const uniqueRows = [...new Map(
+          (x.rows || []).filter(r=>r.sku_code).map(r=>[String(r.sku_code),r])
+        ).values()];
+        const moves = [];
+        uniqueRows.forEach(r => {
+          const desiredRow = classOrder.includes(r._curve) ? r._curve : 'C';
+          const destination = takeDestination(desiredRow,String(r.sku_code || ''));
+          if (destination) moves.push(String(r.sku_code) + ' → ' + destination.free.address);
+        });
+        suggestion = moves.length
+          ? 'Separar: ' + moves.join(' · ') + '.'
+          : 'Sem vagas livres compatíveis para separar os SKUs desta posição.';
       }
-      return Object.assign({},x,{suggestion:suggestion,severity:severity(x)});
-    }).sort((a,b)=>b.severity-a.severity || a.address.localeCompare(b.address,'pt-BR',{numeric:true}));
+      return Object.assign({},x,{suggestion:suggestion});
+    });
 
     return {
       candidates:ranked.items,
