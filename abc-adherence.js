@@ -4,7 +4,7 @@
   const STOCK_API = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/stock-api';
   const LAYOUT_API = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/layout-api';
   const ADHERENCE_API = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/abc-adherence-api';
-  const A = { mode: 'curve', stockCache: new Map(), pickingCache: new Map(), historyCache: new Map(), request: 0 };
+  const A = { mode: 'curve', stockCache: new Map(), pickingCache: new Map(), historyCache: new Map(), curveBundleCache: new Map(), request: 0 };
 
   const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const pct = value => Number.isFinite(value) ? new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1}).format(value) + '%' : '—';
@@ -33,6 +33,17 @@
   async function curveData(month, area) {
     const data = await api('curve',{month:month,area:area});
     return data.items || [];
+  }
+
+  async function monthCurveData(month) {
+    if (A.curveBundleCache.has(month)) return A.curveBundleCache.get(month);
+    const data = await api('month_bundle',{month:month});
+    const items = [];
+    Object.keys(data.areas || {}).forEach(area => {
+      (data.areas[area] || []).forEach(x => items.push(Object.assign({area:area},x)));
+    });
+    A.curveBundleCache.set(month,items);
+    return items;
   }
 
   async function pickingData(month) {
@@ -66,7 +77,7 @@
   function historyPanelHtml(area, items) {
     const valid = (items || []).filter(x => x.method === 'distance_to_picking' || String(x.method_version || '').startsWith('distance-picking'));
     if (!valid.length) {
-      return '<section class="panel abc-history-panel"><div class="panel-heading"><div><h2>Histórico de aderência</h2><small>Acompanhamento da aderência física pela distância ao Picking.</small></div></div><div class="abc-history-loading">Nenhuma medição registrada para este filtro.</div></section>';
+      return '<section class="panel abc-history-panel"><div class="panel-heading"><div><h2>Histórico de aderência</h2><small>Acompanhamento da aderência da Curva ABC nas posições físicas.</small></div></div><div class="abc-history-loading">Nenhuma medição registrada para este filtro.</div></section>';
     }
 
     const byMonth = new Map();
@@ -238,24 +249,46 @@
     return {counts:byClass,skus:skus};
   }
 
-  function actualLocationData(stock, area, curveItems) {
+  function actualLocationData(stock, area, curveItems, allCurveItems) {
     const curveMap = new Map(curveItems.map(x => [String(x.sku_code || ''),x.curve_class]));
+    const bySku = new Map();
+    (allCurveItems || []).forEach(x => {
+      const code = String(x.sku_code || '');
+      if (!code || !classOrder.includes(x.curve_class)) return;
+      if (!bySku.has(code)) bySku.set(code,[]);
+      bySku.get(code).push(x);
+    });
+
+    const fallbackOrder = area === 'Regulador'
+      ? ['Marketplace','Câmara Fria','Picking']
+      : area === 'Marketplace'
+        ? ['Regulador','Câmara Fria','Picking']
+        : ['Regulador','Marketplace','Picking'];
+
+    const resolveCurve = code => {
+      const direct = curveMap.get(code);
+      if (classOrder.includes(direct)) return direct;
+      const rows = bySku.get(code) || [];
+      for (const preferred of fallbackOrder) {
+        const found = rows.find(x => x.area === preferred && classOrder.includes(x.curve_class));
+        if (found) return found.curve_class;
+      }
+      const any = rows.find(x => classOrder.includes(x.curve_class));
+      if (any) return any.curve_class;
+      // SKU físico sem giro na janela da Curva ABC: operacionalmente é Curva C.
+      return 'C';
+    };
+
     const locations = new Map();
     const demand = {A:0,B:0,C:0};
 
     (stock.locations || []).filter(l => l.area === area).forEach(loc => {
       const rows = (loc.rows || []).filter(r => r.sku_code && r.pallets !== 0);
       if (!rows.length) {
-        locations.set(compact(loc.address),{address:loc.address,occupied:false,classes:[],unknown:[],rows:[]});
+        locations.set(compact(loc.address),{address:loc.address,occupied:false,classes:[],rows:[]});
         return;
       }
-      const classes = [];
-      const unknown = [];
-      rows.forEach(r => {
-        const c = curveMap.get(String(r.sku_code || ''));
-        if (classOrder.includes(c)) classes.push(c);
-        else unknown.push(String(r.sku_code || ''));
-      });
+      const classes = rows.map(r => resolveCurve(String(r.sku_code || ''))).filter(c=>classOrder.includes(c));
       const unique = [...new Set(classes)];
       const highest = classOrder.find(c => unique.includes(c));
       if (highest) demand[highest]++;
@@ -263,7 +296,6 @@
         address:loc.address,
         occupied:true,
         classes:unique,
-        unknown:[...new Set(unknown)],
         rows:rows
       });
     });
@@ -303,11 +335,11 @@
     return Object.assign(alloc,{base:base});
   }
 
-  function matrixForArea(stock, area, curveItems) {
+  function matrixForArea(stock, area, curveItems, allCurveItems) {
     const candidates = physicalCandidates(stock,area);
     const ranked = rankCandidates(stock,area,candidates);
     const stats = curveStats(curveItems);
-    const actual = actualLocationData(stock,area,curveItems);
+    const actual = actualLocationData(stock,area,curveItems,allCurveItems);
 
     if (area === 'Câmara Fria') {
       const zoneByKey = new Map();
@@ -317,13 +349,13 @@
       actual.locations.forEach((loc,key) => {
         if (!loc.occupied) return;
         occupiedKeys.add(key);
-        const actualClass = loc.classes.length === 1 ? loc.classes[0] : (loc.classes.length ? loc.classes.join('/') : 'Sem curva');
-        const status = actualClass === 'A' ? 'Aderente' : (loc.unknown.length || actualClass === 'Sem curva' ? 'Sem curva' : 'Não aderente');
-        checks.push({key:key,address:loc.address,zone:'A',actualClass:actualClass,status:status,rows:loc.rows,unknown:loc.unknown});
+        const actualClass = loc.classes.length === 1 ? loc.classes[0] : (loc.classes.length ? loc.classes.join('/') : 'C');
+        const status = actualClass === 'A' ? 'Aderente' : 'Não aderente';
+        checks.push({key:key,address:loc.address,zone:'A',actualClass:actualClass,status:status,rows:loc.rows});
       });
       const adherent = checks.filter(x=>x.status==='Aderente').length;
       const non = checks.filter(x=>x.status==='Não aderente').length;
-      const unknown = checks.filter(x=>x.status==='Sem curva').length;
+      const unknown = 0;
       return {
         candidates:ranked.items,
         basis:'Câmara Fria dedicada ao SKU 838 · Curva A',
@@ -360,18 +392,15 @@
       occupiedKeys.add(key);
       let status = 'Não aderente';
       let actualClass = 'Mista';
-      if (loc.unknown.length) {
-        status = 'Sem curva';
-        actualClass = loc.classes.length ? loc.classes.join('/') + ' + sem curva' : 'Sem curva';
-      } else if (loc.classes.length === 1) {
+      if (loc.classes.length === 1) {
         actualClass = loc.classes[0];
         status = loc.classes[0] === zone ? 'Aderente' : 'Não aderente';
       } else if (!loc.classes.length) {
-        status = 'Sem curva';
-        actualClass = 'Sem curva';
+        actualClass = 'C';
+        status = zone === 'C' ? 'Aderente' : 'Não aderente';
       }
       checks.push({
-        key:key,address:loc.address,zone:zone,actualClass:actualClass,status:status,rows:loc.rows,unknown:loc.unknown
+        key:key,address:loc.address,zone:zone,actualClass:actualClass,status:status,rows:loc.rows
       });
     });
 
@@ -384,7 +413,7 @@
 
     const adherent = checks.filter(x=>x.status==='Aderente').length;
     const non = checks.filter(x=>x.status==='Não aderente').length;
-    const unknown = checks.filter(x=>x.status==='Sem curva').length;
+    const unknown = 0;
     const rate = adherent + non ? adherent/(adherent+non)*100 : null;
 
     const severity = item => {
@@ -397,9 +426,7 @@
     const actions = checks.filter(x=>x.status!=='Aderente').map(x => {
       let suggestion;
       const desired = classOrder.includes(x.actualClass) ? x.actualClass : null;
-      if (x.status === 'Sem curva') {
-        suggestion = 'Classificar o SKU na Curva ABC da própria área antes de realocar.';
-      } else if (desired) {
+      if (desired) {
         const free = emptyByZone[desired] && emptyByZone[desired][0];
         suggestion = free ? 'Realocar para ' + free + ' (Zona ' + desired + ').' : 'Realocar para uma posição da Zona ' + desired + '.';
       } else {
@@ -438,7 +465,7 @@
   }
 
   function statusBadge(status) {
-    const cls = status === 'Aderente' ? 'ok' : status === 'Sem curva' ? 'warn' : 'bad';
+    const cls = status === 'Aderente' ? 'ok' : 'bad';
     return '<span class="abc-status ' + cls + '">' + esc(status) + '</span>';
   }
 
@@ -493,16 +520,16 @@
     '</section>';
   }
 
-  function physicalHtml(area, month, stock, curveItems) {
+  function physicalHtml(area, month, stock, curveItems, allCurveItems) {
     if (!stock.snapshot) return '<div class="abc-adherence-empty">Nenhuma fotografia de estoque disponível para cruzar com a Curva ABC.</div>';
-    const matrix = matrixForArea(stock,area,curveItems);
+    const matrix = matrixForArea(stock,area,curveItems,allCurveItems);
     const asOf = stock.snapshot.as_of ? String(stock.snapshot.as_of).split('-').reverse().join('/') : '—';
     const cards =
       '<section class="abc-adherence-kpis">' +
         '<article><span>Aderência ABC</span><strong>' + (matrix.rate==null?'—':pct(matrix.rate)) + '</strong><small>somente posições ocupadas e classificadas</small></article>' +
         '<article><span>Posições corretas</span><strong>' + matrix.adherent + '</strong><small>produto na zona da própria curva</small></article>' +
         '<article><span>Não aderentes</span><strong>' + matrix.non + '</strong><small>realocação recomendada</small></article>' +
-        '<article><span>Sem curva</span><strong>' + matrix.unknown + '</strong><small>fora do denominador até classificar</small></article>' +
+        '<article><span>Posições avaliadas</span><strong>' + matrix.checks.length + '</strong><small>todas com classificação ABC aplicada</small></article>' +
       '</section>';
 
     return '<div class="abc-adherence-shell">' +
@@ -609,9 +636,9 @@
         if (request !== A.request) return;
         root.innerHTML = pickingHtml(month,curveItems,picking);
       } else {
-        const stock = await stockData(month);
+        const [stock,allCurveItems] = await Promise.all([stockData(month),monthCurveData(month)]);
         if (request !== A.request) return;
-        root.innerHTML = physicalHtml(area,month,stock,curveItems);
+        root.innerHTML = physicalHtml(area,month,stock,curveItems,allCurveItems);
         try { await captureDaily(month,area,stock); } catch (e) { console.warn('Falha ao registrar aderência diária',e); }
       }
       if (request !== A.request) return;
@@ -632,7 +659,7 @@
     if (adherence) adherence.classList.toggle('hidden',mode!=='adherence');
     if (mode === 'adherence') {
       document.getElementById('pageTitle').textContent = 'Curva ABC';
-      document.getElementById('pageSubtitle').textContent = 'Aderência da Curva ABC pela distância física ao Picking.';
+      document.getElementById('pageSubtitle').textContent = 'Aderência da Curva ABC nas posições físicas do armazém.';
       render();
     } else {
       document.getElementById('pageTitle').textContent = 'Curva ABC';
@@ -644,6 +671,7 @@
     A.stockCache.clear();
     A.pickingCache.clear();
     A.historyCache.clear();
+    A.curveBundleCache.clear();
     if (A.mode === 'adherence') render();
   }
 
@@ -657,7 +685,7 @@
     nav.id = 'abcSubviewNav';
     nav.className = 'abc-subview-nav';
     nav.setAttribute('aria-label','Visões da Curva ABC');
-    nav.innerHTML = '<button type="button" class="active" data-abc-subview="curve">Análise ABC</button><button type="button" data-abc-subview="adherence">Aderência por distância</button>';
+    nav.innerHTML = '<button type="button" class="active" data-abc-subview="curve">Análise ABC</button><button type="button" data-abc-subview="adherence">Aderência da Curva</button>';
     toolbar.insertAdjacentElement('afterend',nav);
 
     const view = document.createElement('section');
