@@ -12,8 +12,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.89";
-// 3.2.89: automatiza a atualização do Recebimento pelo relatório 03.11.20 (Mapa).
+const VERSION = "3.2.90";
+// 3.2.90: executa a recuperação inicial do 03.11.20 imediatamente quando solicitada pelo servidor.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -175,7 +175,6 @@ async function main() {
       const state = await api.pull031120Status();
       const task = state && state.pull031120;
       if (!task || !task.enabled || task.complete || !task.date_from) return;
-      if (!await waitForQuietComputer(() => false)) return;
       log("Recebimento 03.11.20: atualizando de " + task.date_from + " a " + task.date_to +
         " · classificação Mapa · veículos " + task.vehicle_from + " a " + task.vehicle_to + ".");
       const csvPath = await promax.export031120(task, config, ROOT, parse031120);
