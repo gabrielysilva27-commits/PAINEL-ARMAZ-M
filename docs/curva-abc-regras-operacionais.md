@@ -35,3 +35,12 @@ Uma posição só é considerada aderente quando atende **à faixa da curva e ao
 - Para janeiro a agosto/2026, sem fotografia física histórica, o painel usa **estimativa retroativa autorizada**, sempre identificada internamente como `estimated_historical_baseline`.
 - As estimativas retroativas não geram plano de ação posicional; servem somente para a série mensal.
 - **Setembro/2026:** usa a fotografia disponível de Estoque x Estoque de setembro e permanece como resultado medido.
+
+
+## Ordem das ações de realocação
+
+- O plano de ação deve apontar **endereços livres específicos**, nunca apenas “Faixa A/B/C” quando existir vaga compatível.
+- As vagas são consumidas em sequência e **cada vaga livre só pode ser usada por uma ação**.
+- Dentro da mesma prioridade, o SKU de maior prioridade na Curva ABC recebe primeiro a vaga mais próxima/mais prioritária; os seguintes recebem a 2ª, 3ª, etc.
+- No Estoque Geral, a compatibilidade física continua obrigatória: Curva A em rua fechada; Curvas B/C em prateleira; SKU 22209 em prateleira.
+- Se a faixa calculada não tiver vaga livre compatível, o plano usa a próxima vaga física compatível e deixa isso explícito na ação.
