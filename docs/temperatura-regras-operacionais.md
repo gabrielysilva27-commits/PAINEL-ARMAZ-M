@@ -44,3 +44,14 @@ Em **Retornável** e **Descartável**, a temperatura considerada no indicador é
 O portal de Temperatura usa a mesma identificação e o mesmo PIN do B.O. Digital. A leitura salva registra o conferente responsável.
 
 O banco mantém uma linha lógica por **data + turno + área**. Um novo salvamento para a mesma combinação atualiza o registro em vez de gerar duplicidade.
+
+
+## Carta de controle
+
+O módulo administrativo exibe a carta de controle por área e mês.
+
+- Câmara Fria: a leitura diária é o próprio valor da manhã.
+- Retornável e Descartável: primeiro é considerado o maior valor entre Temp. 1 e Temp. 2 de cada turno; a carta usa a média diária desses indicadores.
+- Repack e Marketplace: a carta usa a média diária das leituras dos turnos disponíveis.
+- Dias sem leitura/operação não são tratados como temperatura zero.
+- As faixas de OK, Atenção e Crítico aparecem como referência visual no gráfico.
