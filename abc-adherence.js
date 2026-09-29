@@ -428,7 +428,7 @@
       return '<tr><td><strong>Zona ' + c + '</strong></td><td>Curva ' + c + '</td><td>' + (matrix.allocation[c]||0) + '</td><td>' + esc(preview || '—') + '</td></tr>';
     }).join('');
     return '<section class="panel abc-matrix-panel">' +
-      '<div class="panel-heading"><div><h2>Matriz de correlação · ' + esc(areaLabel(area)) + '</h2><small>Mais próximo do Picking → A · intermediário → B · mais distante → C</small></div></div>' +
+      '<div class="panel-heading"><div><h2>Faixas por distância · ' + esc(areaLabel(area)) + '</h2><small>Mais próximo do Picking → A · intermediário → B · mais distante → C</small></div></div>' +
       '<div class="abc-zone-grid">' + classOrder.map(c=>zoneCard(c,matrix)).join('') + '</div>' +
       '<div class="stock-table-wrap"><table><thead><tr><th>Zona</th><th>Curva esperada</th><th>Posições</th><th>Endereços priorizados</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<p class="abc-method-note">Regra da aderência: os endereços físicos são ordenados pela distância ao Picking. A capacidade de cada faixa A/B/C acompanha a necessidade física observada de cada curva; quando não há ocupação suficiente, usa-se a distribuição de SKUs da curva do mês. A classificação ABC usada é sempre a de ' + esc(areaLabel(area)) + '.</p>' +
@@ -463,7 +463,7 @@
       '</section>';
 
     return '<div class="abc-adherence-shell">' +
-      '<div class="abc-adherence-intro"><div><p class="eyebrow">ADERÊNCIA AO LAYOUT</p><h2>' + esc(areaLabel(area)) + '</h2><p>Curva ABC de ' + esc(month.split('-').reverse().join('/')) + ' × posição física de ' + esc(asOf) + '. Aderência medida pela distância ao Picking.</p></div><span class="abc-area-rule">Regra: <strong>A próxima · B média · C distante</strong></span></div>' +
+      '<div class="abc-adherence-intro"><div><p class="eyebrow">ADERÊNCIA ABC POR DISTÂNCIA</p><h2>' + esc(areaLabel(area)) + '</h2><p>Curva ABC de ' + esc(month.split('-').reverse().join('/')) + ' × posição física de ' + esc(asOf) + '. Aderência medida pela distância ao Picking.</p></div><span class="abc-area-rule">Regra: <strong>A próxima · B média · C distante</strong></span></div>' +
       cards +
       evidenceHtml(area,matrix,month) +
       '<div id="abcHistoryPanel"></div>' +
