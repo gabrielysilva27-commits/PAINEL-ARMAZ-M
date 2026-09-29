@@ -12,8 +12,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.100";
-// 3.2.100: 03.11.20 conta apenas ENTRADA CDD; cada combinação única carreta+mapa = 1 puxada = 28 paletes.
+const VERSION = "3.2.101";
+// 3.2.101: permite FORCE_RUN do 03.11.20 sem aguardar inatividade; mantém gate normal nas execuções regulares.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -176,6 +176,16 @@ async function main() {
       const state = await api.pull031120Status();
       task = state && state.pull031120;
       if (!task || !task.enabled || task.complete || !task.date_from) return;
+      if (!task.force_run) {
+        const unlocked = existingEdge.desktopUnlocked();
+        const idle = existingEdge.idleMilliseconds();
+        if (!unlocked || idle === null || idle < IDLE_REQUIRED_MS) {
+          log("Recebimento 03.11.20 aguardando 30 segundos sem uso do computador.");
+          return;
+        }
+      } else {
+        log("Recebimento 03.11.20: FORCE_RUN ativo; ignorando gate de inatividade para este teste.");
+      }
       await api.pull031120State({status:"running",stage:"open_report",date_from:task.date_from,date_to:task.date_to}).catch(function(){});
       log("Recebimento 03.11.20: atualizando de " + task.date_from + " a " + task.date_to +
         " · classificação Mapa · veículos " + task.vehicle_from + " a " + task.vehicle_to + ".");
