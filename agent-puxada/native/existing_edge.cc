@@ -298,6 +298,45 @@ static bool HasForeground(HWND hwnd) {
   return foreground == hwnd || GetAncestor(foreground, GA_ROOT) == hwnd ||
       IsChild(hwnd, foreground);
 }
+
+// Windows normally blocks a background process from stealing focus. The agent
+// only reaches this point after the workstation has been idle for 30 seconds,
+// so temporarily join the input queues of the foreground/browser threads,
+// bring the Promax window to the top, then immediately detach again.
+static bool FocusWindow(HWND hwnd) {
+  if (!hwnd || !IsWindow(hwnd)) return false;
+  if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);
+
+  const DWORD currentThread = GetCurrentThreadId();
+  const HWND foreground = GetForegroundWindow();
+  const DWORD foregroundThread = foreground
+      ? GetWindowThreadProcessId(foreground, nullptr) : 0;
+  const DWORD targetThread = GetWindowThreadProcessId(hwnd, nullptr);
+
+  bool attachedForeground = false;
+  bool attachedTarget = false;
+  if (foregroundThread && foregroundThread != currentThread)
+    attachedForeground = AttachThreadInput(currentThread, foregroundThread, TRUE) != FALSE;
+  if (targetThread && targetThread != currentThread && targetThread != foregroundThread)
+    attachedTarget = AttachThreadInput(currentThread, targetThread, TRUE) != FALSE;
+
+  ShowWindow(hwnd, SW_SHOW);
+  SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0,
+      SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+  BringWindowToTop(hwnd);
+  SetForegroundWindow(hwnd);
+  SetActiveWindow(hwnd);
+  Sleep(220);
+
+  const bool focused = HasForeground(hwnd);
+
+  if (attachedTarget)
+    AttachThreadInput(currentThread, targetThread, FALSE);
+  if (attachedForeground)
+    AttachThreadInput(currentThread, foregroundThread, FALSE);
+
+  return focused;
+}
 static bool ActivatePromaxTab(HWND hwnd) {
   wchar_t currentTitle[512] = {};
   GetWindowTextW(hwnd, currentTitle, 512);
@@ -977,21 +1016,14 @@ static napi_value Act(napi_env env, napi_callback_info info) {
       RECT r = {};
       if (!target.hwnd || !GetWindowRect(target.hwnd, &r)) result = L"window-not-found";
       else {
-        if (IsIconic(target.hwnd)) ShowWindow(target.hwnd, SW_RESTORE);
-        Key(VK_MENU);
-        Key(VK_MENU, true);
-        SetForegroundWindow(target.hwnd);
-        Sleep(300);
-        if (!HasForeground(target.hwnd)) result = L"window-not-foreground";
+        if (!FocusWindow(target.hwnd)) result = L"window-not-foreground";
         else if (stage == L"shortcut" || stage == L"shortcut031120") {
           result = L"shortcut-controls-not-found";
           const std::wstring reportCode = stage == L"shortcut031120" ? L"03.11.20" : L"02.05.01";
           for (HWND candidate : target.candidates) {
-            if (IsIconic(candidate)) ShowWindow(candidate, SW_RESTORE);
-            SetForegroundWindow(candidate);
-            Sleep(250);
-            if (!HasForeground(candidate) || !ActivatePromaxTab(candidate)) continue;
+            if (!FocusWindow(candidate) || !ActivatePromaxTab(candidate)) continue;
             Sleep(350);
+            if (!FocusWindow(candidate)) continue;
             if (!OpenShortcut(candidate, reportCode)) continue;
             result = L"shortcut-no-report-window";
             for (int i = 0; i < 30; ++i) {
