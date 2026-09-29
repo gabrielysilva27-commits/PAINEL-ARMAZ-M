@@ -978,7 +978,9 @@ static BOOL CALLBACK FindReportForDownload(HWND hwnd, LPARAM raw) {
   GetWindowTextW(hwnd, title, 512);
   std::wstring name(title);
   std::transform(name.begin(), name.end(), name.begin(), towlower);
-  if (name.find(L"movimenta") != std::wstring::npos && name.find(L"estoque") != std::wstring::npos)
+  if ((name.find(L"movimenta") != std::wstring::npos && name.find(L"estoque") != std::wstring::npos) ||
+      name.find(L"planilha de acompanhamento") != std::wstring::npos ||
+      name.find(L"03.11.20") != std::wstring::npos)
     reinterpret_cast<std::vector<HWND>*>(raw)->push_back(hwnd);
   return TRUE;
 }

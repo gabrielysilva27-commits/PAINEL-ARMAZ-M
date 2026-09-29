@@ -12,8 +12,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.95";
-// 3.2.95: adiciona fallback geométrico validado para preencher a tela 03.11.20.
+const VERSION = "3.2.96";
+// 3.2.96: captura a barra de download também na janela do relatório 03.11.20.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
