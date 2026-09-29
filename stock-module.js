@@ -12,7 +12,7 @@
  const badge=c=>`<span class="stock-badge ${['A','B','C'].includes(c)?c.toLowerCase():'unknown'}">${esc(c||'Sem curva')}</span>`;
  const table=(heads,rows)=>`<div class="stock-table-wrap"><table><thead><tr>${heads.map(h=>'<th>'+h+'</th>').join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
  async function call(action,payload={}){const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-session-token':state.token},body:JSON.stringify({action,...payload})});const d=await r.json().catch(()=>({error:'Resposta inválida'}));if(!r.ok)throw new Error(d.error||'Falha ao consultar estoque');return d;}
- async function load(force=false){if(!force&&S.data?.month===S.month)return S.data;const request=++S.request,data=await call('get',{month:S.month});if(request!==S.request)return null;S.data={...data,month:S.month};return S.data;}
+ async function load(force=false){if(!force&&S.data?.month===S.month)return S.data;const request=++S.request,data=await call('get',{month:S.month,fallback_latest:true});if(request!==S.request)return null;S.data={...data,month:S.month};return S.data;}
  const meta=()=>S.data?.snapshot?`Base de ${dt(S.data.snapshot.as_of)} · Curva ABC ${S.month.split('-').reverse().join('/')} · última atualização do estoque`:'Nenhuma base importada';
  const matches=r=>!S.query||norm([r.address,r.sku_code,r.sku_name].join(' ')).includes(norm(S.query));
  const actions=()=>`<button class="outline-button" data-refresh>Atualizar consulta</button><button class="primary-button" data-import>Importar estoque</button>`;
