@@ -13,7 +13,7 @@ const updater = require("./lib/update");
 
 const ROOT = __dirname;
 const VERSION = "3.2.89";
-// 3.2.89: adiciona atualização automática do Recebimento pelo relatório 03.11.20 (Mapa).
+// 3.2.89: automatiza a atualização do Recebimento pelo relatório 03.11.20 (Mapa).
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
