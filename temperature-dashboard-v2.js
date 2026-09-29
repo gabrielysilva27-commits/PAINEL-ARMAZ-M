@@ -10,7 +10,7 @@
     'Repack':{okMax:22,critical:25,ok:'≤ 22,0 °C',attention:'22,1–25,0 °C',criticalText:'> 25,0 °C',measure:'1 ponto · 3 turnos'},
     'Marketplace':{okMax:22,critical:25,ok:'≤ 22,0 °C',attention:'22,1–25,0 °C',criticalText:'> 25,0 °C',measure:'1 ponto · 3 turnos'}
   };
-  const AREA_COLORS={'Câmara Fria':'#2f80ed','Retornável':'#7b61ff','Descartável':'#f2994a','Repack':'#00a88f','Marketplace':'#d95fa1'};
+  const AREA_COLORS={'Câmara Fria':'#5b9de6','Retornável':'#8d7ae8','Descartável':'#e7a261','Repack':'#42aa98','Marketplace':'#d77daa'};
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const num=v=>Number(v||0).toLocaleString('pt-BR');
   const temp=v=>v==null?'—':Number(v).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'°C';
@@ -19,6 +19,12 @@
   const monthLabel=v=>{const s=String(v||'');return (MONTHS[s.slice(5,7)]||s.slice(5,7))+'/'+s.slice(0,4);};
   const statusLabel=s=>s==='ok'?'OK':s==='attention'?'Atenção':s==='critical'?'Crítico':'Sem leitura';
   const statusBadge=s=>'<span class="temp-status '+esc(s)+'"><i></i>'+statusLabel(s)+'</span>';
+  function statusForValue(area,value){
+    if(value==null||!Number.isFinite(Number(value)))return 'none';
+    const v=Number(value);
+    if(area==='Câmara Fria')return v<=5?'ok':v<9?'attention':'critical';
+    return v<=22?'ok':v<=25?'attention':'critical';
+  }
 
   async function call(payload={}){
     const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-session-token':window.state?.token||''},body:JSON.stringify({action:'dashboard',...payload})});
@@ -30,28 +36,32 @@
   function overview(s,selected){
     const stats=selected
       ? '<div class="temp-overview-number"><span>Leituras</span><strong>'+num(s.readings)+'</strong></div>'+
-        '<div class="temp-overview-number"><span>Média</span><strong>'+temp(selected.avg_temp)+'</strong></div>'+
-        '<div class="temp-overview-number"><span>Máxima</span><strong>'+temp(selected.max_temp)+'</strong></div>'
+        '<div class="temp-overview-number"><span>Média das leituras</span><strong>'+temp(selected.avg_temp)+'</strong></div>'+
+        '<div class="temp-overview-number"><span>Pico registrado</span><strong>'+temp(selected.max_temp)+'</strong></div>'
       : '<div class="temp-overview-number wide"><span>Leituras no mês</span><strong>'+num(s.readings)+'</strong></div>';
     return '<section class="temp-overview">'+
       '<div class="temp-overview-numbers">'+stats+'</div>'+
-      '<div class="temp-status-summary">'+
+      '<div class="temp-status-block"><small>Leituras por faixa</small><div class="temp-status-summary">'+
         '<span class="ok"><i></i><b>'+num(s.ok)+'</b> OK</span>'+
         '<span class="attention"><i></i><b>'+num(s.attention)+'</b> Atenção</span>'+
         '<span class="critical"><i></i><b>'+num(s.critical)+'</b> Crítico</span>'+
-      '</div>'+
+      '</div></div>'+
     '</section>';
   }
 
   function areaCards(items){
     return '<section class="temp-area-strip">'+items.map(x=>{
-      const dominant=!x.readings?'none':x.critical?'critical':x.attention?'attention':'ok';
+      const avgStatus=statusForValue(x.area,x.avg_temp);
       const color=AREA_COLORS[x.area]||'#9aa0a6';
+      const criticalText=x.critical
+        ? num(x.critical)+' '+(Number(x.critical)===1?'leitura crítica':'leituras críticas')
+        : 'sem leitura crítica';
       return '<button class="temp-area-card" style="--area-color:'+color+'" data-temp-area="'+esc(x.area)+'">'+
         '<span class="temp-area-name"><i></i>'+esc(x.area)+'</span>'+
         '<strong>'+temp(x.avg_temp)+'</strong>'+
-        '<span class="temp-area-meta">máx. '+temp(x.max_temp)+'</span>'+
-        statusBadge(dominant)+
+        '<span class="temp-area-caption">média das leituras</span>'+
+        '<div class="temp-area-details"><span>pico '+temp(x.max_temp)+'</span><span class="'+(x.critical?'has-critical':'')+'">'+criticalText+'</span></div>'+
+        '<span class="temp-average-status '+avgStatus+'"><i></i>Média · '+statusLabel(avgStatus)+'</span>'+
       '</button>';
     }).join('')+'</section>';
   }
@@ -96,7 +106,7 @@
     const avg=vals.reduce((a,b)=>a+b,0)/vals.length;
     return '<div class="temp-chart-wrap">'+
       '<div class="temp-chart-legend"><span class="ok"><i></i>OK</span><span class="attention"><i></i>Atenção</span><span class="critical"><i></i>Crítico</span></div>'+
-      '<div class="temp-chart-stat"><span>'+pts.length+' dias</span><strong>'+temp(avg)+' média</strong></div>'+
+      '<div class="temp-chart-stat"><span>'+pts.length+' dias</span><strong>'+temp(avg)+' média dos dias</strong></div>'+
       '<svg class="temp-chart" style="--temp-chart-color:'+areaColor+'" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Carta de controle de '+esc(area)+'">'+
         '<rect class="temp-zone critical" x="'+L+'" y="'+Tp+'" width="'+plotW+'" height="'+Math.max(0,critY-Tp)+'"></rect>'+
         '<rect class="temp-zone attention" x="'+L+'" y="'+critY+'" width="'+plotW+'" height="'+Math.max(0,okY-critY)+'"></rect>'+
@@ -123,7 +133,7 @@
     const series=(d.control||[]).find(x=>x.area===area);
     const tabs=T.area==='all'?'<div class="temp-chart-tabs">'+AREAS.map(a=>'<button type="button" data-chart-area="'+esc(a)+'" class="'+(a===area?'active':'')+'" style="--tab-color:'+(AREA_COLORS[a]||'#f47a20')+'">'+esc(a)+'</button>').join('')+'</div>':'';
     return '<section class="panel temp-control-panel">'+
-      '<div class="temp-control-head"><div class="temp-control-title"><h2>Carta de controle</h2><span>'+esc(area)+'</span><em>'+esc((RULES[area]||{}).measure||'')+'</em></div>'+tabs+'</div>'+
+      '<div class="temp-control-head"><div class="temp-control-title"><h2>Carta de controle</h2><span>'+esc(area)+'</span><em>'+esc((RULES[area]||{}).measure||'')+'</em><small>Cada ponto = média do dia</small></div>'+tabs+'</div>'+
       chartSvg(area,series?.points||[])+rulesBlock(area)+
     '</section>';
   }
