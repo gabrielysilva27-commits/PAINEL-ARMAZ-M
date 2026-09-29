@@ -315,3 +315,25 @@
   font-size:10px;
 }
 .abc-adherence-mode .abc-toolbar .primary-button:hover{background:#fff8f3}
+
+.abc-adherence-kpis article>small{
+  display:block;
+  margin-top:4px;
+  color:#9a9fa7;
+  font-size:9px;
+  font-weight:600;
+}
+.abc-history-panel .panel-heading>div{
+  display:flex;
+  align-items:baseline;
+  gap:8px;
+}
+.abc-history-panel .panel-heading small{
+  color:#9aa0a8;
+  font-size:9px;
+}
+.abc-history-panel .abc-no-base{
+  color:#9aa0a8;
+  font-size:10px;
+  font-weight:600;
+}
