@@ -53,14 +53,15 @@
     return items;
   }
 
-  async function captureMonthly(month, area, stock) {
-    if (!stock?.snapshot?.as_of || String(stock.snapshot.as_of).slice(0,7) !== month) return null;
-    const key = month + '|' + area + '|' + String(stock.snapshot.id || stock.snapshot.as_of);
+  async function captureMonthly(stock) {
+    if (!stock?.snapshot?.as_of) return null;
+    const month = String(stock.snapshot.as_of).slice(0,7);
+    const key = month + '|' + String(stock.snapshot.id || stock.snapshot.as_of);
     if (A.monthlyCaptured.has(key)) return null;
-    const data = await post(ADHERENCE_API,'capture',{month:month,area:area});
+    const data = await post(ADHERENCE_API,'capture_all',{month:month});
     A.monthlyCaptured.add(key);
-    A.historyCache.delete(area);
-    return data.item || null;
+    ['Regulador','Marketplace','Câmara Fria'].forEach(area=>A.historyCache.delete(area));
+    return data.items || [];
   }
 
   const monthLabel = value => {
@@ -560,7 +561,7 @@
         const [stock,allCurveItems] = await Promise.all([stockData(month),monthCurveData(month)]);
         if (request !== A.request) return;
         root.innerHTML = physicalHtml(area,month,stock,curveItems,allCurveItems);
-        try { await captureMonthly(month,area,stock); } catch (e) { console.warn('Falha ao registrar resultado mensal',e); }
+        try { await captureMonthly(stock); } catch (e) { console.warn('Falha ao registrar resultado mensal',e); }
       }
       if (request !== A.request) return;
       renderHistory(area);
