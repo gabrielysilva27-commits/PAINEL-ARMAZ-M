@@ -684,7 +684,7 @@ static bool FillReport(HWND hwnd, const std::wstring* values) {
         (c.rect.top == visualize->rect.top && c.rect.left > visualize->rect.left))
       visualize = &c;
   }
-  if (!visualize) return false;
+  if (!visualize) return Fill031120ByGeometry(hwnd, values);
 
   if (!ClickControl(*reportType) ||
       !Key(VK_HOME) || !Key(VK_HOME, true) || !Key('D') || !Key('D', true) ||
@@ -726,6 +726,34 @@ static bool FillReport(HWND hwnd, const std::wstring* values) {
   return ClickControl(*visualize);
 }
 
+static bool Fill031120ByGeometry(HWND hwnd, const std::wstring* values) {
+  RECT r = {};
+  if (!GetWindowRect(hwnd, &r)) return false;
+  const int w = r.right-r.left, h = r.bottom-r.top;
+  if (w < 850 || h < 620) return false;
+
+  auto px = [&](double x){ return r.left + static_cast<int>(w*x + 0.5); };
+  auto py = [&](double y){ return r.top + static_cast<int>(h*y + 0.5); };
+  auto fill = [&](double x, double y, const std::wstring& value) {
+    if (!ClickPoint(px(x), py(y))) return false;
+    Sleep(90);
+    return Key(VK_CONTROL) && Key('A') && Key('A', true) &&
+        Key(VK_CONTROL, true) && TypeText(value);
+  };
+
+  // Coordenadas normalizadas da tela 03.11.20 validada pela operação:
+  // Classificação=M​​apa; pares Data e Veículo; botão Visualizar.
+  if (!ClickPoint(px(0.303), py(0.366)) ||
+      !Key(VK_HOME) || !Key(VK_HOME, true) ||
+      !Key('M') || !Key('M', true) ||
+      !Key(VK_RETURN) || !Key(VK_RETURN, true)) return false;
+  Sleep(180);
+  if (!fill(0.686,0.358,values[0]) || !fill(0.852,0.358,values[1]) ||
+      !fill(0.686,0.397,values[2]) || !fill(0.852,0.397,values[3])) return false;
+  Sleep(180);
+  return ClickPoint(px(0.921), py(0.842));
+}
+
 static bool Fill031120(HWND hwnd, const std::wstring* values) {
   auto controls = Controls(hwnd);
   std::vector<VisibleControl> edits, combos, visualizes;
@@ -751,7 +779,7 @@ static bool Fill031120(HWND hwnd, const std::wstring* values) {
     std::sort(row.begin(), row.end(), [](const VisibleControl& a, const VisibleControl& b){return a.rect.left < b.rect.left;});
     if (row.size() >= 2) pairs.push_back({row[0],row[1]});
   }
-  if (pairs.size() < 2 || visualizes.empty()) return false;
+  if (pairs.size() < 2 || visualizes.empty()) return Fill031120ByGeometry(hwnd, values);
   const auto& date = pairs[0];
   const auto& vehicle = pairs[1];
 
@@ -762,7 +790,7 @@ static bool Fill031120(HWND hwnd, const std::wstring* values) {
       classification = &cb; break;
     }
   }
-  if (!classification) return false;
+  if (!classification) return Fill031120ByGeometry(hwnd, values);
 
   const VisibleControl* visualize = nullptr;
   for (const auto& b : visualizes)
@@ -770,12 +798,14 @@ static bool Fill031120(HWND hwnd, const std::wstring* values) {
   if (!visualize) return false;
 
   if (!ClickControl(*classification) || !Key(VK_HOME) || !Key(VK_HOME,true) ||
-      !Key('M') || !Key('M',true) || !Key(VK_RETURN) || !Key(VK_RETURN,true)) return false;
+      !Key('M') || !Key('M',true) || !Key(VK_RETURN) || !Key(VK_RETURN,true))
+    return Fill031120ByGeometry(hwnd, values);
   Sleep(180);
   if (!FillControl(date[0], values[0]) || !FillControl(date[1], values[1]) ||
-      !FillControl(vehicle[0], values[2]) || !FillControl(vehicle[1], values[3])) return false;
+      !FillControl(vehicle[0], values[2]) || !FillControl(vehicle[1], values[3]))
+    return Fill031120ByGeometry(hwnd, values);
   Sleep(180);
-  return ClickControl(*visualize);
+  return ClickControl(*visualize) || Fill031120ByGeometry(hwnd, values);
 }
 
 struct SaveWindows { HWND saveAs = nullptr; HWND download = nullptr; };
