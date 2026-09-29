@@ -46,27 +46,28 @@
       render();
     }catch(e){ensureView().innerHTML='<div class="repack-empty"><strong>Não foi possível carregar o Repack</strong><span>'+esc(e.message)+'</span></div>'}
   }
-  function aggBlank(){return{tasks:0,boxes:0,seconds:0,legacyDays:0,dayKeys:new Set()}}
+  function aggBlank(){return{tasks:0,boxes:0,seconds:0,legacyDays:0,legacyDailySeconds:0,liveDailySeconds:0,dayKeys:new Set()}}
   const dayKey=v=>new Date(v).toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'});
   const dayCount=a=>Number(a?.legacyDays||0)+(a?.dayKeys?.size||0);
+  const dailyAverage=a=>{const days=dayCount(a);return days?(Number(a?.legacyDailySeconds||0)+Number(a?.liveDailySeconds||0))/days:0;};
   function selectedAgg(){
     const out={bombona:aggBlank(),repack:aggBlank(),bag:aggBlank(),devolucao:aggBlank()};
-    for(const r of S.data?.legacy||[]){if(String(r.reference_month).slice(0,7)!==S.month)continue;const a=out[r.channel]||aggBlank();a.tasks+=Number(r.task_count||0);a.boxes+=Number(r.quantity_boxes||0);a.seconds+=Number(r.duration_seconds||0);if(r.channel==='bombona')a.legacyDays+=Number(r.task_count||0);out[r.channel]=a}
-    for(const t of S.data?.selected_tasks||[]){const a=out[t.channel]||aggBlank();a.tasks+=1;a.boxes+=Number(t.quantity_boxes||0);a.seconds+=Number(t.duration_seconds||0);if(t.channel==='bombona')a.dayKeys.add(dayKey(t.started_at));out[t.channel]=a}
+    for(const r of S.data?.legacy||[]){if(String(r.reference_month).slice(0,7)!==S.month)continue;const a=out[r.channel]||aggBlank();a.tasks+=Number(r.task_count||0);a.boxes+=Number(r.quantity_boxes||0);a.seconds+=Number(r.duration_seconds||0);if(r.channel==='bombona'){const days=Number(r.task_count||0),fallback=days?Number(r.duration_seconds||0)/days:0;a.legacyDays+=days;a.legacyDailySeconds+=(Number(r.avg_daily_seconds)||fallback)*days}out[r.channel]=a}
+    for(const t of S.data?.selected_tasks||[]){const a=out[t.channel]||aggBlank();a.tasks+=1;a.boxes+=Number(t.quantity_boxes||0);a.seconds+=Number(t.duration_seconds||0);if(t.channel==='bombona'){a.dayKeys.add(dayKey(t.started_at));a.liveDailySeconds+=Number(t.duration_seconds||0)}out[t.channel]=a}
     return out;
   }
-  function procAgg(chs,a){return chs.reduce((o,k)=>{const x=a[k];o.tasks+=x?.tasks||0;o.boxes+=x?.boxes||0;o.seconds+=x?.seconds||0;o.legacyDays+=x?.legacyDays||0;for(const d of x?.dayKeys||[])o.dayKeys.add(d);return o},aggBlank())}
+  function procAgg(chs,a){return chs.reduce((o,k)=>{const x=a[k];o.tasks+=x?.tasks||0;o.boxes+=x?.boxes||0;o.seconds+=x?.seconds||0;o.legacyDays+=x?.legacyDays||0;o.legacyDailySeconds+=x?.legacyDailySeconds||0;o.liveDailySeconds+=x?.liveDailySeconds||0;for(const d of x?.dayKeys||[])o.dayKeys.add(d);return o},aggBlank())}
   function yearTrend(){
     const map=new Map();const get=m=>{if(!map.has(m))map.set(m,{month:m,bombona:aggBlank(),repack:aggBlank(),bag:aggBlank(),devolucao:aggBlank(),through:null});return map.get(m)};
-    for(const r of S.data?.legacy||[]){const m=String(r.reference_month).slice(0,7),o=get(m),a=o[r.channel]||aggBlank();a.tasks+=Number(r.task_count||0);a.boxes+=Number(r.quantity_boxes||0);a.seconds+=Number(r.duration_seconds||0);if(r.channel==='bombona')a.legacyDays+=Number(r.task_count||0);o[r.channel]=a;o.through=r.data_through>o.through?r.data_through:o.through}
-    for(const t of S.data?.live_year_tasks||[]){const m=localMonth(t.started_at),o=get(m),a=o[t.channel]||aggBlank();a.tasks++;a.boxes+=Number(t.quantity_boxes||0);a.seconds+=Number(t.duration_seconds||0);if(t.channel==='bombona')a.dayKeys.add(dayKey(t.started_at));o[t.channel]=a}
+    for(const r of S.data?.legacy||[]){const m=String(r.reference_month).slice(0,7),o=get(m),a=o[r.channel]||aggBlank();a.tasks+=Number(r.task_count||0);a.boxes+=Number(r.quantity_boxes||0);a.seconds+=Number(r.duration_seconds||0);if(r.channel==='bombona'){const days=Number(r.task_count||0),fallback=days?Number(r.duration_seconds||0)/days:0;a.legacyDays+=days;a.legacyDailySeconds+=(Number(r.avg_daily_seconds)||fallback)*days}o[r.channel]=a;o.through=r.data_through>o.through?r.data_through:o.through}
+    for(const t of S.data?.live_year_tasks||[]){const m=localMonth(t.started_at),o=get(m),a=o[t.channel]||aggBlank();a.tasks++;a.boxes+=Number(t.quantity_boxes||0);a.seconds+=Number(t.duration_seconds||0);if(t.channel==='bombona'){a.dayKeys.add(dayKey(t.started_at));a.liveDailySeconds+=Number(t.duration_seconds||0)}o[t.channel]=a}
     return [...map.values()].sort((a,b)=>a.month.localeCompare(b.month));
   }
   function targetMap(){return new Map((S.data?.targets||[]).filter(x=>x.active!==false).map(x=>[x.packaging_code,Number(x.target_seconds_per_box)]))}
   function currentDataThrough(){let d=null;for(const r of S.data?.legacy||[]){if(String(r.reference_month).slice(0,7)===S.month&&(!d||r.data_through>d))d=r.data_through}return d}
   function render(){
     const root=ensureView(),a=selectedAgg(),des=procAgg(['bombona'],a),rep=procAgg(['repack','bag','devolucao'],a);
-    const repAvg=rep.tasks?rep.seconds/rep.tasks:0,desDays=dayCount(des),desAvg=desDays?des.seconds/desDays:0;
+    const repAvg=rep.tasks?rep.seconds/rep.tasks:0,desDays=dayCount(des),desAvg=dailyAverage(des);
     const repSpb=rep.boxes?rep.seconds/rep.boxes:0,desSpu=des.boxes?des.seconds/des.boxes:0;
     const meta=Number(S.data?.default_target_seconds_per_box||170),trend=yearTrend(),through=currentDataThrough(),targets=targetMap();
     const repUnitStatus=repSpb?(repSpb<=meta?'OK':'ACIMA'):'—';
@@ -97,7 +98,7 @@
   function activityTable(a){
     const order=['bombona','repack','bag','devolucao'];
     return`<div class="table-wrap"><table><thead><tr><th>Atividade</th><th>Apont.</th><th>Quantidade</th><th>Tempo total</th><th>Tempo médio</th><th>Tempo/unid.</th></tr></thead><tbody>${order.map(k=>{
-      const x=a[k]||aggBlank(),avg=k==='bombona'?(dayCount(x)?x.seconds/dayCount(x):0):(x.tasks?x.seconds/x.tasks:0),rate=x.boxes?x.seconds/x.boxes:0,unit=k==='bombona'?'un.':'cx';
+      const x=a[k]||aggBlank(),avg=k==='bombona'?dailyAverage(x):(x.tasks?x.seconds/x.tasks:0),rate=x.boxes?x.seconds/x.boxes:0,unit=k==='bombona'?'un.':'cx';
       return`<tr><td><strong>${channelNames[k]}</strong></td><td>${nfi.format(x.tasks)}</td><td>${nfi.format(x.boxes)} ${unit}</td><td>${fmtDuration(x.seconds)}</td><td>${fmtDuration(avg)}</td><td>${fmtPerBox(rate)} ${rate?'/ '+unit:''}</td></tr>`
     }).join('')}</tbody></table></div>`
   }
@@ -107,7 +108,7 @@
     if(!rows.length)return'<div class="repack-empty compact">Sem histórico.</div>';
     return`<div class="table-wrap"><table><thead><tr><th>Mês</th><th>Repack médio</th><th>Repack/CX</th><th>Despejo médio</th><th>Meta despejo</th><th>Despejo/unid.</th></tr></thead><tbody>${rows.map(o=>{
       const r=procAgg(['repack','bag','devolucao'],o),d=procAgg(['bombona'],o);
-      const ravg=r.tasks?r.seconds/r.tasks:0,ddays=dayCount(d),davg=ddays?d.seconds/ddays:0,rs=r.boxes?r.seconds/r.boxes:0,ds=d.boxes?d.seconds/d.boxes:0;
+      const ravg=r.tasks?r.seconds/r.tasks:0,davg=dailyAverage(d),rs=r.boxes?r.seconds/r.boxes:0,ds=d.boxes?d.seconds/d.boxes:0;
       return`<tr><td><strong>${monthLabel(o.month)}</strong></td><td>${fmtDuration(ravg)}</td><td>${fmtPerBox(rs)}</td><td><strong>${fmtDuration(davg)}</strong></td><td>${davg?`<span class="repack-pill ${davg<=DESPEJO_DAILY_TARGET?'ok':'bad'}">${davg<=DESPEJO_DAILY_TARGET?'OK':'Acima'}</span><small class="repack-target">50 min</small>`:'—'}</td><td>${fmtPerBox(ds)}</td></tr>`
     }).join('')}</tbody></table></div>`
   }
