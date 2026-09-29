@@ -45,7 +45,7 @@ function findPullCol(headers:string[],tests:string[]){
   for(let i=0;i<headers.length;i++){const h=normPull(headers[i]);if(tests.some(t=>h===t||h.includes(t)))return i;}return -1;
 }
 function nextPullDay(v:string){const d=new Date(v+"T12:00:00Z");d.setUTCDate(d.getUTCDate()+1);return d.toISOString().slice(0,10);}
-function parse031120Text(text:string){
+function parse031120Text(text:string,targetMonth:string){
   const lines=String(text||"").replace(/^\uFEFF/,"").split(/\r?\n/).filter(x=>x.trim());
   if(!lines.length)throw new Error("O arquivo 03.11.20 está vazio.");
   const sep=choosePullSep(lines),matrix=lines.map(l=>parseDelimitedLine(l,sep));
@@ -56,12 +56,14 @@ function parse031120Text(text:string){
     if(date>=0&&vehicle>=0&&map>=0){headerRow=r;cols={date,vehicle,map};break;}
   }
   if(headerRow<0)throw new Error("Cabeçalho Data / Veículo / Mapa não encontrado no 03.11.20.");
+  if(!/^(0[1-9]|1[0-2])$/.test(targetMonth))throw new Error("Selecione o mês do relatório antes de importar.");
+  const monthPrefix="2026-"+targetMonth+"-";
   const days=new Map<string,{trips:Set<string>,vehicles:Map<string,Set<string>>}>();
-  const allDates:string[]=[];let rawRows=0,entradaRows=0,trailerRows=0;
+  let rawRows=0,entradaRows=0,trailerRows=0;
   for(let r=headerRow+1;r<matrix.length;r++){
     const row=matrix[r],d=pullDate(row[cols.date]),vehicle=String(row[cols.vehicle]||"").replace(/\D/g,""),mapRaw=String(row[cols.map]||"").trim();
-    if(!d||!vehicle||!mapRaw)continue;
-    rawRows++;allDates.push(d);
+    if(!d||!vehicle||!mapRaw||!d.startsWith(monthPrefix))continue;
+    rawRows++;
     if(!normPull(row.join(" | ")).includes("ENTRADA CDD"))continue;
     entradaRows++;
     if(!PULL_VEHICLE_SET.has(vehicle))continue;
@@ -71,10 +73,9 @@ function parse031120Text(text:string){
     day.trips.add(tripKey);
     const maps=day.vehicles.get(vehicle)||new Set<string>();maps.add(map);day.vehicles.set(vehicle,maps);days.set(d,day);
   }
-  if(!rawRows)throw new Error("Nenhuma linha válida foi reconhecida no 03.11.20.");
-  if(!entradaRows)throw new Error("Nenhuma linha ENTRADA CDD foi encontrada no 03.11.20.");
-  if(!allDates.length)throw new Error("Não foi possível identificar o período do 03.11.20.");
-  allDates.sort();const minDate=allDates[0],maxDate=allDates[allDates.length-1];
+  if(!rawRows)throw new Error("Nenhuma linha do mês selecionado foi reconhecida no 03.11.20.");
+  const mm=Number(targetMonth),minDate="2026-"+targetMonth+"-01";
+  const maxDate=new Date(Date.UTC(2026,mm,0)).toISOString().slice(0,10);
   const rows:any[]=[];let cursor=minDate,guard=0;
   while(cursor<=maxDate&&guard++<370){
     const day=days.get(cursor),vehicle_counts:any={};
@@ -89,7 +90,8 @@ function parse031120Text(text:string){
 async function manual031120Import(user:any,body:any){
   if(user.role!=="admin")throw new Error("A contingência manual do 03.11.20 é restrita ao ADM.");
   const text=String(body.text||"");if(!text||text.length>6_000_000)throw new Error("Arquivo 03.11.20 inválido ou muito grande.");
-  const parsed=parse031120Text(text);
+  const targetMonth=String(body.target_month||"");
+  const parsed=parse031120Text(text,targetMonth);
   const name=String(body.source_file||"03.11.20.csv").replace(/[^\w.\- ()]/g,"_").slice(0,140);
   const source="agent_031120_manual_"+name,now=new Date().toISOString();
   const upserts=parsed.rows.map((x:any)=>({...x,source_file:source,imported_at:now}));
