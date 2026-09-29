@@ -1,5 +1,7 @@
 const fs = require("fs");
 
+const TRAILER_NUMBERS = new Set(["229","231","246","264","271","289","298","312"]);
+
 function norm(v) {
   return String(v == null ? "" : v).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toUpperCase();
 }
@@ -86,6 +88,7 @@ function parse031120(file) {
     const rowText = norm(row.join(" | "));
     if (!rowText.includes("ENTRADA CDD")) continue;
     entranceRows++;
+    if (!TRAILER_NUMBERS.has(vehicle)) continue;
 
     // Normaliza "01", "1", "000001" para o mesmo mapa sem perder textos não numéricos.
     const mapDigits = mapRaw.replace(/\D/g, "");
@@ -119,7 +122,8 @@ function parse031120(file) {
     raw_rows: rawRows,
     entrada_cdd_rows: entranceRows,
     days: rows.length,
-    rule: "ENTRADA_CDD_UNIQUE_VEHICLE_MAP_X28",
+    trailers: [...TRAILER_NUMBERS],
+    rule: "ENTRADA_CDD_TRAILERS_ONLY_UNIQUE_VEHICLE_MAP_X28",
     rows
   };
 }
