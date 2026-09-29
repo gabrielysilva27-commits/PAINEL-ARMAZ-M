@@ -68,7 +68,10 @@ function parse031120(file) {
     }
   }
   if (headerRow < 0 || !cols) throw new Error("031120_HEADER_NOT_FOUND: cabeçalho Data/Veículo/Mapa não encontrado.");
-  if (cols.pallets < 0) throw new Error("031120_PALLET_COLUMN_NOT_FOUND: coluna de paletes não encontrada.");
+  // No layout "Mapa" do 03.11.20 usado na Puxada, algumas exportações não
+  // trazem uma coluna explícita de paletes: cada linha representa um palete do
+  // mapa. Quando a coluna existir, usamos o valor informado; quando não existir,
+  // contabilizamos 1 palete por linha válida.
 
   const days = new Map();
   let rawRows = 0;
@@ -78,7 +81,7 @@ function parse031120(file) {
     const vehicle = String(row[cols.vehicle] || "").replace(/\D/g, "");
     const map = String(row[cols.map] || "").trim();
     if (!d || !vehicle || !map) continue;
-    const pallets = Math.max(0, num(row[cols.pallets]));
+    const pallets = cols.pallets >= 0 ? Math.max(0, num(row[cols.pallets])) : 1;
     rawRows++;
     if (!days.has(d)) days.set(d, { vehicles: new Set(), vehicle_counts: {}, pallets: 0 });
     const x = days.get(d);
@@ -94,7 +97,7 @@ function parse031120(file) {
     pallets_pulled: Math.round(x.pallets),
     vehicle_counts: x.vehicle_counts
   }));
-  return { raw_rows: rawRows, days: rows.length, rows };
+  return { raw_rows: rawRows, days: rows.length, pallet_mode: cols.pallets >= 0 ? "column" : "row_count", rows };
 }
 
 module.exports = { parse031120 };
