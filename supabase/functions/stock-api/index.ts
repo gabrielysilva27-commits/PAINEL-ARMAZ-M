@@ -138,12 +138,15 @@ async function policyItems(versionId: string) {
   }
   return rows;
 }
-async function activePullSkus30d() {
-  const { data: latest, error: latestError } = await db.from("receiving_system_020501")
-    .select("report_date").not("report_date", "is", null)
-    .order("report_date", { ascending: false }).limit(1).maybeSingle();
-  if (latestError) throw latestError;
-  const end = String(latest?.report_date || "");
+async function activePullSkus30d(referenceDate?: string) {
+  let end = String(referenceDate || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    const { data: latest, error: latestError } = await db.from("receiving_system_020501")
+      .select("report_date").not("report_date", "is", null)
+      .order("report_date", { ascending: false }).limit(1).maybeSingle();
+    if (latestError) throw latestError;
+    end = String(latest?.report_date || "");
+  }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(end)) {
     return { available: false, start: null, end: null, skus: new Set<string>() };
   }
@@ -188,9 +191,27 @@ Deno.serve(async (req: Request) => {
         curves.push(...(data || []));
         if (!data || data.length < 1000) break;
       }
-      if (!latest) return json({ snapshot: null, curves });
+
+      const start = month + "-01";
+      const d = new Date(start + "T00:00:00Z");
+      d.setUTCMonth(d.getUTCMonth() + 1);
+      const next = d.toISOString().slice(0,10);
+      const { data:monthSnapshot,error:snapshotError } = await db.from("stock_snapshots")
+        .select("*").gte("as_of",start).lt("as_of",next)
+        .order("as_of",{ascending:false}).order("created_at",{ascending:false})
+        .limit(1).maybeSingle();
+      if (snapshotError) throw snapshotError;
+
+      const stockSnapshot = monthSnapshot || (body.fallback_latest ? latest : null);
+      if (!stockSnapshot) return json({ snapshot: null, curves, historical_base:false, fallback_latest:false });
       const today = todayBR();
-      return json({ snapshot: latest, curves, ...enrich(latest.payload, curves, today) });
+      return json({
+        snapshot: stockSnapshot,
+        curves,
+        historical_base: !!monthSnapshot,
+        fallback_latest: !monthSnapshot && !!body.fallback_latest,
+        ...enrich(stockSnapshot.payload, curves, today)
+      });
     }
 
     if (body.action === "lookup_replenishment") {
@@ -435,8 +456,8 @@ Deno.serve(async (req: Request) => {
         month_daily: monthDaily.map(decorate),
         policy,
         formula: {
-          daily: "Somente SKUs com puxada nos últimos 30 dias entram no OOR; comparação em HL: OUT abaixo do mínimo, OVER acima do máximo e demais OK",
-          accumulated: "soma das classificações diárias / soma do total de SKUs da PE em cada dia",
+          daily: "O OOR usa todos os códigos presentes no 02.05.02 LIBERAÇÃO CHEIO. OUT só é permitido para SKU com puxada no 02.05.01 nos 30 dias anteriores à data; OVER continua pela faixa máxima da PE; demais ficam OK.",
+          accumulated: "soma das classificações diárias / soma do total de códigos do 02.05.02 em cada dia",
           monthly: "mesma memória oficial aplicada ao acumulado dos dias do mês"
         }
       });
@@ -452,14 +473,10 @@ Deno.serve(async (req: Request) => {
       if (!referenceDate) return json({ reference_date: null, rows: [], dates: [], counts: {} });
 
       const { data: detailRowsRaw, error: detailError } = await db.from("stock_oor_daily_detail")
-        .select("reference_date,sku_code,status,available_qty,avg_sales_qty,min_days,max_days,real_days,curve_class")
+        .select("reference_date,sku_code,status,available_qty,avg_sales_qty,min_days,max_days,real_days,curve_class,active_pull_30d,pull_window_start,pull_window_end")
         .eq("reference_date", referenceDate).order("sku_code");
       if (detailError) throw detailError;
-      const activity = await activePullSkus30d();
-      const applyActivity = activity.available && referenceDate >= String(activity.end || "");
-      const detailRows = applyActivity
-        ? (detailRowsRaw || []).filter((x: any) => activity.skus.has(String(x.sku_code || "").trim()))
-        : (detailRowsRaw || []);
+      const detailRows = detailRowsRaw || [];
 
       const skuCodes = [...new Set(detailRows.map((x: any) => String(x.sku_code)))];
       const skuMap = new Map<string, any>();
@@ -503,120 +520,66 @@ Deno.serve(async (req: Request) => {
 
     if (body.action === "oor_import") {
       if (!canEdit(user)) return json({ error: "Seu perfil não possui permissão para atualizar o OOR" }, 403);
+      const sourceFile = String(body.source_file || "").slice(0, 240);
+      const sourceKey = sourceFile.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+      if (!sourceKey.includes("LIBERACAO CHEIO")) return json({ error: "O OOR aceita somente o arquivo LIBERAÇÃO CHEIO." }, 400);
       const referenceDate = String(body.reference_date || "");
       const incoming = Array.isArray(body.rows) ? body.rows : [];
       if (!/^\d{4}-\d{2}-\d{2}$/.test(referenceDate)) return json({ error: "Data de referência inválida" }, 400);
       if (!incoming.length || incoming.length > 5000) return json({ error: "Base OOR vazia ou acima do limite" }, 400);
+
       const { data: policy, error: policyError } = await db.from("stock_policy_versions").select("*").eq("status", "approved").lte("effective_start", referenceDate).gte("effective_end", referenceDate).order("effective_start", { ascending: false }).limit(1).maybeSingle();
       if (policyError) throw policyError;
       if (!policy) return json({ error: "Não existe Política de Estoque vigente para esta data" }, 409);
-      const allPolicyRows = await policyItems(policy.id);
-      const activity = await activePullSkus30d();
-      const applyActivity = activity.available && referenceDate >= String(activity.end || "");
-      const policyRows = applyActivity
-        ? allPolicyRows.filter((x: any) => activity.skus.has(String(x.sku_code || "").trim()))
-        : allPolicyRows;
-      if (!policyRows.length) return json({ error: "Nenhum SKU ativo encontrado para a regra de puxada dos últimos 30 dias" }, 409);
-      const limits = new Map(policyRows.map((x: any) => [String(x.sku_code), x]));
 
-      // Memória oficial DPO:
-      // STOCKOUT = SKU abaixo do mínimo da PE.
-      // STOCKOVER = SKU acima do máximo da PE.
-      // O denominador é sempre o total de SKUs cadastrados na PE.
-      // Se um SKU da PE não vier no relatório de estoque, seu saldo operacional é zero.
+      const policyRows = await policyItems(policy.id);
+      const policyBySku = new Map(policyRows.map((x: any) => [String(x.sku_code || "").trim(), x]));
+      const activity = await activePullSkus30d(referenceDate);
       const incomingBySku = new Map<string, any>();
       for (const r of incoming) {
         const sku = String(r.sku_code || "").trim(), qty = Number(r.available_qty);
-        if (!/^\d+$/.test(sku) || !Number.isFinite(qty)) throw new Error("SKU ou quantidade inválida na base OOR");
+        if (!/^\d+$/.test(sku) || !Number.isFinite(qty)) throw new Error("Código ou quantidade inválida na base OOR");
         const prev = incomingBySku.get(sku);
         if (prev) {
           prev.available_qty += qty;
           if (!prev.sku_name && r.sku_name) prev.sku_name = String(r.sku_name);
           if (!prev.unit_code && r.unit_code) prev.unit_code = r.unit_code;
-        } else {
-          incomingBySku.set(sku, {
-            available_qty: qty,
-            sku_name: String(r.sku_name || ""),
-            unit_code: r.unit_code || null
-          });
-        }
+        } else incomingBySku.set(sku, { available_qty: qty, sku_name: String(r.sku_name || ""), unit_code: r.unit_code || null });
       }
+      if (!incomingBySku.size) return json({ error: "Nenhum código de produto encontrado no LIBERAÇÃO CHEIO" }, 400);
 
-      const prepared = policyRows.map((lim: any) => {
-        const sku = String(lim.sku_code || "").trim();
-        const src = incomingBySku.get(sku);
-        const qty = Number(src?.available_qty ?? 0);
-        const avgQty = Number(lim.avg_daily_qty ?? 0);
-        const avgHl = Number(lim.avg_daily_hl ?? 0);
-        const minQty = lim.min_qty == null ? 0 : Number(lim.min_qty);
-        const maxQty = lim.max_qty == null ? null : Number(lim.max_qty);
-        const minHl = lim.min_hl == null ? 0 : Number(lim.min_hl);
-        const maxHl = lim.max_hl == null ? null : Number(lim.max_hl);
-        if (!/^\d+$/.test(sku) || !Number.isFinite(qty) || !Number.isFinite(minQty) || !Number.isFinite(minHl)) {
-          throw new Error("Política de Estoque possui SKU ou limite mínimo inválido");
-        }
-
-        // A Política é construída e comparada em HL.
-        // Sem demanda-base não se cria máximo artificial nem OVER automático.
+      const now = new Date().toISOString(), prepared: any[] = [], detail: any[] = [], skuMap: any[] = [];
+      for (const [sku, src] of incomingBySku) {
+        const lim: any = policyBySku.get(sku), qty = Math.round(Number(src.available_qty) * 1000) / 1000;
+        const minQty = lim?.min_qty == null ? (lim?.out_qty == null ? null : Number(lim.out_qty)) : Number(lim.min_qty);
+        const maxQty = lim?.max_qty == null ? (lim?.over_qty == null ? null : Number(lim.over_qty)) : Number(lim.max_qty);
+        const activePull30d = activity.skus.has(sku);
         let status = "OK";
-        if (avgQty > 0 && avgHl > 0) {
-          const hlPerQty = avgHl / avgQty;
-          const availableHl = qty * hlPerQty;
-          if (availableHl < minHl) status = "OUT";
-          else if (maxHl != null && Number.isFinite(maxHl) && availableHl > maxHl) status = "OVER";
+        if (lim) {
+          if (maxQty != null && Number.isFinite(maxQty) && qty > maxQty) status = "OVER";
+          else if (activePull30d && minQty != null && Number.isFinite(minQty) && qty < minQty) status = "OUT";
         }
-
-        return {
-          reference_date: referenceDate,
-          sku_code: sku,
-          sku_name: String(src?.sku_name || lim.sku_name || ""),
-          unit_code: src?.unit_code || lim.unit_code || null,
-          available_qty: qty,
-          status,
-          out_qty: minQty,
-          over_qty: maxQty,
-          policy_version_id: policy.id,
-          source_file: String(body.source_file || "").slice(0, 240) || null,
-          imported_by: user.id,
-          imported_at: new Date().toISOString()
-        };
-      });
-      const { error: deleteError } = await db.from("stock_oor_daily").delete().eq("reference_date", referenceDate);
-      if (deleteError) throw deleteError;
-      for (let i = 0; i < prepared.length; i += 500) {
-        const { error } = await db.from("stock_oor_daily").insert(prepared.slice(i, i + 500));
-        if (error) throw error;
+        const name = String(src.sku_name || lim?.sku_name || ""), unit = src.unit_code || lim?.unit_code || null, avg = Number(lim?.avg_daily_qty ?? 0);
+        prepared.push({ reference_date: referenceDate, sku_code: sku, sku_name: name, unit_code: unit, available_qty: qty, status, out_qty: minQty, over_qty: maxQty, policy_version_id: policy.id, source_file: sourceFile || null, imported_by: user.id, imported_at: now, active_pull_30d: activePull30d, pull_window_start: activity.start, pull_window_end: activity.end });
+        detail.push({ reference_date: referenceDate, sku_code: sku, status, available_qty: qty, avg_sales_qty: avg > 0 ? avg : null, min_days: lim?.min_days == null ? null : Number(lim.min_days), max_days: lim?.max_days == null ? null : Number(lim.max_days), real_days: avg > 0 ? qty / avg : null, curve_class: lim?.curve_class || null, source: sourceFile || "LIBERAÇÃO CHEIO", updated_at: now, active_pull_30d: activePull30d, pull_window_start: activity.start, pull_window_end: activity.end });
+        skuMap.push({ sku_code: sku, sku_name: name, unit_code: unit, updated_at: now });
       }
-      const counts: Record<string, number> = {};
-      for (const r of prepared) counts[r.status] = (counts[r.status] || 0) + 1;
-      const summaryPayload = {
-        reference_date: referenceDate,
-        out_count: Number(counts.OUT || 0),
-        over_count: Number(counts.OVER || 0),
-        ok_count: Number(counts.OK || 0),
-        total_count: prepared.length,
-        source: String(body.source_file || "AGENTE_OOR").slice(0, 240),
-        updated_at: new Date().toISOString()
-      };
-      const { error: summaryUpsertError } = await db.from("stock_oor_daily_summary").upsert(summaryPayload, { onConflict: "reference_date" });
-      if (summaryUpsertError) throw summaryUpsertError;
-      const monthStart = referenceDate.slice(0, 7) + "-01";
-      const monthDate = new Date(monthStart + "T00:00:00Z");
-      monthDate.setUTCMonth(monthDate.getUTCMonth() + 1);
-      const nextMonth = monthDate.toISOString().slice(0, 10);
-      const { data: monthRows, error: monthRowsError } = await db.from("stock_oor_daily_summary")
-        .select("out_count,over_count,ok_count,total_count")
-        .gte("reference_date", monthStart).lt("reference_date", nextMonth);
-      if (monthRowsError) throw monthRowsError;
-      const monthTotals = (monthRows || []).reduce((a: any, x: any) => {
-        a.out_count += Number(x.out_count || 0); a.over_count += Number(x.over_count || 0);
-        a.ok_count += Number(x.ok_count || 0); a.total_count += Number(x.total_count || 0); return a;
-      }, { out_count: 0, over_count: 0, ok_count: 0, total_count: 0 });
-      const { error: monthUpsertError } = await db.from("stock_oor_monthly_summary").upsert({
-        reference_month: monthStart, ...monthTotals, source: "AGENTE_OOR", updated_at: new Date().toISOString()
-      }, { onConflict: "reference_month" });
-      if (monthUpsertError) throw monthUpsertError;
-      return json({ ok: true, reference_date: referenceDate, rows: prepared.length, counts, policy: { id: policy.id, code: policy.code } });
+
+      const { error: deleteError } = await db.from("stock_oor_daily").delete().eq("reference_date", referenceDate); if (deleteError) throw deleteError;
+      const { error: detailDeleteError } = await db.from("stock_oor_daily_detail").delete().eq("reference_date", referenceDate); if (detailDeleteError) throw detailDeleteError;
+      for (let i = 0; i < prepared.length; i += 500) { const { error } = await db.from("stock_oor_daily").insert(prepared.slice(i, i + 500)); if (error) throw error; }
+      for (let i = 0; i < detail.length; i += 500) { const { error } = await db.from("stock_oor_daily_detail").insert(detail.slice(i, i + 500)); if (error) throw error; }
+      for (let i = 0; i < skuMap.length; i += 500) { const { error } = await db.from("stock_oor_sku_map").upsert(skuMap.slice(i, i + 500), { onConflict: "sku_code" }); if (error) throw error; }
+
+      const counts: Record<string, number> = {}; for (const row of prepared) counts[row.status] = (counts[row.status] || 0) + 1;
+      const summaryPayload = { reference_date: referenceDate, out_count: Number(counts.OUT || 0), over_count: Number(counts.OVER || 0), ok_count: Number(counts.OK || 0), total_count: prepared.length, source: sourceFile || "LIBERAÇÃO CHEIO", updated_at: now };
+      const { error: summaryUpsertError } = await db.from("stock_oor_daily_summary").upsert(summaryPayload, { onConflict: "reference_date" }); if (summaryUpsertError) throw summaryUpsertError;
+
+      const monthStart = referenceDate.slice(0, 7) + "-01", monthDate = new Date(monthStart + "T00:00:00Z"); monthDate.setUTCMonth(monthDate.getUTCMonth() + 1); const nextMonth = monthDate.toISOString().slice(0, 10);
+      const { data: monthRows, error: monthRowsError } = await db.from("stock_oor_daily_summary").select("out_count,over_count,ok_count,total_count").gte("reference_date", monthStart).lt("reference_date", nextMonth); if (monthRowsError) throw monthRowsError;
+      const monthTotals = (monthRows || []).reduce((a: any, x: any) => { a.out_count += Number(x.out_count || 0); a.over_count += Number(x.over_count || 0); a.ok_count += Number(x.ok_count || 0); a.total_count += Number(x.total_count || 0); return a; }, { out_count: 0, over_count: 0, ok_count: 0, total_count: 0 });
+      const { error: monthUpsertError } = await db.from("stock_oor_monthly_summary").upsert({ reference_month: monthStart, ...monthTotals, source: "OOR_020502_CODIGO", updated_at: now }, { onConflict: "reference_month" }); if (monthUpsertError) throw monthUpsertError;
+      return json({ ok: true, reference_date: referenceDate, rows: prepared.length, counts, policy: { id: policy.id, code: policy.code }, rule: { out_requires_pull_30d: true, pull_window_start: activity.start, pull_window_end: activity.end, active_pull_skus: activity.skus.size } });
     }
 
     if (body.action === "edit_row") {
