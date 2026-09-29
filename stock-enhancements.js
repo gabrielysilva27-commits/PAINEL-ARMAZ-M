@@ -22,7 +22,7 @@
   async function load(force=false){
     const month=window.state?.currentMonth||'2026-06';
     if(!force&&U.data&&U.month===month)return U.data;
-    U.data=await call('get',{month}); U.month=month; return U.data;
+    U.data=await call('get',{month,fallback_latest:true}); U.month=month; return U.data;
   }
   const meta=()=>U.data?.snapshot?`Base ${dt(U.data.snapshot.as_of)} · Curva ABC ${String(U.month).split('-').reverse().join('/')}`:'Nenhuma base importada';
   function dialog(title,body){
