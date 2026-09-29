@@ -103,7 +103,7 @@
     }).join('');
 
     return '<section class="panel abc-history-panel">' +
-      '<div class="panel-heading"><div><h2>Resultado mensal</h2><small>Meta ' + pct(ADHERENCE_TARGET) + '</small></div></div>' +
+      '<div class="panel-heading"><h2>Resultado mensal</h2></div>' +
       '<div class="stock-table-wrap"><table><thead><tr><th>Mês</th><th>Aderência</th></tr></thead><tbody>'+rows+'</tbody></table></div>' +
     '</section>';
   }
@@ -552,10 +552,9 @@
     if (!stock.snapshot) {
       const value = historicalResult && historicalResult.rate != null ? Number(historicalResult.rate) : null;
       return '<div class="abc-adherence-shell">' +
-        '<section class="abc-adherence-intro"><div><h2>' + esc(areaLabel(area)) + '</h2><p>' + esc(monthLabel(month)) + '</p></div><span class="abc-area-rule"><strong>Meta ' + pct(ADHERENCE_TARGET) + '</strong></span></section>' +
-        '<section class="abc-adherence-kpis abc-estimated-kpis">' +
-          '<article class="abc-kpi-primary"><span>Aderência</span><strong>' + (Number.isFinite(value) ? pct(value) : '—') + '</strong></article>' +
-          '<article><span>Meta</span><strong>' + pct(ADHERENCE_TARGET) + '</strong></article>' +
+        '<section class="abc-adherence-intro">' +
+          '<div><h2>' + esc(areaLabel(area)) + '</h2><p>' + esc(monthLabel(month)) + '</p></div>' +
+          '<div class="abc-current-score"><span>Aderência</span><strong>' + (Number.isFinite(value) ? pct(value) : '—') + '</strong><small>Meta ' + pct(ADHERENCE_TARGET) + '</small></div>' +
         '</section>' +
         '<div id="abcHistoryPanel"></div>' +
       '</div>';
@@ -568,10 +567,12 @@
     return '<div class="abc-adherence-shell">' +
       '<section class="abc-adherence-intro">' +
         '<div><h2>' + esc(areaLabel(area)) + '</h2><p>' + esc(reference) + ' · posição de ' + esc(asOf) + ' · ' + evaluated + ' posições avaliadas</p></div>' +
-        '<span class="abc-area-rule">' + (area === 'Câmara Fria' ? '<strong>838 · Curva A</strong>' : '<strong>A</strong> próxima&nbsp;&nbsp; <strong>B</strong> média&nbsp;&nbsp; <strong>C</strong> distante') + '</span>' +
+        '<div class="abc-intro-right">' +
+          '<span class="abc-area-rule">' + (area === 'Câmara Fria' ? '<strong>838 · Curva A</strong>' : '<strong>A</strong> próxima&nbsp;&nbsp; <strong>B</strong> média&nbsp;&nbsp; <strong>C</strong> distante') + '</span>' +
+          '<div class="abc-current-score"><span>Aderência</span><strong>' + (matrix.rate==null?'—':pct(matrix.rate)) + '</strong><small>Meta ' + pct(ADHERENCE_TARGET) + '</small></div>' +
+        '</div>' +
       '</section>' +
-      '<section class="abc-adherence-kpis">' +
-        '<article class="abc-kpi-primary"><span>Aderência</span><strong>' + (matrix.rate==null?'—':pct(matrix.rate)) + '</strong><small>Meta ' + pct(ADHERENCE_TARGET) + '</small></article>' +
+      '<section class="abc-adherence-kpis abc-adherence-kpis-compact">' +
         '<article><span>Corretas</span><strong>' + matrix.adherent + '</strong></article>' +
         '<article class="abc-kpi-alert"><span>Desvios</span><strong>' + matrix.non + '</strong></article>' +
       '</section>' +
@@ -586,10 +587,9 @@
     return '<div class="abc-adherence-shell">' +
       '<section class="abc-adherence-intro">' +
         '<div><h2>Picking</h2><p>'+esc(monthLabel(month))+'</p></div>' +
-        '<span class="abc-area-rule"><strong>100% aderente</strong></span>' +
+        '<div class="abc-current-score"><span>Aderência</span><strong>100%</strong><small>Meta ' + pct(ADHERENCE_TARGET) + '</small></div>' +
       '</section>' +
-      '<section class="abc-adherence-kpis">' +
-        '<article class="abc-kpi-primary"><span>Aderência</span><strong>100%</strong><small>Meta ' + pct(ADHERENCE_TARGET) + '</small></article>' +
+      '<section class="abc-adherence-kpis abc-adherence-kpis-compact">' +
         '<article><span>Desvios</span><strong>0</strong></article>' +
         '<article><span>SKUs</span><strong>'+curveItems.length+'</strong></article>' +
       '</section>' +
