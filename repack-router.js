@@ -24,7 +24,7 @@
     if(!r.ok)throw new Error(d.error||'Falha no módulo Repack');
     return d;
   }
-  function ensureAssets(){if(!$('repackCss')){const l=document.createElement('link');l.id='repackCss';l.rel='stylesheet';l.href='repack.css?v=20260928-1';document.head.appendChild(l)}}
+  function ensureAssets(){if(!$('repackCss')){const l=document.createElement('link');l.id='repackCss';l.rel='stylesheet';l.href='repack.css?v=20260929-1';document.head.appendChild(l)}}
   function ensureView(){let v=$('repackView');if(v)return v;v=document.createElement('section');v.id='repackView';v.className='view hidden';document.querySelector('main')?.appendChild(v);return v}
   function addNav(){
     if(document.querySelector('[data-view="repack"]'))return;
@@ -35,7 +35,7 @@
   async function open(){
     ensureAssets();const v=ensureView();document.querySelectorAll('main > .view').forEach(x=>x.classList.add('hidden'));document.querySelectorAll('.nav-link').forEach(x=>x.classList.remove('active'));
     v.classList.remove('hidden');document.querySelector('[data-view="repack"]')?.classList.add('active');$('sidebar')?.classList.remove('open');
-    if($('pageTitle'))$('pageTitle').textContent='Repack';if($('pageSubtitle'))$('pageSubtitle').textContent='Produtividade · Repack e Despejo.';
+    if($('pageTitle'))$('pageTitle').textContent='Repack';if($('pageSubtitle'))$('pageSubtitle').textContent='';
     v.innerHTML='<div class="repack-loading">Carregando resultados do Repack…</div>';await load();
   }
   async function load(){
@@ -66,22 +66,21 @@
     const status=repSpb?(repSpb<=meta?'OK':'ACIMA'):'—';
     root.innerHTML=`
       <div class="repack-toolbar">
-        <div><p class="eyebrow">PRODUTIVIDADE OPERACIONAL</p><h2>Repack & Despejo</h2><p class="repack-source">${through?'Histórico da planilha até '+esc(String(through).split('-').reverse().join('/'))+'. ':''}Novos apontamentos entram automaticamente pelo cronômetro.</p></div>
         <div class="repack-actions"><label>Mês<select id="repackMonth">${monthOptions()}</select></label><button class="outline-button" id="repackRefresh">Atualizar</button><a class="primary-button repack-link" href="${TIMER_URL}" target="_blank" rel="noopener">Abrir cronômetro ↗</a></div>
       </div>
       <section class="repack-kpis">
         <article class="metric-card"><p>Caixas Repack</p><strong>${nfi.format(rep.boxes)}</strong><small>${nfi.format(rep.tasks)} apontamentos</small></article>
         <article class="metric-card ${repSpb&&repSpb<=meta?'repack-ok':'repack-warn'}"><p>Tempo Repack / CX</p><strong>${fmtPerBox(repSpb)}</strong><small>Meta base ${fmtPerBox(meta)} · ${status}</small></article>
         <article class="metric-card"><p>Caixas Despejo</p><strong>${nfi.format(des.boxes)}</strong><small>${nfi.format(des.tasks)} apontamentos</small></article>
-        <article class="metric-card"><p>Tempo Despejo / CX</p><strong>${fmtPerBox(desSpb)}</strong><small>Média ponderada</small></article>
-        <article class="metric-card"><p>Horas apontadas</p><strong>${nf.format((rep.seconds+des.seconds)/3600)}h</strong><small>Repack + Despejo</small></article>
+        <article class="metric-card"><p>Tempo Despejo / CX</p><strong>${fmtPerBox(desSpb)}</strong></article>
+        <article class="metric-card"><p>Horas apontadas</p><strong>${nf.format((rep.seconds+des.seconds)/3600)}h</strong></article>
       </section>
       <section class="repack-grid">
-        <article class="panel"><div class="panel-heading"><div><h2>Resultado por atividade</h2><p>Tempo real ponderado pela quantidade de caixas.</p></div></div>${activityTable(a)}</article>
-        <article class="panel"><div class="panel-heading"><div><h2>Cronômetros em andamento</h2><p>Início salvo no servidor; atualizar ou bloquear o celular não perde a contagem.</p></div></div>${activeTimers()}</article>
+        <article class="panel"><div class="panel-heading"><h2>Resultado por atividade</h2></div>${activityTable(a)}</article>
+        <article class="panel"><div class="panel-heading"><h2>Cronômetros em andamento</h2></div>${activeTimers()}</article>
       </section>
-      <section class="panel repack-trend"><div class="panel-heading"><div><h2>Evolução 2026</h2><p>Planilhas históricas + apontamentos do novo sistema.</p></div></div>${trendTable(trend,meta)}</section>
-      <section class="panel repack-history"><div class="panel-heading"><div><h2>Apontamentos do sistema · ${monthLabel(S.month)}</h2><p>Detalhamento disponível a partir da implantação do cronômetro.</p></div></div>${liveTable(S.data?.selected_tasks||[],targets,meta)}</section>
+      <section class="panel repack-trend"><div class="panel-heading"><h2>Evolução 2026</h2></div>${trendTable(trend,meta)}</section>
+      <section class="panel repack-history"><div class="panel-heading"><h2>Apontamentos · ${monthLabel(S.month)}</h2></div>${liveTable(S.data?.selected_tasks||[],targets,meta)}</section>
       ${role()==='admin'?adminSection():''}
     `;
     bind();
@@ -92,7 +91,7 @@
   function elapsed(start){const s=Math.max(0,Math.floor((Date.now()-new Date(start).getTime())/1000)),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;return`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`}
   function trendTable(rows,meta){if(!rows.length)return'<div class="repack-empty compact">Sem histórico.</div>';return`<div class="table-wrap"><table><thead><tr><th>Mês</th><th>Repack CX</th><th>Repack/CX</th><th>Meta</th><th>Despejo CX</th><th>Despejo/CX</th></tr></thead><tbody>${rows.map(o=>{const r=procAgg(['repack','bag','devolucao'],o),d=procAgg(['bombona'],o),rs=r.boxes?r.seconds/r.boxes:0,ds=d.boxes?d.seconds/d.boxes:0;return`<tr><td><strong>${monthLabel(o.month)}</strong></td><td>${nfi.format(r.boxes)}</td><td>${fmtPerBox(rs)}</td><td>${rs?`<span class="repack-pill ${rs<=meta?'ok':'bad'}">${rs<=meta?'OK':'Acima'}</span>`:'—'}</td><td>${nfi.format(d.boxes)}</td><td>${fmtPerBox(ds)}</td></tr>`}).join('')}</tbody></table></div>`}
   function liveTable(rows,targets,meta){if(!rows.length)return'<div class="repack-empty compact"><strong>Ainda não há apontamentos do cronômetro neste mês.</strong><span>O histórico anterior continua preservado nos resultados consolidados acima.</span></div>';return`<div class="table-wrap"><table><thead><tr><th>Data</th><th>Ajudante</th><th>Atividade</th><th>Embalagem</th><th>Caixas</th><th>Duração</th><th>Tempo/CX</th><th>Meta</th></tr></thead><tbody>${rows.map(t=>{const spb=Number(t.quantity_boxes)?Number(t.duration_seconds)/Number(t.quantity_boxes):0,tar=t.packaging_code?(targets.get(t.packaging_code)||meta):meta;return`<tr><td>${localDate(t.started_at)} ${localTime(t.started_at)}</td><td>${esc(t.worker?.display_name||'—')}</td><td>${esc(channelNames[t.channel]||t.channel)}</td><td>${esc(t.packaging_code||'—')}</td><td>${nf.format(Number(t.quantity_boxes||0))}</td><td>${fmtDuration(t.duration_seconds)}</td><td>${fmtPerBox(spb)}</td><td><span class="repack-pill ${spb&&spb<=tar?'ok':'bad'}">${spb&&spb<=tar?'OK':'Acima'}</span><small class="repack-target">${fmtPerBox(tar)}</small></td></tr>`}).join('')}</tbody></table></div>`}
-  function adminSection(){const list=S.adminWorkers||S.data?.workers||[];return`<section class="panel repack-admin"><div class="panel-heading"><div><h2>Equipe Repack</h2><p>Cadastre os ajudantes que usarão o cronômetro. O PIN possui 6 dígitos.</p></div></div>${S.pinIssue?`<div class="repack-pin"><div><span>PIN emitido para ${esc(S.pinIssue.display_name)}</span><strong>${esc(S.pinIssue.pin)}</strong><small>Copie agora. Por segurança, depois ele só pode ser redefinido.</small></div><button class="outline-button" id="repackCopyPin">Copiar PIN</button></div>`:''}<div class="repack-create"><input id="repackWorkerName" placeholder="Nome do ajudante" maxlength="120"><button class="primary-button" id="repackWorkerCreate">Cadastrar e gerar PIN</button></div><div class="repack-worker-list">${list.length?list.map(w=>`<div class="repack-worker"><div><strong>${esc(w.display_name)}</strong><span>${w.active?'Ativo':'Inativo'}${w.pin_ready===false?' · sem PIN':''}</span></div><div><button class="outline-button" data-repack-reset="${esc(w.id)}">Redefinir PIN</button><button class="outline-button" data-repack-toggle="${esc(w.id)}" data-active="${w.active?'1':'0'}">${w.active?'Desativar':'Ativar'}</button></div></div>`).join(''):'<div class="repack-empty compact">Nenhum ajudante cadastrado.</div>'}</div></section>`}
+  function adminSection(){const list=S.adminWorkers||S.data?.workers||[];return`<section class="panel repack-admin"><div class="panel-heading"><h2>Equipe Repack</h2></div>${S.pinIssue?`<div class="repack-pin"><div><span>PIN emitido para ${esc(S.pinIssue.display_name)}</span><strong>${esc(S.pinIssue.pin)}</strong><small>Copie agora. Por segurança, depois ele só pode ser redefinido.</small></div><button class="outline-button" id="repackCopyPin">Copiar PIN</button></div>`:''}<div class="repack-create"><input id="repackWorkerName" placeholder="Nome do ajudante" maxlength="120"><button class="primary-button" id="repackWorkerCreate">Cadastrar e gerar PIN</button></div><div class="repack-worker-list">${list.length?list.map(w=>`<div class="repack-worker"><div><strong>${esc(w.display_name)}</strong><span>${w.active?'Ativo':'Inativo'}${w.pin_ready===false?' · sem PIN':''}</span></div><div><button class="outline-button" data-repack-reset="${esc(w.id)}">Redefinir PIN</button><button class="outline-button" data-repack-toggle="${esc(w.id)}" data-active="${w.active?'1':'0'}">${w.active?'Desativar':'Ativar'}</button></div></div>`).join(''):'<div class="repack-empty compact">Nenhum ajudante cadastrado.</div>'}</div></section>`}
   async function refreshAdmin(){if(role()!=='admin')return;S.adminWorkers=(await call('admin_workers')).workers||[];render()}
   function bind(){
     $('repackMonth')?.addEventListener('change',e=>{S.month=e.target.value;load()});$('repackRefresh')?.addEventListener('click',load);
