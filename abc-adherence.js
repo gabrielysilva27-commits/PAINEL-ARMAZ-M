@@ -2,9 +2,8 @@
   if (window.__abcAdherenceModule) return;
 
   const STOCK_API = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/stock-api';
-  const LAYOUT_API = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/layout-api';
   const ADHERENCE_API = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/abc-adherence-api';
-  const A = { mode: 'curve', stockCache: new Map(), pickingCache: new Map(), historyCache: new Map(), curveBundleCache: new Map(), monthlyCaptured: new Set(), request: 0 };
+  const A = { mode: 'curve', stockCache: new Map(), historyCache: new Map(), curveBundleCache: new Map(), monthlyCaptured: new Set(), request: 0 };
 
   const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const pct = value => Number.isFinite(value) ? new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1}).format(value) + '%' : '—';
@@ -44,13 +43,6 @@
     });
     A.curveBundleCache.set(month,items);
     return items;
-  }
-
-  async function pickingData(month) {
-    if (A.pickingCache.has(month)) return A.pickingCache.get(month);
-    const data = await post(LAYOUT_API,'get',{month:month});
-    A.pickingCache.set(month,data);
-    return data;
   }
 
   async function historyData(area, force=false) {
@@ -528,51 +520,6 @@
     '</div>';
   }
 
-  function flattenPickingPlan(plan) {
-    const slots = [];
-    const pushStreet = (group,street,depth) => {
-      (street.slots || []).forEach((slot,index) => {
-        if (!slot) return;
-        slots.push({
-          group:group,
-          address:String(street.id || group) + '-' + String(index+1),
-          curve:slot.curve_class,
-          sku:slot.sku_code,
-          name:slot.sku_name,
-          depth:depth,
-          position:index+1
-        });
-      });
-    };
-
-    (plan.flow && plan.flow.items ? plan.flow.items : []).forEach((slot,index) => {
-      if (slot) slots.push({group:'Flow Rack',address:'FR-' + String(index+1),curve:slot.curve_class,sku:slot.sku_code,name:slot.sku_name,depth:0,position:index+1});
-    });
-    (plan.front || []).forEach(s=>pushStreet('Frontal',s,1));
-    (plan.main || []).forEach((s,i)=>pushStreet('Ruas',s,2+i));
-    (plan.caixaria || []).forEach((s,i)=>pushStreet('Caixaria',s,20+i));
-    return slots;
-  }
-
-  function pickingDistanceMatrix(plan) {
-    const slots = flattenPickingPlan(plan).filter(x=>classOrder.includes(x.curve));
-    slots.sort((a,b)=>a.depth-b.depth || a.position-b.position || a.address.localeCompare(b.address,'pt-BR',{numeric:true}));
-    const counts={A:0,B:0,C:0};
-    slots.forEach(s=>counts[s.curve]++);
-
-    const expected=[];
-    classOrder.forEach(c=>{for(let i=0;i<counts[c];i++)expected.push(c);});
-    let adherent=0,non=0;
-    const checks=slots.map((s,i)=>{
-      const zone=expected[i]||'C';
-      const ok=s.curve===zone;
-      if(ok)adherent++; else non++;
-      return Object.assign({},s,{zone:zone,status:ok?'Aderente':'Não aderente'});
-    });
-    const rate=adherent+non?adherent/(adherent+non)*100:null;
-    return {slots,counts,checks,adherent,non,rate,actions:checks.filter(x=>x.status!=='Aderente')};
-  }
-
   function pickingHtml(month, curveItems) {
     const counts = curveStats(curveItems).counts;
     return '<div class="abc-adherence-shell">' +
@@ -643,7 +590,6 @@
 
   function invalidate() {
     A.stockCache.clear();
-    A.pickingCache.clear();
     A.historyCache.clear();
     A.curveBundleCache.clear();
     A.monthlyCaptured.clear();
