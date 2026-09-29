@@ -10,6 +10,7 @@
     'Repack':{okMax:22,critical:25,ok:'≤ 22,0 °C',attention:'> 22,0 até 25,0 °C',criticalText:'> 25,0 °C',measure:'1 ponto · Manhã, Tarde e Noite'},
     'Marketplace':{okMax:22,critical:25,ok:'≤ 22,0 °C',attention:'> 22,0 até 25,0 °C',criticalText:'> 25,0 °C',measure:'1 ponto · Manhã, Tarde e Noite'}
   };
+  const AREA_COLORS={'Câmara Fria':'#2f80ed','Retornável':'#7b61ff','Descartável':'#f2994a','Repack':'#00a88f','Marketplace':'#d95fa1'};
   const ACTIONS={
     ok:'Operação normal.',
     attention:'Solicitar atenção dos ajudantes na movimentação.',
@@ -45,10 +46,10 @@
     return items.map(r=>'<tr><td>'+date(r.reading_date)+'</td><td>'+esc(r.shift)+'</td><td><strong>'+esc(r.area)+'</strong></td><td>'+temp(r.temperature)+'</td><td>'+statusBadge(r.status)+'</td><td>'+esc(r.conferencer_name||'—')+'</td></tr>').join('');
   }
   function chartSvg(area,points){
-    const rule=RULES[area]||RULES['Retornável'];
+    const rule=RULES[area]||RULES['Retornável'],areaColor=AREA_COLORS[area]||'#f47a20';
     const pts=(points||[]).filter(x=>Number.isFinite(Number(x.avg_temp)));
     if(!pts.length)return '<div class="temp-chart-empty">Sem leituras para montar a carta de controle neste mês.</div>';
-    const W=760,H=232,L=44,R=18,Tp=14,B=30;
+    const W=760,H=252,L=44,R=18,Tp=24,B=30;
     const vals=pts.map(x=>Number(x.avg_temp));
     let lo=Math.floor(Math.min(...vals,rule.okMax)-2),hi=Math.ceil(Math.max(...vals,rule.critical)+2);
     if(area==='Câmara Fria')lo=Math.max(0,lo);
@@ -58,21 +59,30 @@
     const x=i=>L+(pts.length===1?plotW/2:(i/(pts.length-1))*plotW);
     const okY=Math.max(Tp,Math.min(Tp+plotH,y(rule.okMax)));
     const critY=Math.max(Tp,Math.min(Tp+plotH,y(rule.critical)));
+    const pointStatus=v=>area==='Câmara Fria'?(v<=5?'ok':v<9?'attention':'critical'):(v<=22?'ok':v<=25?'attention':'critical');
     const line=pts.map((p,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(Number(p.avg_temp)).toFixed(1)).join(' ');
-    const dots=pts.map((p,i)=>'<circle class="temp-chart-dot" cx="'+x(i).toFixed(1)+'" cy="'+y(Number(p.avg_temp)).toFixed(1)+'" r="'+(i===pts.length-1?3.4:2.2)+'"></circle>').join('');
+    const pointsMarkup=pts.map((p,i)=>{
+      const v=Number(p.avg_temp),px=x(i),py=y(v),status=pointStatus(v);
+      const labelY=Math.max(Tp+9,Math.min(Tp+plotH-3,py+(i%2===0?-9:13)));
+      const label=v.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1});
+      return '<g class="temp-chart-point '+status+'"><circle class="temp-chart-dot" cx="'+px.toFixed(1)+'" cy="'+py.toFixed(1)+'" r="'+(i===pts.length-1?4.1:3.1)+'"></circle>'+
+        '<text class="temp-chart-data-label" x="'+px.toFixed(1)+'" y="'+labelY.toFixed(1)+'" text-anchor="middle">'+label+'</text></g>';
+    }).join('');
     const idx=[0,Math.floor((pts.length-1)/2),pts.length-1].filter((v,i,a)=>a.indexOf(v)===i);
     const xlabels=idx.map(i=>'<text class="temp-chart-axis" x="'+x(i).toFixed(1)+'" y="'+(H-8)+'" text-anchor="'+(i===0?'start':i===pts.length-1?'end':'middle')+'">'+esc(String(pts[i].date).slice(8,10))+'</text>').join('');
     const avg=vals.reduce((a,b)=>a+b,0)/vals.length;
-    return '<div class="temp-chart-wrap"><div class="temp-chart-stat"><span>'+pts.length+' dias</span><strong>Média '+temp(avg)+'</strong></div>'+
-      '<svg class="temp-chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Carta de controle de '+esc(area)+'">'+
+    return '<div class="temp-chart-wrap">'+
+      '<div class="temp-chart-legend"><span class="ok"><i></i>OK</span><span class="attention"><i></i>Atenção</span><span class="critical"><i></i>Crítico</span></div>'+
+      '<div class="temp-chart-stat"><span>'+pts.length+' dias</span><strong>Média '+temp(avg)+'</strong></div>'+
+      '<svg class="temp-chart" style="--temp-chart-color:'+areaColor+'" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Carta de controle de '+esc(area)+'">'+
         '<rect class="temp-zone critical" x="'+L+'" y="'+Tp+'" width="'+plotW+'" height="'+Math.max(0,critY-Tp)+'"></rect>'+
         '<rect class="temp-zone attention" x="'+L+'" y="'+critY+'" width="'+plotW+'" height="'+Math.max(0,okY-critY)+'"></rect>'+
         '<rect class="temp-zone ok" x="'+L+'" y="'+okY+'" width="'+plotW+'" height="'+Math.max(0,Tp+plotH-okY)+'"></rect>'+
         '<line class="temp-chart-rule attention" x1="'+L+'" y1="'+okY+'" x2="'+(W-R)+'" y2="'+okY+'"></line>'+
         '<line class="temp-chart-rule critical" x1="'+L+'" y1="'+critY+'" x2="'+(W-R)+'" y2="'+critY+'"></line>'+
-        '<text class="temp-chart-limit" x="'+(L+4)+'" y="'+Math.max(Tp+10,okY-5)+'">'+temp(rule.okMax)+'</text>'+
-        '<text class="temp-chart-limit" x="'+(L+4)+'" y="'+Math.max(Tp+10,critY-5)+'">'+temp(rule.critical)+'</text>'+
-        '<path class="temp-chart-line" d="'+line+'"></path>'+dots+xlabels+
+        '<text class="temp-chart-limit attention" x="'+(L+4)+'" y="'+Math.max(Tp+11,okY-5)+'">'+temp(rule.okMax)+'</text>'+
+        '<text class="temp-chart-limit critical" x="'+(L+4)+'" y="'+Math.max(Tp+11,critY-5)+'">'+temp(rule.critical)+'</text>'+
+        '<path class="temp-chart-line" d="'+line+'"></path>'+pointsMarkup+xlabels+
       '</svg></div>';
   }
   function rulesBlock(area){
