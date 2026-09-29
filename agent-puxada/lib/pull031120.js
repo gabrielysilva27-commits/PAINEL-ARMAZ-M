@@ -1,6 +1,6 @@
 const fs = require("fs");
 
-const TRAILER_NUMBERS = new Set(["229","231","246","264","271","289","298","312"]);
+const TRAILER_NUMBERS = new Set(["225","229","231","246","264","271","289","298","312"]);
 
 function norm(v) {
   return String(v == null ? "" : v).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toUpperCase();
