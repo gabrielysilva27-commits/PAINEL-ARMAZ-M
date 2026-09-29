@@ -24,6 +24,13 @@ const PULL_VEHICLE_SET=new Set(PULL_VEHICLES);
 const normPull=(v:any)=>String(v??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toUpperCase();
 function pullDate(v:any){
   const s=String(v??"").trim();
+  if(/^\d{5}(?:\.\d+)?$/.test(s)){
+    const serial=Number(s);
+    if(Number.isFinite(serial)&&serial>20000&&serial<80000){
+      const ms=Date.UTC(1899,11,30)+Math.floor(serial)*86400000;
+      return new Date(ms).toISOString().slice(0,10);
+    }
+  }
   let m=s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);if(m)return m[3]+"-"+m[2]+"-"+m[1];
   m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);return m?m[1]+"-"+m[2]+"-"+m[3]:"";
 }
