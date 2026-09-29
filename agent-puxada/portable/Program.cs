@@ -9,6 +9,7 @@ internal static class Program
 {
     private const string RunKeyName = "AgentePuxadaPromax";
     private const string MutexName = @"Local\AgentePuxadaPromax";
+    private const string StopEventName = @"Local\AgentePuxadaPromaxStop";
 
     private static string BaseDir => AppContext.BaseDirectory;
     private static string DataDir => Path.Combine(BaseDir, "data");
@@ -178,16 +179,33 @@ internal static class Program
             Left = 24, Top = 63, Width = 450, Height = 52,
             Text = "Computador configurado.\nO status operacional aparece no Painel Armazém."
         };
-        var start = new Button { Left = 24, Top = 133, Width = 145, Height = 38, Text = "Iniciar agente" };
-        var calibrate = new Button { Left = 182, Top = 133, Width = 145, Height = 38, Text = "Abrir Promax" };
-        var configure = new Button { Left = 340, Top = 133, Width = 145, Height = 38, Text = "Trocar token" };
-        var autoStart = new CheckBox { Left = 24, Top = 193, Width = 300, Text = "Iniciar automaticamente com o Windows", Checked = AutoStartEnabled() };
-        var close = new Button { Left = 375, Top = 205, Width = 110, Height = 32, Text = "Fechar" };
+        var start = new Button { Left = 24, Top = 133, Width = 110, Height = 38, Text = "Iniciar" };
+        var restart = new Button { Left = 144, Top = 133, Width = 110, Height = 38, Text = "Reiniciar" };
+        var calibrate = new Button { Left = 264, Top = 133, Width = 110, Height = 38, Text = "Abrir Promax" };
+        var configure = new Button { Left = 384, Top = 133, Width = 110, Height = 38, Text = "Trocar token" };
+        var stop = new Button { Left = 24, Top = 181, Width = 110, Height = 34, Text = "Parar agente" };
+        var autoStart = new CheckBox { Left = 150, Top = 188, Width = 300, Text = "Iniciar automaticamente com o Windows", Checked = AutoStartEnabled() };
+        var close = new Button { Left = 384, Top = 226, Width = 110, Height = 32, Text = "Fechar painel" };
 
         start.Click += (_, _) =>
         {
             StartSelf("--background");
             MessageBox.Show("O Agente Puxada foi iniciado. Acompanhe o status pelo Painel.", "Agente Puxada", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        };
+
+        restart.Click += (_, _) =>
+        {
+            SignalStopBackground();
+            Task.Delay(1400).ContinueWith(_ => StartSelf("--background"));
+            MessageBox.Show("O Agente Puxada será reiniciado.", "Agente Puxada", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        };
+
+        stop.Click += (_, _) =>
+        {
+            if (SignalStopBackground())
+                MessageBox.Show("O Agente Puxada foi parado.", "Agente Puxada", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            else
+                MessageBox.Show("Não havia um agente em execução.", "Agente Puxada", MessageBoxButtons.OK, MessageBoxIcon.Information);
         };
 
         calibrate.Click += (_, _) =>
@@ -204,7 +222,7 @@ internal static class Program
         };
         close.Click += (_, _) => form.Close();
 
-        form.Controls.AddRange(new Control[] { title, status, start, calibrate, configure, autoStart, close });
+        form.Controls.AddRange(new Control[] { title, status, start, restart, calibrate, configure, stop, autoStart, close });
         form.ShowDialog();
     }
 
@@ -238,17 +256,43 @@ internal static class Program
         return psi;
     }
 
+    private static bool SignalStopBackground()
+    {
+        try
+        {
+            using var stopEvent = EventWaitHandle.OpenExisting(StopEventName);
+            stopEvent.Set();
+            return true;
+        }
+        catch (WaitHandleCannotBeOpenedException)
+        {
+            return false;
+        }
+    }
+
     private static void RunBackground()
     {
         if (!File.Exists(TokenPath)) return;
 
         using var mutex = new Mutex(true, MutexName, out var createdNew);
         if (!createdNew) return;
+        using var stopEvent = new EventWaitHandle(false, EventResetMode.AutoReset, StopEventName);
 
         try
         {
             using var process = Process.Start(NodeStartInfo("", true));
-            process?.WaitForExit();
+            if (process != null)
+            {
+                while (!process.HasExited)
+                {
+                    if (stopEvent.WaitOne(500))
+                    {
+                        try { process.Kill(true); } catch { }
+                        break;
+                    }
+                }
+                try { process.WaitForExit(); } catch { }
+            }
         }
         catch (Exception ex)
         {
