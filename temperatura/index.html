@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260929-1" />
+  <link rel="stylesheet" href="styles.css?v=20260929-2" />
 </head>
 <body>
   <main class="temp-app">
@@ -28,7 +28,7 @@
     </section>
 
     <section id="formView" class="hidden">
-      <div class="toolbar"><div><p class="eyebrow">REGISTRO OPERACIONAL</p><h1>Temperatura do estoque</h1><p class="muted" id="loggedName"></p></div><button class="ghost" id="logoutButton" type="button">Trocar conferente</button></div>
+      <div class="toolbar"><div><p class="eyebrow">REGISTRO OPERACIONAL</p><h1>Temperatura do estoque</h1><p class="muted" id="loggedName"></p></div><div class="toolbar-actions"><button class="secondary" id="openBoButton" type="button">B.O. Digital</button><button class="ghost" id="logoutButton" type="button">Trocar conferente</button></div></div>
       <form id="temperatureForm" class="card stack">
         <div class="grid grid-2">
           <label>Data<input id="readingDate" type="date" min="2026-09-29" required /></label>
@@ -47,6 +47,6 @@
     </section>
   </main>
   <div id="toast" class="toast hidden"></div>
-  <script src="app.js?v=20260929-1"></script>
+  <script src="app.js?v=20260929-2"></script>
 </body>
 </html>
