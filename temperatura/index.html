@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f47a20" />
+  <meta name="description" content="Registro de temperatura do Armazém Império." />
+  <title>Temperatura | Armazém Império</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=20260929-2" />
+</head>
+<body>
+  <main class="temp-app">
+    <header class="temp-brand"><img src="../assets/logo-imperio.png" alt="Império" /><div><span>ARMAZÉM</span><strong>TEMPERATURA</strong></div></header>
+
+    <section id="loginView" class="card">
+      <p class="eyebrow">IDENTIFICAÇÃO DO CONFERENTE</p>
+      <h1>Controle de temperatura</h1>
+      <p class="muted">Use o mesmo PIN do B.O. Digital.</p>
+      <form id="pinForm" class="stack">
+        <label>Conferente<select id="conferencerSelect" required><option value="">Carregando...</option></select></label>
+        <label>PIN<input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="6 dígitos" required /></label>
+        <p id="loginError" class="error"></p>
+        <button class="primary" id="pinButton" type="submit">Entrar</button>
+      </form>
+    </section>
+
+    <section id="formView" class="hidden">
+      <div class="toolbar"><div><p class="eyebrow">REGISTRO OPERACIONAL</p><h1>Temperatura do estoque</h1><p class="muted" id="loggedName"></p></div><div class="toolbar-actions"><button class="secondary" id="openBoButton" type="button">B.O. Digital</button><button class="ghost" id="logoutButton" type="button">Trocar conferente</button></div></div>
+      <form id="temperatureForm" class="card stack">
+        <div class="grid grid-2">
+          <label>Data<input id="readingDate" type="date" min="2026-09-29" required /></label>
+          <div><span class="field-title">Turno</span><div class="segmented" id="shiftOptions"><button type="button" data-value="MANHÃ">Manhã</button><button type="button" data-value="TARDE">Tarde</button><button type="button" data-value="NOITE">Noite</button></div></div>
+        </div>
+        <div id="existingNotice" class="existing hidden"></div>
+        <div id="areasGrid" class="areas-grid"></div>
+        <p id="formError" class="error"></p>
+        <button class="primary large" id="submitButton" type="submit">Salvar temperaturas</button>
+      </form>
+
+      <section class="card history-card">
+        <div class="section-title"><div><h2>Meus registros</h2><p class="muted">Últimas temperaturas lançadas no site.</p></div><button class="secondary" id="refreshHistory" type="button">Atualizar</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Data</th><th>Turno</th><th>Área</th><th>Temp.</th><th>Status</th></tr></thead><tbody id="historyBody"></tbody></table></div>
+      </section>
+    </section>
+  </main>
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js?v=20260929-2"></script>
+</body>
+</html>
