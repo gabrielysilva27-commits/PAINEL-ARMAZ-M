@@ -50,7 +50,7 @@
     return '<div class="admin-module">'+
       '<section class="admin-card"><div class="admin-profile-line"><div class="admin-avatar">'+esc(userInitials())+'</div><div><strong>'+esc(u.display_name||u.username||'Administrador')+'</strong><small>ADMINISTRAÇÃO</small></div></div><p>Configurações administrativas e acessos operacionais do Painel Armazém.</p></section>'+
       '<div class="admin-role-access-grid">'+
-        accessCard('CONFERENTES','Portal do conferente','Um único QR para B.O. Digital e Conferência cega / NRI.',''+CONFERENTE_URL,CONFERENTE_QR,'adminConf')+
+        accessCard('CONFERENTES','Portal do conferente','Um único QR para B.O. Digital, Recebimento / NRI e Temperatura.',''+CONFERENTE_URL,CONFERENTE_QR,'adminConf')+
         accessCard('PORTARIA','Entrada de carreta','Entrada e acompanhamento da carreta com nome e PIN individual.',''+PORTARIA_URL,PORTARIA_QR,'adminGate')+
         accessCard('EMPILHADORES','Descarga e Guarda','Um único QR para iniciar/finalizar descarga e executar as Ordens de Guarda.',''+EMPILHADOR_URL,EMPILHADOR_QR,'adminFork')+
       '</div>'+
@@ -307,7 +307,7 @@
     $('adminView').classList.remove('hidden');
     $('pageTitle').textContent='Administração';$('pageSubtitle').textContent='Acessos, credenciais e configurações do Painel Armazém.';
     $('adminView').innerHTML=shell();
-    bindAccess('adminConf',CONFERENTE_URL,CONFERENTE_QR,'Portal do Conferente — B.O. + NRI','QR_Portal_Conferentes.png');
+    bindAccess('adminConf',CONFERENTE_URL,CONFERENTE_QR,'Portal do Conferente — B.O. + NRI + Temperatura','QR_Portal_Conferentes.png');
     bindAccess('adminGate',PORTARIA_URL,PORTARIA_QR,'Portaria — Entrada de Carreta','QR_Portaria_Recebimento.png');
     bindAccess('adminFork',EMPILHADOR_URL,EMPILHADOR_QR,'Empilhadores — Descarga + Guarda','QR_Empilhadores_Descarga_Guarda.png');
     $('adminPinGroup').onchange=renderPinPeople;$('adminPinPerson').onchange=renderPinSelected;$('adminPinAction').onclick=issueSelectedPin;$('adminPinMissing').onclick=issueMissingForGroup;$('adminPinOpenForklift').onclick=()=>window.open(RECEBIMENTO_URL+'guarda.html','_blank','noopener,noreferrer');$('adminAgentSaveInterval').onclick=saveAgentInterval;$('adminAgentSyncNow').onclick=syncAgentNow;$('adminAgentRefresh').onclick=loadAgentAdmin;
