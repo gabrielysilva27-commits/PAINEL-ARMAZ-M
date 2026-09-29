@@ -30,6 +30,7 @@
   function enter(){show('formView');$('loggedName').textContent='Conferente: '+conferencer.display_name;resetForm();}
 
   $('pinForm').onsubmit=async e=>{e.preventDefault();const b=$('pinButton');b.disabled=true;$('loginError').textContent='';try{const d=await call('pin_login',{conferencer_id:$('conferencerSelect').value,pin:$('pinInput').value},false);token=d.token;conferencer=d.conferencer;sessionStorage.setItem('bo_token',token);$('pinInput').value='';enter();}catch(err){$('loginError').textContent=err.message;}finally{b.disabled=false;}};
+  $('temperatureButton').onclick=()=>{location.href='../temperatura/';};
   $('logoutButton').onclick=async()=>{try{await call('bo_logout')}catch{}token='';conferencer=null;sessionStorage.removeItem('bo_token');show('loginView');};
   function updateShiftFlowNotice(){
     const box=$('shiftFlowNotice');if(!box)return;
