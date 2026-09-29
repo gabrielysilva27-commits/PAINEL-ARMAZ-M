@@ -684,7 +684,7 @@ static bool FillReport(HWND hwnd, const std::wstring* values) {
         (c.rect.top == visualize->rect.top && c.rect.left > visualize->rect.left))
       visualize = &c;
   }
-  if (!visualize) return Fill031120ByGeometry(hwnd, values);
+  if (!visualize) return false;
 
   if (!ClickControl(*reportType) ||
       !Key(VK_HOME) || !Key(VK_HOME, true) || !Key('D') || !Key('D', true) ||
@@ -795,7 +795,7 @@ static bool Fill031120(HWND hwnd, const std::wstring* values) {
   const VisibleControl* visualize = nullptr;
   for (const auto& b : visualizes)
     if (!visualize || b.rect.top > visualize->rect.top) visualize = &b;
-  if (!visualize) return false;
+  if (!visualize) return Fill031120ByGeometry(hwnd, values);
 
   if (!ClickControl(*classification) || !Key(VK_HOME) || !Key(VK_HOME,true) ||
       !Key('M') || !Key('M',true) || !Key(VK_RETURN) || !Key(VK_RETURN,true))
