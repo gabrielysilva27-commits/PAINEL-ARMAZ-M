@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#f47a20" />
   <meta name="description" content="Cronômetro operacional de Repack e Despejo do Armazém Império." />
+  <meta name="repack-build" content="20260929-2" />
   <title>Repack | Armazém Império</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -50,7 +51,7 @@
         <div id="timerDisplay" class="timer">00:00:00</div>
         <div class="start-info">Iniciado às <strong id="startedAt">—</strong>. Você pode bloquear a tela ou atualizar a página.</div>
         <div class="finish-form">
-          <label>Quantidade de caixas<input id="quantityInput" type="number" inputmode="decimal" min="0.001" step="0.001" placeholder="Ex.: 25" /></label>
+          <label><span id="quantityTitle">Quantidade de caixas</span><input id="quantityInput" type="number" inputmode="decimal" min="0.001" step="0.001" placeholder="Ex.: 25" /></label>
           <label>Observação <span class="optional">opcional</span><textarea id="notesInput" rows="3" placeholder="Se houver alguma parada ou observação"></textarea></label>
         </div>
         <p id="finishError" class="error"></p>
@@ -63,6 +64,6 @@
     </section>
   </main>
   <div id="toast" class="toast hidden"></div>
-  <script src="app.js?v=20260928-1"></script>
+  <script src="app-v2.js?v=20260929-1"></script>
 </body>
 </html>
