@@ -9,7 +9,7 @@
   const MONTHS={'01':'Jan','02':'Fev','03':'Mar','04':'Abr','05':'Mai','06':'Jun','07':'Jul','08':'Ago','09':'Set','10':'Out','11':'Nov','12':'Dez'};
   const monthLabel=v=>{const s=String(v||'');return (MONTHS[s.slice(5,7)]||s.slice(5,7))+'/'+s.slice(0,4);};
   const areaLabel=a=>a==='all'?'Todas as áreas':a;
-  const statusLabel=s=>s==='ok'?'OK':s==='attention'?'Atenção':'Crítico';
+  const statusLabel=s=>s==='ok'?'OK':s==='attention'?'Atenção':s==='critical'?'Crítico':'Sem leitura';
   const statusBadge=s=>'<span class="temp-status '+esc(s)+'">'+statusLabel(s)+'</span>';
   async function call(payload={}){
     const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','x-session-token':window.state?.token||''},body:JSON.stringify({action:'dashboard',...payload})});
@@ -17,7 +17,7 @@
   }
   function areaCards(items){
     return '<div class="temp-area-grid">'+items.map(x=>{
-      const dominant=x.critical?'critical':x.attention?'attention':'ok';
+      const dominant=!x.readings?'none':x.critical?'critical':x.attention?'attention':'ok';
       return '<button class="temp-area-card" data-temp-area="'+esc(x.area)+'"><div><strong>'+esc(x.area)+'</strong>'+statusBadge(dominant)+'</div><div class="temp-area-values"><span><small>Média</small><b>'+temp(x.avg_temp)+'</b></span><span><small>Máxima</small><b>'+temp(x.max_temp)+'</b></span><span><small>Crítico</small><b>'+num(x.critical)+'</b></span></div></button>';
     }).join('')+'</div>';
   }
