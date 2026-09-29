@@ -13,7 +13,7 @@ const updater = require("./lib/update");
 
 const ROOT = __dirname;
 const VERSION = "3.2.92";
-// 3.2.92: tenta o backfill 03.11.20 imediatamente após iniciar e prioriza a tarefa antes das demais rotinas.
+// 3.2.92: executa o backfill 03.11.20 imediatamente após iniciar e o prioriza antes das demais rotinas.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
