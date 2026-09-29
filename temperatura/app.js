@@ -30,12 +30,13 @@
     return t<=22?'ok':t<=25?'attention':'critical';
   }
   function statusLabel(s){return s==='ok'?'OK':s==='attention'?'Atenção':'Crítico';}
+  function guidanceFor(s){return s==='attention'?'Solicitar atenção dos ajudantes na movimentação.':s==='critical'?'Não realizar movimentação manual de caixaria. Localizar os SKUs de caixaria nas áreas mais frescas do armazém.':'';}
   function areaList(){return AREAS.filter(a=>!a.morningOnly||shift==='MANHÃ');}
   function areaCard(a){
     return '<article class="area-card" data-area="'+esc(a.name)+'"><div class="area-head"><div><strong>'+esc(a.name)+'</strong><small>'+esc(a.rule)+'</small></div><span class="status ok">Aguardando</span></div>'+
       '<div class="temp-inputs '+(a.points===1?'one':'')+'"><label>Temperatura'+(a.points===2?' 1':'')+'<input class="temp-1" type="number" step="0.1" min="-20" max="60" inputmode="decimal" required /></label>'+
       (a.points===2?'<label>Temperatura 2<input class="temp-2" type="number" step="0.1" min="-20" max="60" inputmode="decimal" required /></label>':'')+
-      '</div><div class="area-result"><div><small>Resultado</small><strong class="result-value">—</strong></div><span class="status result-status ok">—</span></div></article>';
+      '</div><div class="area-result"><div><small>Resultado</small><strong class="result-value">—</strong></div><span class="status result-status ok">—</span></div><p class="area-action hidden"></p></article>';
   }
   function renderAreas(){
     $('areasGrid').innerHTML=areaList().map(areaCard).join('');
@@ -48,10 +49,11 @@
     const area=card.dataset.area,a=AREAS.find(x=>x.name===area),v1=Number(card.querySelector('.temp-1').value),i2=card.querySelector('.temp-2'),v2=i2?Number(i2.value):null;
     const valid1=Number.isFinite(v1)&&card.querySelector('.temp-1').value!=='',valid2=!i2||(Number.isFinite(v2)&&i2.value!=='');
     const result=valid1&&valid2?(a.points===2?Math.max(v1,v2):v1):null;
-    const rv=card.querySelector('.result-value'),rs=card.querySelector('.result-status');
+    const rv=card.querySelector('.result-value'),rs=card.querySelector('.result-status'),action=card.querySelector('.area-action');
     card.classList.remove('ok','attention','critical');rs.classList.remove('ok','attention','critical');
-    if(result==null){rv.textContent='—';rs.textContent='—';rs.classList.add('ok');return;}
+    if(result==null){rv.textContent='—';rs.textContent='—';rs.classList.add('ok');action.textContent='';action.classList.add('hidden');return;}
     const st=statusFor(area,result);rv.textContent=temp(result);rs.textContent=statusLabel(st);rs.classList.add(st);card.classList.add(st);
+    action.textContent=guidanceFor(st);action.classList.toggle('hidden',!action.textContent);
   }
   function setShift(value){
     shift=value;$('shiftOptions').querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.value===shift));renderAreas();loadExisting();
