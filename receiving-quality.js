@@ -12,15 +12,34 @@
    const d=await r.json().catch(()=>({error:'Resposta inválida'}));if(!r.ok)throw new Error(d.error||'Falha ao processar Qualidade do Recebimento');return d;
  }
  async function call(payload={}){return api('dashboard',payload)}
+ async function ensureXlsx(){
+   if(window.XLSX)return window.XLSX;
+   if(window.__rqXlsxPromise)return window.__rqXlsxPromise;
+   window.__rqXlsxPromise=new Promise((resolve,reject)=>{
+     const s=document.createElement('script');s.src='https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';s.async=true;
+     s.onload=()=>resolve(window.XLSX);s.onerror=()=>{window.__rqXlsxPromise=null;reject(new Error('Não foi possível carregar o leitor de Excel.'));};
+     document.head.appendChild(s);
+   });
+   return window.__rqXlsxPromise;
+ }
  async function import031120File(file){
    if(!file)return null;
-   if(file.size>6*1024*1024)throw new Error('O arquivo 03.11.20 excede 6 MB.');
-   const buf=await file.arrayBuffer();
-   const utf8=new TextDecoder('utf-8').decode(buf);
-   let win=utf8;try{win=new TextDecoder('windows-1252').decode(buf)}catch{}
-   const score=t=>{const x=String(t||'').toUpperCase();return (x.includes('ENTRADA CDD')?4:0)+(x.includes('MAPA')?2:0)+(x.includes('VEIC')?2:0)+(x.includes('DATA')?1:0)};
-   const text=score(win)>score(utf8)?win:utf8;
-   return api('import_031120',{source_file:file.name,text});
+   if(R.month==='all')throw new Error('Selecione o mês do relatório antes de importar.');
+   if(file.size>12*1024*1024)throw new Error('O arquivo 03.11.20 excede 12 MB.');
+   const ext=(file.name.split('.').pop()||'').toLowerCase();
+   let text='';
+   if(ext==='xlsx'||ext==='xls'){
+     const XLSX=await ensureXlsx(),buf=await file.arrayBuffer(),book=XLSX.read(buf,{type:'array',cellDates:false});
+     const ws=book.Sheets[book.SheetNames[0]];
+     if(!ws)throw new Error('A planilha não possui aba legível.');
+     text=XLSX.utils.sheet_to_csv(ws,{FS:';',RS:'\n'});
+   }else{
+     const buf=await file.arrayBuffer(),utf8=new TextDecoder('utf-8').decode(buf);
+     let win=utf8;try{win=new TextDecoder('windows-1252').decode(buf)}catch{}
+     const score=t=>{const x=String(t||'').toUpperCase();return (x.includes('ENTRADA CDD')?4:0)+(x.includes('MAPA')?2:0)+(x.includes('VEIC')?2:0)+(x.includes('DATA')?1:0)};
+     text=score(win)>score(utf8)?win:utf8;
+   }
+   return api('import_031120',{source_file:file.name,text,target_month:R.month});
  }
  function lineChart(items){
    if(!items?.length)return '<div class="rq-empty">Sem dados para este período.</div>';
@@ -60,30 +79,66 @@
  }
  function render(){
    const root=$('receivingQualityView'),d=R.data;if(!root||!d)return;const s=d.summary;
-   const sync=d.sync||{},pull=d.pull_source||{};
-   const missing=(pull.missing_months||[]).map(m=>(MONTHS.find(x=>x[0]===m)||[m,m])[1]).join(', ');
-   const pullFilterNote=(R.checker||R.origin)?'<small class="rq-pull-filter-note">O indicador de paletes considera somente o período; Conferente e Origem filtram os demais blocos.</small>':'';
-   const pullContingency=window.state?.user?.role==='admin'?'<div class="rq-pull-actions"><button class="outline-button" id="rqImport031120" type="button">Importar 03.11.20</button><input id="rqImport031120File" type="file" accept=".csv,.txt,.inf,text/csv,text/plain" hidden><small>Contingência manual</small></div>':'';
+   const pull=d.pull_source||{},missing=(pull.missing_months||[]).map(m=>(MONTHS.find(x=>x[0]===m)||[m,m])[1]).join(', ');
+   const filtered=R.checker||R.origin;
+   const importButton=window.state?.user?.role==='admin'
+     ?'<button class="rq-import-btn" id="rqImport031120" type="button">Importar 03.11.20</button><input id="rqImport031120File" type="file" accept=".xlsx,.xls,.csv,.txt,.inf" hidden>'
+     :'';
    root.innerHTML='<div class="rq-module">'+
-   '<div class="rq-toolbar"><div class="rq-source"><span class="rq-live-dot"></span><div><strong>QUALIDADE DO RECEBIMENTO</strong><small>2026 · Google Forms'+(sync.last_status?' · '+esc(sync.last_status):'')+'</small></div></div><div class="rq-filters"><label>Período<select id="rqMonth">'+MONTHS.map(([v,l])=>'<option value="'+v+'" '+(R.month===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label><label>Conferente<select id="rqChecker"><option value="">Todos</option>'+d.filters.checkers.map(a=>'<option value="'+esc(a)+'" '+(R.checker===a?'selected':'')+'>'+esc(a)+'</option>').join('')+'</select></label><label>Origem<select id="rqOrigin"><option value="">Todas</option>'+d.filters.origins.map(a=>'<option value="'+esc(a)+'" '+(R.origin===a?'selected':'')+'>'+esc(a)+'</option>').join('')+'</select></label><button class="outline-button" id="rqRefresh">Atualizar</button></div></div>'+
-   '<section class="rq-kpis"><article><small>Conformidade dos critérios</small><strong>'+pct(s.compliance)+'</strong><span>'+int(s.binary_nonconformities)+' desvios de checklist</span></article><article><small>Recebimentos avaliados</small><strong>'+int(s.receipts)+'</strong><span>período selecionado</span></article><article><small>Com não conformidade</small><strong>'+int(s.nc_receipts)+'</strong><span>'+pct(s.receipts?s.nc_receipts/s.receipts:0)+' dos checks</span></article><article><small>Desvios de checklist</small><strong>'+int(s.binary_nonconformities)+'</strong><span>critérios fora do padrão</span></article><article><small>Produtos com NC</small><strong>'+int(s.unique_nc_skus)+'</strong><span>SKUs distintos</span></article></section>'+
-   '<section class="panel rq-pallet-panel"><div class="panel-heading"><div><h2>Paletes puxados x paletes avariados</h2><small>03.11.20 · carretas 229, 231, 246, 264, 271, 289, 298 e 312 · 28 paletes por carreta</small></div>'+pullContingency+'</div><div class="rq-pallet-layout"><div class="rq-pallet-kpis"><article><small>Paletes puxados</small><strong>'+int(s.pallets_pulled)+'</strong><span>'+int(s.trucks_pulled)+' carretas</span></article><article><small>Paletes avariados</small><strong>'+int(s.damaged_pallets)+'</strong><span>conforme regra da planilha</span></article><article><small>Índice de avaria</small><strong>'+pct(s.damage_rate)+'</strong><span>avariados ÷ puxados</span></article><article><small>Sem cobertura 03.11.20</small><strong>'+int(s.uncovered_damaged_pallets)+'</strong><span>avarias fora dos dias disponíveis</span></article></div><div class="rq-pallet-chart">'+palletTrend(d.pallet_trend)+'</div></div>'+pullFilterNote+(missing?'<div class="rq-pull-warning"><strong>Base incompleta:</strong> falta relatório 03.11.20 de '+esc(missing)+' de 2026. Esses dias não entram no índice de avaria.</div>':'')+'</section>'+
-   '<section class="rq-grid-main"><article class="panel"><div class="panel-heading"><div><h2>Evolução da conformidade</h2><small>'+(R.month==='all'?'visão mensal':'visão semanal')+'</small></div></div>'+lineChart(d.trend)+'</article><article class="panel"><div class="panel-heading"><div><h2>Principais não conformidades</h2><small>categorias mais recorrentes</small></div></div>'+bars(d.top_categories,'category')+'</article></section>'+
-   '<section class="rq-grid-secondary"><article class="panel"><div class="panel-heading"><div><h2>Checks por conferente</h2><small>volume, NC e conformidade individual</small></div></div>'+people(d.by_checker)+'</article><article class="panel"><div class="panel-heading"><div><h2>Origem das cargas</h2><small>distribuição e qualidade por fábrica</small></div></div>'+origins(d.by_origin)+'</article></section>'+
-   '<section class="rq-grid-secondary"><article class="panel"><div class="panel-heading"><div><h2>10 piores SKUs</h2><small>maior recorrência em recebimentos com NC</small></div></div>'+bars(d.top_skus,'sku')+'</article><article class="panel"><div class="panel-heading"><div><h2>Carreteiros com mais NC</h2><small>recorrência de recebimentos não conformes</small></div></div><div class="rq-drivers">'+d.top_drivers.map((x,i)=>'<div><span>'+(i+1)+'</span><strong>'+esc(x.name)+'</strong><b>'+int(x.nc_receipts)+'</b><small>'+pct(x.nc_rate)+'</small></div>').join('')+'</div></article></section>'+
-   '<section class="panel rq-history"><div class="panel-heading"><div><h2>Histórico dos recebimentos</h2><small>detalhes mostram somente as não conformidades</small></div></div><div class="rq-table-wrap"><table><thead><tr><th>Data</th><th>Conferente</th><th>Carreteiro</th><th>Origem</th><th>Conformidade</th><th>Desvios</th><th>SKU(s)</th><th></th></tr></thead><tbody>'+history(d.history)+'</tbody></table></div></section>'+
-   (s.timestamp_mismatch?'<p class="rq-audit-note">Auditoria de dados: '+int(s.timestamp_mismatch)+' registro(s) possuem ano do envio diferente do ano do recebimento. O painel usa a data de Recebimento como referência.</p>':'')+
+     '<div class="rq-toolbar"><div class="rq-filters">'+
+       '<label><span>Período</span><select id="rqMonth">'+MONTHS.map(([v,l])=>'<option value="'+v+'" '+(R.month===v?'selected':'')+'>'+l+'</option>').join('')+'</select></label>'+
+       '<label><span>Conferente</span><select id="rqChecker"><option value="">Todos</option>'+d.filters.checkers.map(a=>'<option value="'+esc(a)+'" '+(R.checker===a?'selected':'')+'>'+esc(a)+'</option>').join('')+'</select></label>'+
+       '<label><span>Origem</span><select id="rqOrigin"><option value="">Todas</option>'+d.filters.origins.map(a=>'<option value="'+esc(a)+'" '+(R.origin===a?'selected':'')+'>'+esc(a)+'</option>').join('')+'</select></label>'+
+       '<button class="rq-refresh" id="rqRefresh">Atualizar</button>'+
+     '</div></div>'+
+     '<section class="rq-kpis">'+
+       '<article><span>Conformidade</span><strong>'+pct(s.compliance)+'</strong><small>'+int(s.binary_nonconformities)+' desvios</small></article>'+
+       '<article><span>Recebimentos</span><strong>'+int(s.receipts)+'</strong><small>avaliados no período</small></article>'+
+       '<article><span>Com NC</span><strong>'+int(s.nc_receipts)+'</strong><small>'+pct(s.receipts?s.nc_receipts/s.receipts:0)+' dos checks</small></article>'+
+       '<article><span>Produtos com NC</span><strong>'+int(s.unique_nc_skus)+'</strong><small>SKUs distintos</small></article>'+
+     '</section>'+
+     '<section class="panel rq-pallet-panel">'+
+       '<div class="rq-section-head"><div><h2>Puxada e avaria</h2><p>03.11.20 · 8 carretas · 28 paletes por viagem</p></div><div class="rq-section-actions">'+importButton+'</div></div>'+
+       '<div class="rq-pallet-layout"><div class="rq-pallet-kpis">'+
+         '<article><span>Paletes puxados</span><strong>'+int(s.pallets_pulled)+'</strong><small>'+int(s.trucks_pulled)+' viagens</small></article>'+
+         '<article><span>Paletes avariados</span><strong>'+int(s.damaged_pallets)+'</strong></article>'+
+         '<article><span>Índice de avaria</span><strong>'+pct(s.damage_rate)+'</strong></article>'+
+       '</div><div class="rq-pallet-chart">'+palletTrend(d.pallet_trend)+'</div></div>'+
+       (filtered?'<div class="rq-inline-note">Conferente e origem não alteram o volume puxado; apenas os demais indicadores.</div>':'')+
+       (Number(s.uncovered_damaged_pallets||0)>0?'<div class="rq-warning">'+int(s.uncovered_damaged_pallets)+' palete(s) avariado(s) estão fora de dias cobertos pelo 03.11.20.</div>':'')+
+       (missing?'<div class="rq-warning">Base 03.11.20 ainda sem cobertura para: '+esc(missing)+'.</div>':'')+
+     '</section>'+
+     '<section class="rq-grid-main">'+
+       '<article class="panel"><div class="rq-section-head"><h2>Evolução da conformidade</h2></div>'+lineChart(d.trend)+'</article>'+
+       '<article class="panel"><div class="rq-section-head"><h2>Não conformidades recorrentes</h2></div>'+bars(d.top_categories,'category')+'</article>'+
+     '</section>'+
+     '<section class="rq-grid-secondary">'+
+       '<article class="panel"><div class="rq-section-head"><h2>Conferentes</h2></div>'+people(d.by_checker)+'</article>'+
+       '<article class="panel"><div class="rq-section-head"><h2>Origem das cargas</h2></div>'+origins(d.by_origin)+'</article>'+
+     '</section>'+
+     '<section class="rq-grid-secondary">'+
+       '<article class="panel"><div class="rq-section-head"><h2>Produtos com mais NC</h2></div>'+bars(d.top_skus,'sku')+'</article>'+
+       '<article class="panel"><div class="rq-section-head"><h2>Carreteiros com NC</h2></div><div class="rq-drivers">'+d.top_drivers.map((x,i)=>'<div><span>'+(i+1)+'</span><strong>'+esc(x.name)+'</strong><b>'+int(x.nc_receipts)+'</b><small>'+pct(x.nc_rate)+'</small></div>').join('')+'</div></article>'+
+     '</section>'+
+     '<section class="panel rq-history"><div class="rq-section-head"><h2>Histórico</h2></div><div class="rq-table-wrap"><table><thead><tr><th>Data</th><th>Conferente</th><th>Carreteiro</th><th>Origem</th><th>Conformidade</th><th>Desvios</th><th>SKU(s)</th><th></th></tr></thead><tbody>'+history(d.history)+'</tbody></table></div></section>'+
+     (s.timestamp_mismatch?'<div class="rq-audit-note">'+int(s.timestamp_mismatch)+' registro(s) possuem divergência entre ano do envio e data do recebimento.</div>':'')+
    '</div>';
-   $('rqMonth').onchange=e=>{R.month=e.target.value;load();};$('rqChecker').onchange=e=>{R.checker=e.target.value;load();};$('rqOrigin').onchange=e=>{R.origin=e.target.value;load();};$('rqRefresh').onclick=()=>load(true);
+   $('rqMonth').onchange=e=>{R.month=e.target.value;load();};
+   $('rqChecker').onchange=e=>{R.checker=e.target.value;load();};
+   $('rqOrigin').onchange=e=>{R.origin=e.target.value;load();};
+   $('rqRefresh').onclick=()=>load(true);
    if($('rqImport031120')){
-     $('rqImport031120').onclick=()=>$('rqImport031120File').click();
+     $('rqImport031120').onclick=()=>{
+       if(R.month==='all'){alert('Selecione o mês do relatório antes de importar.');return;}
+       $('rqImport031120File').click();
+     };
      $('rqImport031120File').onchange=async e=>{
        const file=e.target.files?.[0];if(!file)return;
        const b=$('rqImport031120'),old=b.textContent;
        try{
          b.disabled=true;b.textContent='Importando...';
-         const d=await import031120File(file),x=d?.import||{};
-         alert('03.11.20 importado. '+int(x.truck_count)+' puxada(s) · '+int(x.pallets_pulled)+' paletes · '+date(x.min_date)+' a '+date(x.max_date)+'.');
+         const out=await import031120File(file),x=out?.import||{};
+         alert('03.11.20 importado: '+int(x.truck_count)+' viagem(ns) · '+int(x.pallets_pulled)+' paletes.');
          await load(true);
        }catch(err){alert(err?.message||String(err))}
        finally{b.disabled=false;b.textContent=old;e.target.value=''}
