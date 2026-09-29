@@ -428,9 +428,9 @@
       const desired = classOrder.includes(x.actualClass) ? x.actualClass : null;
       if (desired) {
         const free = emptyByZone[desired] && emptyByZone[desired][0];
-        suggestion = free ? 'Realocar para ' + free + ' (Zona ' + desired + ').' : 'Realocar para uma posição da Zona ' + desired + '.';
+        suggestion = free ? 'Mover para ' + free + ' (Faixa ' + desired + ').' : 'Mover para uma posição da Faixa ' + desired + '.';
       } else {
-        suggestion = 'Separar as curvas misturadas e realocar cada SKU para sua zona.';
+        suggestion = 'Separar os produtos e mover cada SKU para a faixa da sua curva.';
       }
       return Object.assign({},x,{suggestion:suggestion,severity:severity(x)});
     }).sort((a,b)=>b.severity-a.severity || a.address.localeCompare(b.address,'pt-BR',{numeric:true}));
@@ -509,11 +509,11 @@
     }
     const rows = list.map(x => {
       const products = x.rows.slice(0,2).map(r => String(r.sku_code || '') + (r.sku_name ? ' · ' + r.sku_name : '')).join(' / ');
-      return '<tr><td><strong>' + esc(x.address) + '</strong></td><td><span class="abc-curve-pill curve-'+String(x.actualClass||'').charAt(0).toLowerCase()+'">'+esc(x.actualClass)+'</span></td><td>Curva '+esc(x.zone)+'</td><td><small>' + esc(products || '—') + '</small></td><td>' + esc(x.suggestion) + '</td></tr>';
+      return '<tr><td><strong>' + esc(x.address) + '</strong></td><td><span class="abc-curve-pill curve-'+String(x.actualClass||'').charAt(0).toLowerCase()+'">'+esc(x.actualClass)+'</span></td><td>Faixa '+esc(x.zone)+'</td><td><small>' + esc(products || '—') + '</small></td><td>' + esc(x.suggestion) + '</td></tr>';
     }).join('');
     return '<section class="panel abc-actions-panel">' +
       '<div class="panel-heading"><div><h2>Ajustes prioritários</h2><small>'+matrix.actions.length+' desvio'+(matrix.actions.length===1?'':'s')+'</small></div></div>' +
-      '<div class="stock-table-wrap"><table><thead><tr><th>Endereço</th><th>Atual</th><th>Ideal</th><th>Produto</th><th>Ação</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="stock-table-wrap"><table><thead><tr><th>Endereço</th><th>Curva do produto</th><th>Faixa atual</th><th>Produto</th><th>Ação</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
     '</section>';
   }
 
@@ -591,7 +591,7 @@
     const curveCounts = curveStats(curveItems).counts;
     const actions = matrix.actions.slice(0,12);
     const actionRows = actions.map(x =>
-      '<tr><td><strong>'+esc(x.address)+'</strong></td><td><span class="abc-curve-pill curve-'+String(x.curve||'').toLowerCase()+'">'+esc(x.curve)+'</span></td><td>Curva '+esc(x.zone)+'</td><td><small>'+esc(String(x.sku||'')+(x.name?' · '+x.name:''))+'</small></td><td>Reposicionar para a faixa da Curva '+esc(x.curve)+'.</td></tr>'
+      '<tr><td><strong>'+esc(x.address)+'</strong></td><td><span class="abc-curve-pill curve-'+String(x.curve||'').toLowerCase()+'">'+esc(x.curve)+'</span></td><td>Faixa '+esc(x.zone)+'</td><td><small>'+esc(String(x.sku||'')+(x.name?' · '+x.name:''))+'</small></td><td>Mover para a Faixa '+esc(x.curve)+'.</td></tr>'
     ).join('');
 
     return '<div class="abc-adherence-shell">' +
@@ -608,7 +608,7 @@
         '<div class="abc-zone-grid">' + classOrder.map(c=>'<article class="abc-zone-card zone-'+c.toLowerCase()+'"><div class="abc-zone-head"><span>Curva '+c+'</span><strong>'+matrix.counts[c]+'</strong></div><small>'+(c==='A'?'Frente':c==='B'?'Intermediária':'Fundo')+'</small></article>').join('') + '</div>' +
       '</section>' +
       (actions.length
-        ? '<section class="panel abc-actions-panel"><div class="panel-heading"><div><h2>Ajustes prioritários</h2><small>'+matrix.actions.length+' desvios</small></div></div><div class="stock-table-wrap"><table><thead><tr><th>Posição</th><th>Atual</th><th>Ideal</th><th>Produto</th><th>Ação</th></tr></thead><tbody>'+actionRows+'</tbody></table></div></section>'
+        ? '<section class="panel abc-actions-panel"><div class="panel-heading"><div><h2>Ajustes prioritários</h2><small>'+matrix.actions.length+' desvios</small></div></div><div class="stock-table-wrap"><table><thead><tr><th>Posição</th><th>Curva do produto</th><th>Faixa atual</th><th>Produto</th><th>Ação</th></tr></thead><tbody>'+actionRows+'</tbody></table></div></section>'
         : '<section class="panel abc-actions-panel"><div class="panel-heading"><h2>Ajustes</h2></div><div class="abc-all-good">Nenhum ajuste prioritário.</div></section>') +
     '</div>';
   }
