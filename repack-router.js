@@ -25,7 +25,7 @@
     if(!r.ok)throw new Error(d.error||'Falha no módulo Repack');
     return d;
   }
-  function ensureAssets(){if(!$('repackCss')){const l=document.createElement('link');l.id='repackCss';l.rel='stylesheet';l.href='repack-v2.css?v=20260929-1';document.head.appendChild(l)}}
+  function ensureAssets(){if(!$('repackCss')){const l=document.createElement('link');l.id='repackCss';l.rel='stylesheet';l.href='repack-v2.css?v=20260929-2';document.head.appendChild(l)}}
   function ensureView(){let v=$('repackView');if(v)return v;v=document.createElement('section');v.id='repackView';v.className='view hidden';document.querySelector('main')?.appendChild(v);return v}
   function addNav(){
     if(document.querySelector('[data-view="repack"]'))return;
@@ -69,27 +69,44 @@
     const root=ensureView(),a=selectedAgg(),des=procAgg(['bombona'],a),rep=procAgg(['repack','bag','devolucao'],a);
     const repAvg=rep.tasks?rep.seconds/rep.tasks:0,desDays=dayCount(des),desAvg=dailyAverage(des);
     const repSpb=rep.boxes?rep.seconds/rep.boxes:0,desSpu=des.boxes?des.seconds/des.boxes:0;
-    const meta=Number(S.data?.default_target_seconds_per_box||170),trend=yearTrend(),through=currentDataThrough(),targets=targetMap();
+    const meta=Number(S.data?.default_target_seconds_per_box||170),trend=yearTrend();
     const repUnitStatus=repSpb?(repSpb<=meta?'OK':'ACIMA'):'—';
     const desStatus=desAvg?(desAvg<=DESPEJO_DAILY_TARGET?'OK':'ACIMA'):'—';
+    const active=S.data?.active_tasks||[];
     root.innerHTML=`
       <div class="repack-toolbar">
         <div class="repack-actions"><label>Mês<select id="repackMonth">${monthOptions()}</select></label><button class="outline-button" id="repackRefresh">Atualizar</button><a class="primary-button repack-link" href="${TIMER_URL}" target="_blank" rel="noopener">Abrir cronômetro ↗</a></div>
       </div>
-      <section class="repack-kpis">
-        <article class="metric-card"><p>Caixas Repack</p><strong>${nfi.format(rep.boxes)}</strong><small>${nfi.format(rep.tasks)} apontamentos</small></article>
-        <article class="metric-card"><p>Tempo médio Repack</p><strong>${fmtDuration(repAvg)}</strong><small>média por apontamento</small></article>
-        <article class="metric-card ${repSpb&&repSpb<=meta?'repack-ok':'repack-warn'}"><p>Repack / caixa</p><strong>${fmtPerBox(repSpb)}</strong><small>Meta base ${fmtPerBox(meta)} · ${repUnitStatus}</small></article>
-        <article class="metric-card"><p>Unidades Despejo</p><strong>${nfi.format(des.boxes)}</strong><small>${nfi.format(desDays)} dias com despejo</small></article>
-        <article class="metric-card ${desAvg&&desAvg<=DESPEJO_DAILY_TARGET?'repack-ok':'repack-warn'}"><p>Tempo médio Despejo</p><strong>${fmtDuration(desAvg)}</strong><small>média diária do mês · meta 50 min · ${desStatus}</small></article>
-        <article class="metric-card"><p>Despejo / unidade</p><strong>${fmtPerBox(desSpu)}</strong><small>tempo médio por unidade</small></article>
+
+      <section class="repack-summary-grid">
+        <article class="repack-process-card">
+          <div class="repack-process-head"><div><span>REPACK</span><strong>Produtividade</strong></div><small>${nfi.format(rep.tasks)} apontamentos</small></div>
+          <div class="repack-process-metrics">
+            <div class="repack-mini-metric"><span>Caixas</span><strong>${nfi.format(rep.boxes)}</strong><small>volume apontado</small></div>
+            <div class="repack-mini-metric"><span>Tempo médio</span><strong>${fmtDuration(repAvg)}</strong><small>por apontamento</small></div>
+            <div class="repack-mini-metric"><span>Por caixa</span><strong>${fmtPerBox(repSpb)}</strong><small>Meta ${fmtPerBox(meta)} <b class="repack-inline-status ${repSpb&&repSpb<=meta?'ok':'bad'}">${repUnitStatus}</b></small></div>
+          </div>
+        </article>
+
+        <article class="repack-process-card despejo">
+          <div class="repack-process-head"><div><span>DESPEJO</span><strong>Produtividade</strong></div><small>${nfi.format(desDays)} dias com despejo</small></div>
+          <div class="repack-process-metrics">
+            <div class="repack-mini-metric"><span>Unidades</span><strong>${nfi.format(des.boxes)}</strong><small>volume apontado</small></div>
+            <div class="repack-mini-metric"><span>Tempo médio</span><strong>${fmtDuration(desAvg)}</strong><small>média diária · meta 50 min <b class="repack-inline-status ${desAvg&&desAvg<=DESPEJO_DAILY_TARGET?'ok':'bad'}">${desStatus}</b></small></div>
+            <div class="repack-mini-metric"><span>Por unidade</span><strong>${fmtPerBox(desSpu)}</strong><small>tempo médio por un.</small></div>
+          </div>
+        </article>
       </section>
-      <section class="repack-grid">
-        <article class="panel"><div class="panel-heading"><h2>Resultado por atividade</h2></div>${activityTable(a)}</article>
-        <article class="panel"><div class="panel-heading"><h2>Cronômetros em andamento</h2></div>${activeTimers()}</article>
+
+      ${active.length?`<section class="panel repack-active-panel"><div class="panel-heading"><h2>Cronômetros em andamento</h2></div>${activeTimers()}</section>`:''}
+
+      <section class="panel repack-activity-panel">
+        <div class="panel-heading"><h2>Resultado por atividade</h2></div>
+        ${activityTable(a)}
       </section>
+
       <section class="panel repack-trend"><div class="panel-heading"><h2>Evolução 2026</h2></div>${trendTable(trend,meta)}</section>
-      <section class="panel repack-history"><div class="panel-heading"><h2>Apontamentos · ${monthLabel(S.month)}</h2></div>${liveTable(S.data?.selected_tasks||[],targets,meta)}</section>
+
       ${role()==='admin'?adminSection():''}
     `;
     bind();
