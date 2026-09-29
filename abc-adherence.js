@@ -10,6 +10,9 @@
   const compact = value => String(value || '').trim().toUpperCase().replace(/^([A-Z]+)0+(\d)/,'$1$2').replace(/[^A-Z0-9]/g,'');
   const areaLabel = area => area === 'Regulador' ? 'Estoque Geral' : area;
   const classOrder = ['A','B','C'];
+  // Pegada física do Picking no croqui do Regulador.
+  // Limites convertidos do retângulo real indicado no mapa para a mesma malha col/row dos endereços.
+  const REGULADOR_PICKING_RECT = { minX: 74, maxX: 99, minY: 16, maxY: 50 };
 
   async function post(url, action, payload) {
     const res = await fetch(url, {
@@ -173,20 +176,24 @@
     return finalizeCandidates(map);
   }
 
+  function distanceToRect(x, y, rect) {
+    const dx = x < rect.minX ? rect.minX - x : x > rect.maxX ? x - rect.maxX : 0;
+    const dy = y < rect.minY ? rect.minY - y : y > rect.maxY ? y - rect.maxY : 0;
+    return Math.hypot(dx,dy);
+  }
+
   function pickingReferencePoints(stock, area, candidates) {
+    // Marketplace mantém sua referência própria porque usa outra malha física.
     const byKey = new Map(candidates.map(c => [c.key,c]));
     const target = stock.snapshot && stock.snapshot.payload && stock.snapshot.payload.targets
       ? stock.snapshot.payload.targets[area]
       : null;
-
-    // Estoque Geral e Marketplace usam a frente física voltada ao Picking
-    // já mapeada na base de ruas. Câmara Fria usa sua borda de acesso.
     const mapped = [];
     (target && target.monitored ? target.monitored : []).forEach(m => {
       const c = byKey.get(compact(m.address));
       if (c && Number.isFinite(c.x) && Number.isFinite(c.y)) mapped.push({x:c.x,y:c.y});
     });
-    if (area !== 'Câmara Fria' && mapped.length) return mapped;
+    if (mapped.length) return mapped;
 
     const positioned = candidates.filter(c=>Number.isFinite(c.x)&&Number.isFinite(c.y));
     if (!positioned.length) return [];
@@ -195,13 +202,15 @@
   }
 
   function rankCandidates(stock, area, candidates) {
-    const refs = pickingReferencePoints(stock,area,candidates);
+    const refs = area === 'Regulador' ? [] : pickingReferencePoints(stock,area,candidates);
     const positioned = candidates.filter(c=>Number.isFinite(c.x)&&Number.isFinite(c.y));
     const fallbackY = positioned.length ? Math.min(...positioned.map(c=>c.y)) : 0;
 
     const withScore = candidates.map((c,index) => {
       let distance;
-      if (Number.isFinite(c.x) && Number.isFinite(c.y) && refs.length) {
+      if (Number.isFinite(c.x) && Number.isFinite(c.y) && area === 'Regulador') {
+        distance = distanceToRect(c.x,c.y,REGULADOR_PICKING_RECT);
+      } else if (Number.isFinite(c.x) && Number.isFinite(c.y) && refs.length) {
         distance = Math.min(...refs.map(p=>Math.hypot(c.x-p.x,c.y-p.y)));
       } else if (Number.isFinite(c.y)) {
         distance = Math.abs(c.y-fallbackY);
@@ -214,7 +223,7 @@
     withScore.sort((a,b)=>a.score-b.score || (a.y||9999)-(b.y||9999) || (a.x||9999)-(b.x||9999) || a.address.localeCompare(b.address,'pt-BR',{numeric:true}));
     return {
       items:withScore,
-      basis:'distância física ao Picking'
+      basis:area === 'Regulador' ? 'distância ao perímetro físico do Picking' : 'distância física ao Picking'
     };
   }
 
