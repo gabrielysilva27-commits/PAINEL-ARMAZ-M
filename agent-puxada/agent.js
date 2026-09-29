@@ -12,8 +12,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.97";
-// 3.2.97: aceita a janela compacta 03.11.20 do PC da Puxada no fallback geométrico.
+const VERSION = "3.2.98";
+// 3.2.98: no 03.11.20 classificação Mapa, aceita exportação sem coluna explícita de paletes (1 linha = 1 palete).
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
