@@ -13,7 +13,7 @@ const updater = require("./lib/update");
 
 const ROOT = __dirname;
 const VERSION = "3.2.90";
-// 3.2.90: executa a recuperação inicial do 03.11.20 imediatamente quando solicitada pelo servidor.
+// 3.2.90: executa imediatamente a recuperação inicial do 03.11.20 solicitada pelo servidor.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
