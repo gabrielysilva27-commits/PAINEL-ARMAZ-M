@@ -108,6 +108,15 @@
   font:700 20px Montserrat,sans-serif;
 }
 
+.temp-overview-number em{
+  display:block;
+  margin-top:1px;
+  color:#a0a4aa;
+  font-size:7px;
+  font-style:normal;
+  font-weight:600;
+}
+
 .temp-status-block{
   display:grid;
   align-content:center;
@@ -357,9 +366,12 @@
 }
 
 .temp-control-title small{
-  color:#a0a4aa;
+  padding:4px 7px;
+  border-radius:999px;
+  background:#f5f6f7;
+  color:#989ca2;
   font-size:7.5px;
-  font-weight:600;
+  font-weight:700;
 }
 
 .temp-chart-tabs{
