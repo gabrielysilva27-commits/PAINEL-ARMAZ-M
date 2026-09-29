@@ -51,8 +51,9 @@
   $('employeeInput').addEventListener('input',()=>{clearTimeout(employeeTimer);$('employeeFunction').value='';const q=$('employeeInput').value.trim();if(q.length<2){$('employeeResults').classList.add('hidden');return;}employeeTimer=setTimeout(async()=>{try{const d=await call('employee_search',{query:q});$('employeeResults').innerHTML=d.employees.map(x=>'<button type="button" class="search-result" data-name="'+escapeHtml(x.employee_name)+'" data-job="'+escapeHtml(x.job_title)+'" data-shift="'+escapeHtml(x.shift||'')+'"><strong>'+escapeHtml(x.employee_name)+'</strong><small>'+escapeHtml(x.job_title)+(x.shift?' · Turno '+escapeHtml(x.shift):'')+'</small></button>').join('')||'<div class="search-result">Nenhum funcionário encontrado.</div>';$('employeeResults').classList.remove('hidden');}catch(e){toast(e.message,true);}},260);});
   $('employeeResults').onclick=e=>{const b=e.target.closest('button[data-name]');if(!b)return;$('employeeInput').value=b.dataset.name;$('employeeFunction').value=b.dataset.job;$('employeeResults').classList.add('hidden');if(!shift&&b.dataset.shift){const sb=$('shiftOptions').querySelector('[data-value="'+b.dataset.shift+'"]');sb?.click();}};
 
-  function addItem(values={}){
-    const node=$('itemTemplate').content.firstElementChild.cloneNode(true),list=$('itemsList');list.appendChild(node);
+  function addItem(values={},prepend=false){
+    const node=$('itemTemplate').content.firstElementChild.cloneNode(true),list=$('itemsList');
+    if(prepend&&list.firstElementChild)list.insertBefore(node,list.firstElementChild);else list.appendChild(node);
     const renumber=()=>[...list.children].forEach((x,i)=>x.querySelector('.item-title').textContent='Produto '+(i+1));renumber();
     node.querySelector('.remove-item').onclick=()=>{if(list.children.length===1)return toast('O B.O. precisa ter pelo menos um produto.',true);node.remove();renumber();};
     const code=node.querySelector('.sku-input'),name=node.querySelector('.sku-name'),results=node.querySelector('.sku-results');
@@ -60,7 +61,11 @@
     code.addEventListener('input',()=>{name.value='';clearTimeout(skuTimers.get(code));const q=code.value.trim();if(!q){results.classList.add('hidden');return;}skuTimers.set(code,setTimeout(async()=>{try{const d=await call('catalog_search',{query:q});results.innerHTML=d.items.map(x=>'<button type="button" class="search-result" data-code="'+escapeHtml(x.sku_code)+'" data-name="'+escapeHtml(x.sku_name)+'"><strong>'+escapeHtml(x.sku_code)+'</strong><small>'+escapeHtml(x.sku_name)+'</small></button>').join('')||'<div class="search-result">Código não encontrado no 01.11.</div>';results.classList.remove('hidden');}catch(e){toast(e.message,true);}},220));});
     results.onclick=e=>{const b=e.target.closest('button[data-code]');if(!b)return;code.value=b.dataset.code;name.value=b.dataset.name;results.classList.add('hidden');};
   }
-  $('addProductButton').onclick=()=>addItem();
+  $('addProductButton').onclick=()=>{
+    addItem({},true);
+    const first=$('itemsList').firstElementChild;
+    first?.querySelector('.sku-input')?.focus();
+  };
 
   function updateEditingUi(){
     const editing=!!editingOccurrence,confronting=!!confrontSource;
