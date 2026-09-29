@@ -8,7 +8,7 @@ const AREAS=["Câmara Fria","Retornável","Descartável","Repack","Marketplace"]
 const SHIFTS=["MANHÃ","TARDE","NOITE"] as const;
 const START_DATE="2026-09-29";
 const CONFIG:any={
-  "Câmara Fria":{points:1,morning_only:true,ok_max:5,critical_min:9},
+  "Câmara Fria":{points:1,morning_only:true,ok_max:5,critical_min:9.000001},
   "Retornável":{points:2,morning_only:false,ok_max:22,critical_min:25.000001},
   "Descartável":{points:2,morning_only:false,ok_max:22,critical_min:25.000001},
   "Repack":{points:1,morning_only:false,ok_max:22,critical_min:25.000001},
@@ -34,7 +34,7 @@ async function requireBoUser(req:Request){
   return u||null;
 }
 function statusFor(area:string,temp:number){
-  if(area==="Câmara Fria") return temp<=5?"ok":temp<9?"attention":"critical";
+  if(area==="Câmara Fria") return temp<=5?"ok":temp<=9?"attention":"critical";
   return temp<=22?"ok":temp<=25?"attention":"critical";
 }
 function guidance(status:string){
