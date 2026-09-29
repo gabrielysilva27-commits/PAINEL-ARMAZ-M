@@ -13,7 +13,7 @@ const updater = require("./lib/update");
 
 const ROOT = __dirname;
 const VERSION = "3.2.91";
-// 3.2.91: adiciona telemetria completa da tarefa 03.11.20 para diagnóstico e validação do backfill.
+// 3.2.91: registra telemetria completa da tarefa 03.11.20 para diagnóstico e validação do backfill.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
