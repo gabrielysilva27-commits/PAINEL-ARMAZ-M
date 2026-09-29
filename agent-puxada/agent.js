@@ -12,8 +12,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.101";
-// 3.2.101: permite FORCE_RUN do 03.11.20 sem aguardar inatividade; mantém gate normal nas execuções regulares.
+const VERSION = "3.2.102";
+// 3.2.102: reforça ativação do Edge com retries; pacote completo adiciona Parar/Reiniciar no launcher.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
