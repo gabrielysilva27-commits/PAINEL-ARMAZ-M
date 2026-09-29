@@ -305,37 +305,56 @@ static bool HasForeground(HWND hwnd) {
 // bring the Promax window to the top, then immediately detach again.
 static bool FocusWindow(HWND hwnd) {
   if (!hwnd || !IsWindow(hwnd)) return false;
-  if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);
 
-  const DWORD currentThread = GetCurrentThreadId();
-  const HWND foreground = GetForegroundWindow();
-  const DWORD foregroundThread = foreground
-      ? GetWindowThreadProcessId(foreground, nullptr) : 0;
-  const DWORD targetThread = GetWindowThreadProcessId(hwnd, nullptr);
+  // Windows may reject the first SetForegroundWindow call when the Edge window
+  // belongs to another input queue. Retry a few times and briefly synthesize
+  // ALT on later attempts, which legally unlocks foreground activation for the
+  // current interactive session. We still verify the resulting foreground
+  // window before sending any report clicks or keystrokes.
+  for (int attempt = 0; attempt < 6; ++attempt) {
+    if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);
 
-  bool attachedForeground = false;
-  bool attachedTarget = false;
-  if (foregroundThread && foregroundThread != currentThread)
-    attachedForeground = AttachThreadInput(currentThread, foregroundThread, TRUE) != FALSE;
-  if (targetThread && targetThread != currentThread && targetThread != foregroundThread)
-    attachedTarget = AttachThreadInput(currentThread, targetThread, TRUE) != FALSE;
+    const DWORD currentThread = GetCurrentThreadId();
+    const HWND foreground = GetForegroundWindow();
+    const DWORD foregroundThread = foreground
+        ? GetWindowThreadProcessId(foreground, nullptr) : 0;
+    const DWORD targetThread = GetWindowThreadProcessId(hwnd, nullptr);
 
-  ShowWindow(hwnd, SW_SHOW);
-  SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0,
-      SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-  BringWindowToTop(hwnd);
-  SetForegroundWindow(hwnd);
-  SetActiveWindow(hwnd);
-  Sleep(220);
+    bool attachedForeground = false;
+    bool attachedTarget = false;
+    if (foregroundThread && foregroundThread != currentThread)
+      attachedForeground = AttachThreadInput(currentThread, foregroundThread, TRUE) != FALSE;
+    if (targetThread && targetThread != currentThread && targetThread != foregroundThread)
+      attachedTarget = AttachThreadInput(currentThread, targetThread, TRUE) != FALSE;
 
-  const bool focused = HasForeground(hwnd);
+    ShowWindow(hwnd, SW_RESTORE);
+    SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    BringWindowToTop(hwnd);
 
-  if (attachedTarget)
-    AttachThreadInput(currentThread, targetThread, FALSE);
-  if (attachedForeground)
-    AttachThreadInput(currentThread, foregroundThread, FALSE);
+    if (attempt > 0) {
+      Key(VK_MENU);
+      Key(VK_MENU, true);
+      Sleep(60);
+    }
 
-  return focused;
+    SetForegroundWindow(hwnd);
+    BringWindowToTop(hwnd);
+    SetActiveWindow(hwnd);
+    Sleep(220 + attempt * 80);
+
+    const bool focused = HasForeground(hwnd);
+
+    if (attachedTarget)
+      AttachThreadInput(currentThread, targetThread, FALSE);
+    if (attachedForeground)
+      AttachThreadInput(currentThread, foregroundThread, FALSE);
+
+    if (focused) return true;
+    Sleep(140);
+  }
+
+  return false;
 }
 static bool ActivatePromaxTab(HWND hwnd) {
   wchar_t currentTitle[512] = {};
