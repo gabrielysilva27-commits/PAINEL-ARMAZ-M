@@ -35,13 +35,13 @@
 
   function overview(s,selected){
     const stats=selected
-      ? '<div class="temp-overview-number"><span>Leituras</span><strong>'+num(s.readings)+'</strong></div>'+
+      ? '<div class="temp-overview-number"><span>Total de leituras</span><strong>'+num(s.readings)+'</strong><em>período selecionado</em></div>'+
         '<div class="temp-overview-number"><span>Média das leituras</span><strong>'+temp(selected.avg_temp)+'</strong></div>'+
         '<div class="temp-overview-number"><span>Pico registrado</span><strong>'+temp(selected.max_temp)+'</strong></div>'
-      : '<div class="temp-overview-number wide"><span>Leituras no mês</span><strong>'+num(s.readings)+'</strong></div>';
+      : '<div class="temp-overview-number wide"><span>Total de leituras</span><strong>'+num(s.readings)+'</strong><em>período selecionado</em></div>';
     return '<section class="temp-overview">'+
       '<div class="temp-overview-numbers">'+stats+'</div>'+
-      '<div class="temp-status-block"><small>Leituras por faixa</small><div class="temp-status-summary">'+
+      '<div class="temp-status-block"><small>Classificação das leituras</small><div class="temp-status-summary">'+
         '<span class="ok"><i></i><b>'+num(s.ok)+'</b> OK</span>'+
         '<span class="attention"><i></i><b>'+num(s.attention)+'</b> Atenção</span>'+
         '<span class="critical"><i></i><b>'+num(s.critical)+'</b> Crítico</span>'+
@@ -106,7 +106,7 @@
     const avg=vals.reduce((a,b)=>a+b,0)/vals.length;
     return '<div class="temp-chart-wrap">'+
       '<div class="temp-chart-legend"><span class="ok"><i></i>OK</span><span class="attention"><i></i>Atenção</span><span class="critical"><i></i>Crítico</span></div>'+
-      '<div class="temp-chart-stat"><span>'+pts.length+' dias</span><strong>'+temp(avg)+' média dos dias</strong></div>'+
+      '<div class="temp-chart-stat"><span>'+pts.length+' dias com leitura</span><strong>'+temp(avg)+' média diária</strong></div>'+
       '<svg class="temp-chart" style="--temp-chart-color:'+areaColor+'" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Carta de controle de '+esc(area)+'">'+
         '<rect class="temp-zone critical" x="'+L+'" y="'+Tp+'" width="'+plotW+'" height="'+Math.max(0,critY-Tp)+'"></rect>'+
         '<rect class="temp-zone attention" x="'+L+'" y="'+critY+'" width="'+plotW+'" height="'+Math.max(0,okY-critY)+'"></rect>'+
@@ -133,7 +133,7 @@
     const series=(d.control||[]).find(x=>x.area===area);
     const tabs=T.area==='all'?'<div class="temp-chart-tabs">'+AREAS.map(a=>'<button type="button" data-chart-area="'+esc(a)+'" class="'+(a===area?'active':'')+'" style="--tab-color:'+(AREA_COLORS[a]||'#f47a20')+'">'+esc(a)+'</button>').join('')+'</div>':'';
     return '<section class="panel temp-control-panel">'+
-      '<div class="temp-control-head"><div class="temp-control-title"><h2>Carta de controle</h2><span>'+esc(area)+'</span><em>'+esc((RULES[area]||{}).measure||'')+'</em><small>Cada ponto = média do dia</small></div>'+tabs+'</div>'+
+      '<div class="temp-control-head"><div class="temp-control-title"><h2>Carta de controle</h2><span>'+esc(area)+'</span><small>Média diária</small></div>'+tabs+'</div>'+
       chartSvg(area,series?.points||[])+rulesBlock(area)+
     '</section>';
   }
