@@ -309,3 +309,5 @@ main().catch(function (err) {
 });
 
 // 3.2.104: inclui a carreta histórica 225 no cálculo do 03.11.20 e amplia a faixa consultada para 225–312.
+
+// 3.2.104 final build: pacote consolidado com a carreta histórica 225.
