@@ -79,7 +79,6 @@
  }
  function render(){
    const root=$('receivingQualityView'),d=R.data;if(!root||!d)return;const s=d.summary;
-   const pull=d.pull_source||{},missing=(pull.missing_months||[]).map(m=>(MONTHS.find(x=>x[0]===m)||[m,m])[1]).join(', ');
    const filtered=R.checker||R.origin;
    const importButton=window.state?.user?.role==='admin'
      ?'<button class="rq-import-btn" id="rqImport031120" type="button">Importar 03.11.20</button><input id="rqImport031120File" type="file" accept=".xlsx,.xls,.csv,.txt,.inf" hidden>'
@@ -98,15 +97,13 @@
        '<article><span>Produtos com NC</span><strong>'+int(s.unique_nc_skus)+'</strong><small>SKUs distintos</small></article>'+
      '</section>'+
      '<section class="panel rq-pallet-panel">'+
-       '<div class="rq-section-head"><div><h2>Puxada e avaria</h2><p>03.11.20 · 8 carretas · 28 paletes por viagem</p></div><div class="rq-section-actions">'+importButton+'</div></div>'+
+       '<div class="rq-section-head"><div><h2>Puxada e avaria</h2></div><div class="rq-section-actions">'+importButton+'</div></div>'+
        '<div class="rq-pallet-layout"><div class="rq-pallet-kpis">'+
          '<article><span>Paletes puxados</span><strong>'+int(s.pallets_pulled)+'</strong><small>'+int(s.trucks_pulled)+' viagens</small></article>'+
          '<article><span>Paletes avariados</span><strong>'+int(s.damaged_pallets)+'</strong></article>'+
          '<article><span>Índice de avaria</span><strong>'+pct(s.damage_rate)+'</strong></article>'+
        '</div><div class="rq-pallet-chart">'+palletTrend(d.pallet_trend)+'</div></div>'+
-       (filtered?'<div class="rq-inline-note">Conferente e origem não alteram o volume puxado; apenas os demais indicadores.</div>':'')+
-       (Number(s.uncovered_damaged_pallets||0)>0?'<div class="rq-warning">'+int(s.uncovered_damaged_pallets)+' palete(s) avariado(s) estão fora de dias cobertos pelo 03.11.20.</div>':'')+
-       (missing?'<div class="rq-warning">Base 03.11.20 ainda sem cobertura para: '+esc(missing)+'.</div>':'')+
+       (filtered?'<div class="rq-inline-note">Conferente e origem não alteram o volume puxado.</div>':'')+
      '</section>'+
      '<section class="rq-grid-main">'+
        '<article class="panel"><div class="rq-section-head"><h2>Evolução da conformidade</h2></div>'+lineChart(d.trend)+'</article>'+
@@ -121,7 +118,6 @@
        '<article class="panel"><div class="rq-section-head"><h2>Carreteiros com NC</h2></div><div class="rq-drivers">'+d.top_drivers.map((x,i)=>'<div><span>'+(i+1)+'</span><strong>'+esc(x.name)+'</strong><b>'+int(x.nc_receipts)+'</b><small>'+pct(x.nc_rate)+'</small></div>').join('')+'</div></article>'+
      '</section>'+
      '<section class="panel rq-history"><div class="rq-section-head"><h2>Histórico</h2></div><div class="rq-table-wrap"><table><thead><tr><th>Data</th><th>Conferente</th><th>Carreteiro</th><th>Origem</th><th>Conformidade</th><th>Desvios</th><th>SKU(s)</th><th></th></tr></thead><tbody>'+history(d.history)+'</tbody></table></div></section>'+
-     (s.timestamp_mismatch?'<div class="rq-audit-note">'+int(s.timestamp_mismatch)+' registro(s) possuem divergência entre ano do envio e data do recebimento.</div>':'')+
    '</div>';
    $('rqMonth').onchange=e=>{R.month=e.target.value;load();};
    $('rqChecker').onchange=e=>{R.checker=e.target.value;load();};
