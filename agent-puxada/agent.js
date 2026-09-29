@@ -5,14 +5,15 @@ const path = require("path");
 const { AgentApi } = require("./lib/api");
 const { loadAgentToken } = require("./lib/secrets");
 const { parse020501 } = require("./lib/csv020501");
+const { parse031120 } = require("./lib/pull031120");
 const oorSync = require("./lib/oor-sync");
 const promax = require("./lib/promax");
 const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.88";
-// 3.2.88: OOR automático importa no máximo um LIBERAÇÃO CHEIO por dia e encerra a busca após concluir o dia.
+const VERSION = "3.2.89";
+// 3.2.89: adiciona atualização automática do Recebimento pelo relatório 03.11.20 (Mapa).
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -166,6 +167,34 @@ async function main() {
     }
   }
 
+  let last031120Check = 0;
+  async function maybeSync031120(force) {
+    if (!force && Date.now() - last031120Check < 5 * 60 * 1000) return;
+    last031120Check = Date.now();
+    try {
+      const state = await api.pull031120Status();
+      const task = state && state.pull031120;
+      if (!task || !task.enabled || task.complete || !task.date_from) return;
+      if (!await waitForQuietComputer(() => false)) return;
+      log("Recebimento 03.11.20: atualizando de " + task.date_from + " a " + task.date_to +
+        " · classificação Mapa · veículos " + task.vehicle_from + " a " + task.vehicle_to + ".");
+      const csvPath = await promax.export031120(task, config, ROOT, parse031120);
+      const parsed = parse031120(csvPath);
+      const done = await api.pull031120Import({
+        date_from: task.date_from,
+        date_to: task.date_to,
+        source_file: path.basename(csvPath),
+        raw_rows: parsed.raw_rows,
+        rows: parsed.rows
+      });
+      log("Recebimento 03.11.20 atualizado: " + done.result.days + " dia(s), " +
+        done.result.truck_count + " carreta(s) e " + done.result.pallets_pulled + " palete(s).");
+    } catch (e) {
+      const message = e && e.message ? e.message : String(e);
+      log("Falha na atualização automática 03.11.20: " + message, true);
+    }
+  }
+
   if (process.argv.indexOf("--check") >= 0) {
     // Update health checks validate the agent and API. Browser readiness is
     // evaluated by the normal polling loop and must not block installation.
@@ -187,6 +216,7 @@ async function main() {
     try {
       if (await maybeUpdate(false)) return;
       await maybeSyncOor(false);
+      await maybeSync031120(false);
       if (!await waitForQuietComputer(() => stopping)) break;
       const response = await api.poll(await info());
       job = response.job;
