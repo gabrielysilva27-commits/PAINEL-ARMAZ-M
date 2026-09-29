@@ -13,7 +13,7 @@ const updater = require("./lib/update");
 
 const ROOT = __dirname;
 const VERSION = "3.2.98";
-// 3.2.98: no 03.11.20 classificação Mapa, aceita exportação sem coluna explícita de paletes (1 linha = 1 palete).
+// 3.2.98: no 03.11.20 classificação Mapa, aceita exportação sem coluna explícita de paletes (1 linha = 1 palete).\n// 3.2.98 build trigger: publicar pacote após atualização do workflow.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
