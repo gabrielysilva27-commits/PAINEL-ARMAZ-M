@@ -60,44 +60,68 @@ function parse031120(file) {
     const map = findCol(h, ["MAPA"]);
     if (date >= 0 && vehicle >= 0 && map >= 0) {
       headerRow = r;
-      cols = {
-        date, vehicle, map,
-        pallets: findCol(h, [/PALLET/, /PALETE/, /PALLETES/, /PALETES/, /QTD.*PAL/, /QTDE.*PAL/])
-      };
+      cols = { date, vehicle, map };
       break;
     }
   }
   if (headerRow < 0 || !cols) throw new Error("031120_HEADER_NOT_FOUND: cabeçalho Data/Veículo/Mapa não encontrado.");
-  // No layout "Mapa" do 03.11.20 usado na Puxada, algumas exportações não
-  // trazem uma coluna explícita de paletes: cada linha representa um palete do
-  // mapa. Quando a coluna existir, usamos o valor informado; quando não existir,
-  // contabilizamos 1 palete por linha válida.
 
+  // Regra operacional do Recebimento:
+  // - somente linhas ENTRADA CDD;
+  // - uma puxada = combinação única Data + Veículo + Mapa;
+  // - a mesma carreta em outro mapa é uma nova puxada;
+  // - cada puxada representa exatamente 28 paletes.
   const days = new Map();
   let rawRows = 0;
+  let entranceRows = 0;
+
   for (let r = headerRow + 1; r < matrix.length; r++) {
     const row = matrix[r];
     const d = isoDate(row[cols.date]);
     const vehicle = String(row[cols.vehicle] || "").replace(/\D/g, "");
-    const map = String(row[cols.map] || "").trim();
-    if (!d || !vehicle || !map) continue;
-    const pallets = cols.pallets >= 0 ? Math.max(0, num(row[cols.pallets])) : 1;
+    const mapRaw = String(row[cols.map] || "").trim();
+    if (!d || !vehicle || !mapRaw) continue;
     rawRows++;
-    if (!days.has(d)) days.set(d, { vehicles: new Set(), vehicle_counts: {}, pallets: 0 });
-    const x = days.get(d);
-    x.vehicles.add(vehicle);
-    x.vehicle_counts[vehicle] = (x.vehicle_counts[vehicle] || 0) + 1;
-    x.pallets += pallets;
-  }
-  if (!rawRows) throw new Error("031120_NO_DATA: nenhuma linha válida foi reconhecida.");
 
-  const rows = [...days.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([pull_date, x]) => ({
-    pull_date,
-    truck_count: x.vehicles.size,
-    pallets_pulled: Math.round(x.pallets),
-    vehicle_counts: x.vehicle_counts
-  }));
-  return { raw_rows: rawRows, days: rows.length, pallet_mode: cols.pallets >= 0 ? "column" : "row_count", rows };
+    const rowText = norm(row.join(" | "));
+    if (!rowText.includes("ENTRADA CDD")) continue;
+    entranceRows++;
+
+    // Normaliza "01", "1", "000001" para o mesmo mapa sem perder textos não numéricos.
+    const mapDigits = mapRaw.replace(/\D/g, "");
+    const map = mapDigits ? String(Number(mapDigits)) : norm(mapRaw);
+    const tripKey = vehicle + "|" + map;
+
+    if (!days.has(d)) days.set(d, { trips: new Set(), vehicle_maps: {} });
+    const x = days.get(d);
+    if (x.trips.has(tripKey)) continue;
+    x.trips.add(tripKey);
+    if (!x.vehicle_maps[vehicle]) x.vehicle_maps[vehicle] = new Set();
+    x.vehicle_maps[vehicle].add(map);
+  }
+
+  if (!rawRows) throw new Error("031120_NO_DATA: nenhuma linha válida com Data/Veículo/Mapa foi reconhecida.");
+  if (!entranceRows) throw new Error("031120_ENTRADA_CDD_NOT_FOUND: nenhuma linha ENTRADA CDD foi encontrada.");
+
+  const rows = [...days.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([pull_date, x]) => {
+    const vehicle_counts = {};
+    for (const [vehicle, maps] of Object.entries(x.vehicle_maps)) vehicle_counts[vehicle] = maps.size;
+    const pulls = x.trips.size;
+    return {
+      pull_date,
+      truck_count: pulls,
+      pallets_pulled: pulls * 28,
+      vehicle_counts
+    };
+  });
+
+  return {
+    raw_rows: rawRows,
+    entrada_cdd_rows: entranceRows,
+    days: rows.length,
+    rule: "ENTRADA_CDD_UNIQUE_VEHICLE_MAP_X28",
+    rows
+  };
 }
 
 module.exports = { parse031120 };
