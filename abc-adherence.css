@@ -398,3 +398,46 @@
   .abc-current-score{text-align:left}
   .abc-adherence-kpis-compact{grid-template-columns:1fr 1fr}
 }
+
+
+/* Ajustes prioritários: colunas estáveis e leitura centralizada */
+.abc-actions-panel .abc-actions-table{
+  width:100%;
+  table-layout:fixed;
+}
+.abc-actions-panel .abc-actions-table .col-address{width:8%}
+.abc-actions-panel .abc-actions-table .col-curve{width:10%}
+.abc-actions-panel .abc-actions-table .col-zone{width:11%}
+.abc-actions-panel .abc-actions-table .col-product{width:33%}
+.abc-actions-panel .abc-actions-table .col-action{width:38%}
+.abc-actions-panel .abc-actions-table th,
+.abc-actions-panel .abc-actions-table td{
+  text-align:center;
+  vertical-align:middle;
+  padding:12px 10px;
+}
+.abc-actions-panel .abc-actions-table th{
+  font-size:9px;
+  letter-spacing:.01em;
+}
+.abc-actions-panel .abc-actions-table td{
+  line-height:1.4;
+}
+.abc-actions-panel .abc-actions-table td:first-child strong{
+  display:inline-block;
+  min-width:42px;
+}
+.abc-actions-panel .abc-actions-table td:nth-child(4) small{
+  max-width:none;
+  margin:0 auto;
+  line-height:1.35;
+}
+.abc-actions-panel .abc-actions-table td:nth-child(5){
+  color:#454b53;
+  font-size:9.8px;
+  padding-left:18px;
+  padding-right:18px;
+}
+@media(max-width:1100px){
+  .abc-actions-panel .abc-actions-table{min-width:920px}
+}
