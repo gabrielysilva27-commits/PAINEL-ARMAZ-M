@@ -14,12 +14,12 @@ function compareAgentVersions(a:any,b:any){
 }
 
 const code=(v:any)=>{let x=clean(v,40).replace(/^'+/,"").replace(/\.0+$/,"");if(/^\d+$/.test(x))x=String(Number(x));return x}
-function isoDate(v:any){const s=clean(v,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(s))throw new Error("Data inválida.");return s}
+function isoDate(v:any){const s=clean(v,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(s))throw new Error("Data inválida.");const [y,m,d]=s.split("-").map(Number),dt=new Date(Date.UTC(y,m-1,d));if(dt.getUTCFullYear()!==y||dt.getUTCMonth()!==m-1||dt.getUTCDate()!==d)throw new Error("Data inválida.");return s}
 function num(v:any,label:string,min=0){const n=Number(v);if(!Number.isFinite(n)||n<min)throw new Error(label+" inválida.");return Math.round(n*1000)/1000}
 function int(v:any,label:string,min=1){const n=Number(v);if(!Number.isInteger(n)||n<min)throw new Error(label+" inválido.");return n}
 const FACTORIES=["NOVA RIO","MACACU","PIRAI","JPA","MKP"] as const;
 const DRIVERS=["COELHO","RONALDO","MESSIAS","ANDERSON","RODRIGO","KAYQUE","DEIVID","NETO","V.HUGO","MKP"] as const;
-const TRUCK_PLATES:any={"246":"LSZ-9355","271":"LMZ-4G31","229":"KYI-8259","160":"KZJ-4694","231":"LSN-7312","264":"KZM-9D84","203":"LRN-7589","225":"LSE-4160","210":"LRW-5314","289":"RIX-8E72","298":"RKK-8G53","312":"TTZ5E13","MKTP":"MKTP"};
+const TRUCK_PLATES:any={"229":"KYI-8259","231":"LSN-7312","246":"LSZ-9355","264":"KZM-9D84","271":"LMZ-4G31","289":"RIX-8E72","298":"RKK-8G53","312":"TTZ5E13"};
 function receiptName(r:any){return [r.truck_number,r.factory_name,r.driver_name].filter(Boolean).join(" · ")}
 function receiptCode(){const d=new Date().toLocaleDateString("sv-SE",{timeZone:"America/Sao_Paulo"}).replace(/-/g,"");const a=crypto.getRandomValues(new Uint32Array(1))[0].toString(36).toUpperCase().slice(0,5);return "REC-"+d+"-"+a}
 function dayDiff(a:string,b:string){return Math.floor((Date.parse(b+"T12:00:00Z")-Date.parse(a+"T12:00:00Z"))/86400000)}
@@ -235,6 +235,7 @@ async function touchAgentNode(node:any,b:any,forceStatus?:string){
   const caps=Array.isArray(b.capabilities)?b.capabilities.map((x:any)=>clean(x,80)).filter(Boolean).slice(0,50):(node.capabilities||[]);
   const patch:any={hostname,agent_version:version,updater_version:clean(b.updater_version,20)||node.updater_version||null,capabilities:caps,calibration_ready:ready,last_seen_at:now,status,updated_at:now};
   if(!cooling&&status!=="error"){patch.cooldown_until=null;if(node.last_error)patch.last_error=null}
+  if(!ready&&clean(b.readiness_error,1000))patch.last_error=clean(b.readiness_error,1000);
   const {data,error}=await db.from("receiving_pull_agent_nodes").update(patch).eq("id",node.id).select("*").single();if(error)throw error;return data
 }
 async function latestAgentRelease(){
@@ -308,6 +309,131 @@ async function agentUpdateFile(node:any,b:any){
 }
 
 
+async function oorPolicyItems(versionId:string){
+  const rows:any[]=[];
+  for(let offset=0;;offset+=1000){
+    const {data,error}=await db.from("stock_policy_items").select("*").eq("version_id",versionId).order("sku_code").range(offset,offset+999);
+    if(error)throw error;rows.push(...(data||[]));if(!data||data.length<1000)break
+  }
+  return rows
+}
+async function activeOorSkus30d(referenceDate?:string){
+  let end=String(referenceDate||"");
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(end)){
+    const {data:latest,error:latestError}=await db.from("receiving_system_020501").select("report_date").not("report_date","is",null).order("report_date",{ascending:false}).limit(1).maybeSingle();
+    if(latestError)throw latestError;end=String(latest?.report_date||"")
+  }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(end))return{available:false,start:null,end:null,skus:new Set<string>()};
+  const d=new Date(end+"T00:00:00Z");d.setUTCDate(d.getUTCDate()-29);const start=d.toISOString().slice(0,10);
+  const skus=new Set<string>();
+  for(let offset=0;;offset+=1000){
+    const {data,error}=await db.from("receiving_system_020501").select("sku_code,system_qty").gte("report_date",start).lte("report_date",end).gt("system_qty",0).range(offset,offset+999);
+    if(error)throw error;for(const x of data||[])skus.add(String(x.sku_code||"").trim());if(!data||data.length<1000)break
+  }
+  return{available:skus.size>0,start,end,skus}
+}
+async function agentOorStatus(node:any){
+  let {data:state,error}=await db.from("stock_oor_agent_state").select("*").eq("agent_node_id",node.id).maybeSingle();if(error)throw error;
+  if(!state){
+    const {data:created,error:createError}=await db.from("stock_oor_agent_state").insert({agent_node_id:node.id,enabled:node.slot_code==="PUXADA",status:"idle"}).select("*").single();
+    if(createError)throw createError;state=created
+  }
+  const {data:latest,error:latestError}=await db.from("stock_oor_daily_summary").select("reference_date").order("reference_date",{ascending:false}).limit(1).maybeSingle();if(latestError)throw latestError;
+  return{
+    enabled:!!state.enabled,
+    root_path:state.root_path||null,
+    latest_date:latest?.reference_date?String(latest.reference_date):null,
+    last_scan_at:state.last_scan_at||null,
+    last_import_at:state.last_import_at||null,
+    last_reference_date:state.last_reference_date||null,
+    last_source_file:state.last_source_file||null,
+    status:state.status||"idle",
+    last_error:state.last_error||null,
+    diagnostic_requested:!!state.diagnostic_requested
+  }
+}
+async function agentOorDiagnostic(node:any,b:any){
+  const diagnostic=b.diagnostic&&typeof b.diagnostic==="object"?b.diagnostic:null;
+  if(!diagnostic)throw new Error("Diagnóstico OOR inválido.");
+  const source=clean(b.source_file,240)||null,ref=clean(b.reference_date,10);
+  const now=new Date().toISOString(),patch:any={last_diagnostic:diagnostic,diagnostic_requested:false,status:"idle",last_error:null,updated_at:now,last_scan_at:now};
+  if(source)patch.last_source_file=source;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(ref))patch.last_reference_date=ref;
+  const {data,error}=await db.from("stock_oor_agent_state").update(patch).eq("agent_node_id",node.id).select("*").maybeSingle();if(error)throw error;
+  return{ok:true,state:data||null}
+}
+async function agentOorScanState(node:any,b:any){
+  const allowed=["idle","scanning","waiting","error"],status=clean(b.status,30)||"idle";if(!allowed.includes(status))throw new Error("Status OOR inválido.");
+  const now=new Date().toISOString(),patch:any={status,last_scan_at:now,updated_at:now};
+  patch.last_error=status==="error"||status==="waiting"?(clean(b.error,1000)||null):null;
+  const source=clean(b.source_file,240);if(source)patch.last_source_file=source;
+  const ref=clean(b.reference_date,10);if(/^\d{4}-\d{2}-\d{2}$/.test(ref))patch.last_reference_date=ref;
+  const {data,error}=await db.from("stock_oor_agent_state").update(patch).eq("agent_node_id",node.id).select("*").maybeSingle();if(error)throw error;
+  return{ok:true,state:data||null}
+}
+async function agentOorImport(node:any,b:any){
+  const sourceName=clean(b.source_file,240),sourceKey=sourceName.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase();
+  if(!sourceKey.includes("LIBERACAO CHEIO"))throw new Error("O OOR aceita somente o arquivo LIBERAÇÃO CHEIO.");
+  const referenceDate=isoDate(b.reference_date),incoming=Array.isArray(b.rows)?b.rows:[];
+  const {data:existingDay,error:existingDayError}=await db.from("stock_oor_daily_summary").select("reference_date,source").eq("reference_date",referenceDate).maybeSingle();
+  if(existingDayError)throw existingDayError;
+  if(existingDay){
+    const now=new Date().toISOString();
+    await db.from("stock_oor_agent_state").update({status:"idle",last_scan_at:now,last_reference_date:referenceDate,last_source_file:existingDay.source||sourceName,last_error:null,updated_at:now}).eq("agent_node_id",node.id);
+    return{ok:true,skipped:true,reason:"already_imported_today",reference_date:referenceDate,source_file:existingDay.source||sourceName}
+  }
+  if(!incoming.length||incoming.length>5000)throw new Error("Base 02.05.02 vazia ou acima do limite.");
+
+  const {data:policy,error:policyError}=await db.from("stock_policy_versions").select("*").eq("status","approved").lte("effective_start",referenceDate).gte("effective_end",referenceDate).order("effective_start",{ascending:false}).limit(1).maybeSingle();
+  if(policyError)throw policyError;if(!policy)throw new Error("Não existe Política de Estoque vigente para esta data.");
+
+  const policyRows=await oorPolicyItems(policy.id),policyBySku=new Map<string,any>(),activity=await activeOorSkus30d(referenceDate);
+  for(const x of policyRows)policyBySku.set(String(x.sku_code||"").trim(),x);
+
+  const incomingBySku=new Map<string,any>();
+  for(const r of incoming){
+    const sku=code(r.sku_code),qty=Number(r.available_qty);
+    if(!sku||!/^[0-9]+$/.test(sku)||!Number.isFinite(qty))throw new Error("Código ou quantidade inválida na base 02.05.02.");
+    const prev=incomingBySku.get(sku);
+    if(prev){prev.available_qty+=qty;if(!prev.sku_name&&r.sku_name)prev.sku_name=clean(r.sku_name,180);if(!prev.unit_code&&r.unit_code)prev.unit_code=clean(r.unit_code,30)||null}
+    else incomingBySku.set(sku,{available_qty:qty,sku_name:clean(r.sku_name,180),unit_code:clean(r.unit_code,30)||null})
+  }
+  if(!incomingBySku.size)throw new Error("Nenhum código de produto encontrado no LIBERAÇÃO CHEIO.");
+
+  const source=clean(b.source_file,240)||"020502.csv",now=new Date().toISOString(),prepared:any[]=[],detail:any[]=[],skuMap:any[]=[];
+  for(const [sku,src] of incomingBySku){
+    const lim=policyBySku.get(sku),qty=Math.round(Number(src.available_qty)*1000)/1000;
+    const minQty=lim?.min_qty==null?(lim?.out_qty==null?null:Number(lim.out_qty)):Number(lim.min_qty);
+    const maxQty=lim?.max_qty==null?(lim?.over_qty==null?null:Number(lim.over_qty)):Number(lim.max_qty);
+    const activePull30d=activity.skus.has(sku);
+    let status="OK";
+    if(lim){
+      if(maxQty!=null&&Number.isFinite(maxQty)&&qty>maxQty)status="OVER";
+      else if(activePull30d&&minQty!=null&&Number.isFinite(minQty)&&qty<minQty)status="OUT";
+    }
+    const name=String(src.sku_name||lim?.sku_name||""),unit=src.unit_code||lim?.unit_code||null,avg=Number(lim?.avg_daily_qty??0);
+    prepared.push({reference_date:referenceDate,sku_code:sku,sku_name:name,unit_code:unit,available_qty:qty,status,out_qty:minQty,over_qty:maxQty,policy_version_id:policy.id,source_file:source,imported_by:null,imported_at:now,active_pull_30d:activePull30d,pull_window_start:activity.start,pull_window_end:activity.end});
+    detail.push({reference_date:referenceDate,sku_code:sku,status,available_qty:qty,avg_sales_qty:avg>0?avg:null,min_days:lim?.min_days==null?null:Number(lim.min_days),max_days:lim?.max_days==null?null:Number(lim.max_days),real_days:avg>0?qty/avg:null,curve_class:lim?.curve_class||null,source,updated_at:now,active_pull_30d:activePull30d,pull_window_start:activity.start,pull_window_end:activity.end});
+    skuMap.push({sku_code:sku,sku_name:name,unit_code:unit,updated_at:now});
+  }
+
+  const {error:deleteError}=await db.from("stock_oor_daily").delete().eq("reference_date",referenceDate);if(deleteError)throw deleteError;
+  const {error:detailDeleteError}=await db.from("stock_oor_daily_detail").delete().eq("reference_date",referenceDate);if(detailDeleteError)throw detailDeleteError;
+  for(let i=0;i<prepared.length;i+=500){const {error}=await db.from("stock_oor_daily").insert(prepared.slice(i,i+500));if(error)throw error}
+  for(let i=0;i<detail.length;i+=500){const {error}=await db.from("stock_oor_daily_detail").insert(detail.slice(i,i+500));if(error)throw error}
+  for(let i=0;i<skuMap.length;i+=500){const {error}=await db.from("stock_oor_sku_map").upsert(skuMap.slice(i,i+500),{onConflict:"sku_code"});if(error)throw error}
+
+  const counts:Record<string,number>={};for(const row of prepared)counts[row.status]=(counts[row.status]||0)+1;
+  const {error:summaryError}=await db.from("stock_oor_daily_summary").upsert({reference_date:referenceDate,out_count:Number(counts.OUT||0),over_count:Number(counts.OVER||0),ok_count:Number(counts.OK||0),total_count:prepared.length,source,updated_at:now},{onConflict:"reference_date"});if(summaryError)throw summaryError;
+
+  const monthStart=referenceDate.slice(0,7)+"-01",monthDate=new Date(monthStart+"T00:00:00Z");monthDate.setUTCMonth(monthDate.getUTCMonth()+1);const nextMonth=monthDate.toISOString().slice(0,10);
+  const {data:monthRows,error:monthRowsError}=await db.from("stock_oor_daily_summary").select("out_count,over_count,ok_count,total_count").gte("reference_date",monthStart).lt("reference_date",nextMonth);if(monthRowsError)throw monthRowsError;
+  const totals=(monthRows||[]).reduce((a:any,x:any)=>{a.out_count+=Number(x.out_count||0);a.over_count+=Number(x.over_count||0);a.ok_count+=Number(x.ok_count||0);a.total_count+=Number(x.total_count||0);return a},{out_count:0,over_count:0,ok_count:0,total_count:0});
+  const {error:monthError}=await db.from("stock_oor_monthly_summary").upsert({reference_month:monthStart,...totals,source:"AGENTE_020502",updated_at:now},{onConflict:"reference_month"});if(monthError)throw monthError;
+  await db.from("stock_oor_agent_state").update({status:"idle",last_scan_at:now,last_import_at:now,last_reference_date:referenceDate,last_source_file:source,last_error:null,updated_at:now}).eq("agent_node_id",node.id);
+  return{ok:true,reference_date:referenceDate,rows:prepared.length,counts,policy:{id:policy.id,code:policy.code},source_file:source,rule:{out_requires_pull_30d:true,pull_window_start:activity.start,pull_window_end:activity.end,active_pull_skus:activity.skus.size}}
+}
+
 async function recoverExpiredAgentJob(){
   const now=new Date().toISOString();
   const {data:r,error}=await db.from("receiving_pull_sync_requests").select("*").eq("status","running").lt("lease_expires_at",now).order("started_at",{ascending:true}).limit(1).maybeSingle();if(error)throw error;if(!r)return;
@@ -371,11 +497,97 @@ async function failAgentJob(node:any,b:any){
   return{ok:true,requeued:!!req}
 }
 
+async function agentPull031120PreferredNode(){
+  const cutoff=new Date(Date.now()-90*1000).toISOString();
+  const {data,error}=await db.from("receiving_pull_agent_nodes")
+    .select("slot_code,status,last_seen_at").eq("active",true).gte("last_seen_at",cutoff);
+  if(error)throw error;
+  const recent=(data||[]);
+  const healthy=(x:any)=>["online","syncing"].includes(String(x.status||""));
+  if(recent.some((x:any)=>x.slot_code==="PUXADA"&&healthy(x)))return "PUXADA";
+  if(recent.some((x:any)=>x.slot_code==="ADM"&&healthy(x)))return "ADM";
+  // Se nenhum nó estiver saudável, permita que o nó que acabou de chamar
+  // assuma a tarefa; isso preserva o failover entre PUXADA e ADM e evita
+  // bloquear o backfill por um status de erro antigo.
+  if(recent.some((x:any)=>x.slot_code==="PUXADA"))return "PUXADA";
+  if(recent.some((x:any)=>x.slot_code==="ADM"))return "ADM";
+  return recent[0]?.slot_code||"";
+}
+function nextIsoDay(v:string){
+  const d=new Date(v+"T12:00:00Z");d.setUTCDate(d.getUTCDate()+1);return d.toISOString().slice(0,10)
+}
+async function agentPull031120Status(node:any){
+  const now=new Date().toISOString();
+  await db.from("receiving_pull_agent_nodes").update({last_seen_at:now,updated_at:now}).eq("id",node.id);
+  const preferred=await agentPull031120PreferredNode();
+  const {data:forceState}=await db.from("receiving_pull_031120_state").select("agent_node_id,stage").eq("stage","force_run").limit(1).maybeSingle();
+  const forceRun=!!forceState;
+  const start="2026-09-17",today=todayBr();
+  if(!preferred||node.slot_code!==preferred)return{enabled:false,preferred_node:preferred||null,complete:false,force_run:forceRun};
+  const {data:last,error}=await db.from("receiving_pull_daily")
+    .select("pull_date").gte("pull_date",start).like("source_file","agent_031120_%")
+    .order("pull_date",{ascending:false}).limit(1).maybeSingle();
+  if(error)throw error;
+  const dateFrom=last?.pull_date?nextIsoDay(last.pull_date):start;
+  if(dateFrom>today)return{enabled:true,preferred_node:preferred,complete:true,date_from:null,date_to:today,classification:"Mapa",vehicle_from:"229",vehicle_to:"312",force_run:forceRun};
+  return{enabled:true,preferred_node:preferred,complete:false,date_from:dateFrom,date_to:today,classification:"Mapa",vehicle_from:"229",vehicle_to:"312",force_run:forceRun};
+}
+async function agentPull031120Import(node:any,b:any){
+  const preferred=await agentPull031120PreferredNode();
+  if(!preferred||node.slot_code!==preferred)throw new Error("A carga 03.11.20 pertence a outro computador do agente.");
+  const from=isoDate(b.date_from),to=isoDate(b.date_to);
+  if(from>to)throw new Error("Período 03.11.20 inválido.");
+  const source="agent_031120_"+clean(b.source_file,150);
+  const rows=Array.isArray(b.rows)?b.rows:[];const byDate=new Map<string,any>();
+  for(const x of rows){
+    const d=clean(x.pull_date,10);if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||d<from||d>to)continue;
+    const vc=(x.vehicle_counts&&typeof x.vehicle_counts==="object"&&!Array.isArray(x.vehicle_counts))?x.vehicle_counts:{};
+    byDate.set(d,{pull_date:d,truck_count:Math.max(0,Math.round(Number(x.truck_count)||0)),
+      pallets_pulled:Math.max(0,Math.round(Number(x.pallets_pulled)||0)),vehicle_counts:vc,
+      source_file:source,imported_at:new Date().toISOString()});
+  }
+  const upserts:any[]=[];let cursor=from,guard=0;
+  while(cursor<=to&&guard++<62){
+    upserts.push(byDate.get(cursor)||{pull_date:cursor,truck_count:0,pallets_pulled:0,vehicle_counts:{},source_file:source,imported_at:new Date().toISOString()});
+    cursor=nextIsoDay(cursor);
+  }
+  if(!upserts.length||guard>62)throw new Error("Período 03.11.20 excede o limite seguro.");
+  const {error:ue}=await db.from("receiving_pull_daily").upsert(upserts,{onConflict:"pull_date"});if(ue)throw ue;
+  const truckTotal=upserts.reduce((s:number,x:any)=>s+Number(x.truck_count||0),0);
+  const palletTotal=upserts.reduce((s:number,x:any)=>s+Number(x.pallets_pulled||0),0);
+  const {error:ie}=await db.from("receiving_pull_imports").insert({source_file:source,min_date:from,max_date:to,truck_count:truckTotal,pallets_pulled:palletTotal});if(ie)throw ie;
+  return{days:upserts.length,days_with_data:byDate.size,truck_count:truckTotal,pallets_pulled:palletTotal,source_file:source};
+}
+
+async function agentPull031120State(node:any,b:any){
+  const allowed=["idle","running","completed","error","skipped"],status=clean(b.status,20);
+  if(!allowed.includes(status))throw new Error("Status 03.11.20 inválido.");
+  const now=new Date().toISOString();
+  const row:any={
+    agent_node_id:node.id,status,stage:clean(b.stage,80)||null,
+    date_from:clean(b.date_from,10)||null,date_to:clean(b.date_to,10)||null,
+    source_file:clean(b.source_file,180)||null,
+    raw_rows:Number.isFinite(Number(b.raw_rows))?Math.max(0,Math.round(Number(b.raw_rows))):null,
+    days:Number.isFinite(Number(b.days))?Math.max(0,Math.round(Number(b.days))):null,
+    truck_count:Number.isFinite(Number(b.truck_count))?Math.max(0,Math.round(Number(b.truck_count))):null,
+    pallets_pulled:Number.isFinite(Number(b.pallets_pulled))?Math.max(0,Math.round(Number(b.pallets_pulled))):null,
+    last_error:status==="error"?(clean(b.error,1000)||"Falha 03.11.20."):null,
+    updated_at:now
+  };
+  if(status==="running"){
+    row.started_at=now;
+    await db.from("receiving_pull_031120_state").update({stage:"claimed",updated_at:now}).eq("stage","force_run");
+  }
+  if(status==="completed"||status==="error"||status==="skipped")row.completed_at=now;
+  const {error}=await db.from("receiving_pull_031120_state").upsert(row,{onConflict:"agent_node_id"});if(error)throw error;
+  return{ok:true};
+}
+
 Deno.serve(async(req:Request)=>{
  if(req.method==="OPTIONS")return new Response("ok",{headers:headers(req)});if(req.method!=="POST")return json(req,{error:"Método não permitido."},405);
  try{
   const b=await body(req),a=clean(b.action,60);
-  if(["agent_poll","agent_ping","agent_heartbeat","agent_complete","agent_fail","agent_update_manifest","agent_update_state","agent_update_file"].includes(a)){
+  if(["agent_poll","agent_ping","agent_heartbeat","agent_complete","agent_fail","agent_update_manifest","agent_update_state","agent_update_file","agent_oor_status","agent_oor_scan_state","agent_oor_diagnostic","agent_oor_import","agent_031120_status","agent_031120_import","agent_031120_state"].includes(a)){
     const node=await pullAgentAuth(req);if(!node)return json(req,{error:"Agente Puxada não autorizado."},401);
     if(a==="agent_ping"){const updated=await touchAgentNode(node,b);return json(req,{node:{id:updated.id,slot_code:updated.slot_code,display_name:updated.display_name,hostname:updated.hostname,status:updated.status,calibration_ready:updated.calibration_ready},agent:await getAgentStatus()})}
     if(a==="agent_poll")return json(req,{job:await claimAgentJob(node,b),agent:await getAgentStatus()});
@@ -385,6 +597,13 @@ Deno.serve(async(req:Request)=>{
     if(a==="agent_update_manifest")return json(req,await agentUpdateManifest(node,b));
     if(a==="agent_update_state")return json(req,{result:await agentUpdateState(node,b)});
     if(a==="agent_update_file")return json(req,await agentUpdateFile(node,b));
+    if(a==="agent_oor_status")return json(req,{oor:await agentOorStatus(node)});
+    if(a==="agent_oor_scan_state")return json(req,{result:await agentOorScanState(node,b)});
+    if(a==="agent_oor_diagnostic")return json(req,{result:await agentOorDiagnostic(node,b)});
+    if(a==="agent_oor_import")return json(req,{result:await agentOorImport(node,b)});
+    if(a==="agent_031120_status")return json(req,{pull031120:await agentPull031120Status(node)});
+    if(a==="agent_031120_import")return json(req,{result:await agentPull031120Import(node,b)});
+    if(a==="agent_031120_state")return json(req,{result:await agentPull031120State(node,b)});
   }
 
   if(a==="gate_users"){
@@ -540,5 +759,9 @@ Deno.serve(async(req:Request)=>{
   }
   if(a==="print_history"){const id=Number(b.id);const {data,error}=await db.from("receiving_nri_print_log").select("id,item_id,print_type,copies,printed_at,app:app_users(display_name),conferencer:bo_conferencers(display_name)").eq("receipt_id",id).order("printed_at",{ascending:false});if(error)throw error;return json(req,{logs:data||[]})}
   return json(req,{error:"Ação inválida."},400)
- }catch(e){console.error(e);return json(req,{error:e instanceof Error?e.message:"Erro interno."},500)}
+ }catch(e){
+  console.error(e);
+  const message=e instanceof Error?e.message:clean((e as any)?.message||"",1000)||"Erro interno.";
+  return json(req,{error:message},500)
+}
 });
