@@ -1,7 +1,7 @@
 (() => {
   const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/receiving-nri-api';
   const $=id=>document.getElementById(id);
-  const TRUCK_PLATES={'246':'LSZ-9355','271':'LMZ-4G31','229':'KYI-8259','160':'KZJ-4694','231':'LSN-7312','264':'KZM-9D84','203':'LRN-7589','225':'LSE-4160','210':'LRW-5314','289':'RIX-8E72','298':'RKK-8G53','312':'TTZ5E13','MKTP':'MKTP'};
+  const TRUCK_PLATES={'229':'KYI-8259','231':'LSN-7312','246':'LSZ-9355','264':'KZM-9D84','271':'LMZ-4G31','289':'RIX-8E72','298':'RKK-8G53','312':'TTZ5E13'};
   let token=sessionStorage.getItem('gate_token')||'',gateUser=null,editing=null,adminCanDelete=false;
   const adminToken=()=>localStorage.getItem('pa_session')||'';
 
