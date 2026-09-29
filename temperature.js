@@ -6,7 +6,7 @@
   const num=v=>Number(v||0).toLocaleString('pt-BR');
   const temp=v=>v==null?'—':Number(v).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'°C';
   const date=v=>v?String(v).slice(0,10).split('-').reverse().join('/'):'—';
-  const MONTHS={01:'Jan',02:'Fev',03:'Mar',04:'Abr',05:'Mai',06:'Jun',07:'Jul',08:'Ago',09:'Set',10:'Out',11:'Nov',12:'Dez'};
+  const MONTHS={'01':'Jan','02':'Fev','03':'Mar','04':'Abr','05':'Mai','06':'Jun','07':'Jul','08':'Ago','09':'Set','10':'Out','11':'Nov','12':'Dez'};
   const monthLabel=v=>{const s=String(v||'');return (MONTHS[s.slice(5,7)]||s.slice(5,7))+'/'+s.slice(0,4);};
   const areaLabel=a=>a==='all'?'Todas as áreas':a;
   const statusLabel=s=>s==='ok'?'OK':s==='attention'?'Atenção':'Crítico';
