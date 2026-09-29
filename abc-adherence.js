@@ -10,6 +10,7 @@
   const compact = value => String(value || '').trim().toUpperCase().replace(/^([A-Z]+)0+(\d)/,'$1$2').replace(/[^A-Z0-9]/g,'');
   const areaLabel = area => area === 'Regulador' ? 'Estoque Geral' : area;
   const classOrder = ['A','B','C'];
+  const ADHERENCE_TARGET = 50;
   const GUARAVITA_SKU = '22209';
 
   // Regra física do Estoque Geral:
@@ -95,11 +96,12 @@
     const rows = (items || []).map(item => {
       const month = String(item.reference_month || '').slice(0,7);
       const value = item.rate == null ? null : Number(item.rate);
-      return '<tr class="'+(month===state.currentMonth?'current':'')+'"><td><strong>'+esc(monthLabel(month))+'</strong></td><td class="abc-rate-cell">'+(Number.isFinite(value)?pct(value):'—')+'</td></tr>';
+      const rendered = Number.isFinite(value) ? pct(value) : '<span class="abc-no-base">Sem base</span>';
+      return '<tr class="'+(month===state.currentMonth?'current':'')+'"><td><strong>'+esc(monthLabel(month))+'</strong></td><td class="abc-rate-cell">'+rendered+'</td></tr>';
     }).join('');
 
     return '<section class="panel abc-history-panel">' +
-      '<div class="panel-heading"><h2>Resultado mensal</h2></div>' +
+      '<div class="panel-heading"><div><h2>Resultado mensal</h2><small>Meta ' + pct(ADHERENCE_TARGET) + '</small></div></div>' +
       '<div class="stock-table-wrap"><table><thead><tr><th>Mês</th><th>Aderência</th></tr></thead><tbody>'+rows+'</tbody></table></div>' +
     '</section>';
   }
@@ -545,7 +547,13 @@
   }
 
   function physicalHtml(area, month, stock, curveItems, allCurveItems) {
-    if (!stock.snapshot) return '<div class="abc-adherence-empty">Nenhuma posição de estoque disponível para este período.</div>';
+    if (!stock.snapshot) {
+      return '<div class="abc-adherence-shell">' +
+        '<section class="abc-adherence-intro"><div><h2>' + esc(areaLabel(area)) + '</h2><p>' + esc(monthLabel(month)) + '</p></div><span class="abc-area-rule"><strong>Meta ' + pct(ADHERENCE_TARGET) + '</strong></span></section>' +
+        '<div class="abc-adherence-empty">Sem base física de Estoque x Estoque para este mês.</div>' +
+        '<div id="abcHistoryPanel"></div>' +
+      '</div>';
+    }
     const matrix = matrixForArea(stock,area,curveItems,allCurveItems);
     const asOf = stock.snapshot.as_of ? String(stock.snapshot.as_of).split('-').reverse().join('/') : '—';
     const reference = monthLabel(month);
@@ -557,7 +565,7 @@
         '<span class="abc-area-rule">' + (area === 'Câmara Fria' ? '<strong>838 · Curva A</strong>' : '<strong>A</strong> próxima&nbsp;&nbsp; <strong>B</strong> média&nbsp;&nbsp; <strong>C</strong> distante') + '</span>' +
       '</section>' +
       '<section class="abc-adherence-kpis">' +
-        '<article class="abc-kpi-primary"><span>Aderência</span><strong>' + (matrix.rate==null?'—':pct(matrix.rate)) + '</strong></article>' +
+        '<article class="abc-kpi-primary"><span>Aderência</span><strong>' + (matrix.rate==null?'—':pct(matrix.rate)) + '</strong><small>Meta ' + pct(ADHERENCE_TARGET) + '</small></article>' +
         '<article><span>Corretas</span><strong>' + matrix.adherent + '</strong></article>' +
         '<article class="abc-kpi-alert"><span>Desvios</span><strong>' + matrix.non + '</strong></article>' +
       '</section>' +
@@ -575,7 +583,7 @@
         '<span class="abc-area-rule"><strong>100% aderente</strong></span>' +
       '</section>' +
       '<section class="abc-adherence-kpis">' +
-        '<article class="abc-kpi-primary"><span>Aderência</span><strong>100%</strong></article>' +
+        '<article class="abc-kpi-primary"><span>Aderência</span><strong>100%</strong><small>Meta ' + pct(ADHERENCE_TARGET) + '</small></article>' +
         '<article><span>Desvios</span><strong>0</strong></article>' +
         '<article><span>SKUs</span><strong>'+curveItems.length+'</strong></article>' +
       '</section>' +
