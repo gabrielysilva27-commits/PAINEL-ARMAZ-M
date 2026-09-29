@@ -428,9 +428,9 @@
       const desired = classOrder.includes(x.actualClass) ? x.actualClass : null;
       if (desired) {
         const free = emptyByZone[desired] && emptyByZone[desired][0];
-        suggestion = free ? 'Realocar para ' + free + ' (Zona ' + desired + ').' : 'Mover para uma posição da Faixa ' + desired + '.';
+        suggestion = free ? 'Mover para ' + free + ' (Faixa ' + desired + ').' : 'Mover para uma posição da Faixa ' + desired + '.';
       } else {
-        suggestion = 'Separar as curvas misturadas e realocar cada SKU para sua zona.';
+        suggestion = 'Separar os produtos e mover cada SKU para a faixa da sua curva.';
       }
       return Object.assign({},x,{suggestion:suggestion,severity:severity(x)});
     }).sort((a,b)=>b.severity-a.severity || a.address.localeCompare(b.address,'pt-BR',{numeric:true}));
