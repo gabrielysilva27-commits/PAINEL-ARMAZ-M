@@ -730,7 +730,7 @@ static bool Fill031120ByGeometry(HWND hwnd, const std::wstring* values) {
   RECT r = {};
   if (!GetWindowRect(hwnd, &r)) return false;
   const int w = r.right-r.left, h = r.bottom-r.top;
-  if (w < 850 || h < 620) return false;
+  if (w < 700 || h < 500) return false;
 
   auto px = [&](double x){ return r.left + static_cast<int>(w*x + 0.5); };
   auto py = [&](double y){ return r.top + static_cast<int>(h*y + 0.5); };
