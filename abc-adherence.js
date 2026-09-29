@@ -656,7 +656,7 @@
     if (adherence) adherence.classList.toggle('hidden',mode!=='adherence');
     if (mode === 'adherence') {
       document.getElementById('pageTitle').textContent = 'Curva ABC';
-      document.getElementById('pageSubtitle').textContent = 'Aderência da Curva ABC nas posições físicas do armazém.';
+      document.getElementById('pageSubtitle').textContent = 'Posicionamento dos SKUs conforme a Curva ABC.';
       render();
     } else {
       document.getElementById('pageTitle').textContent = 'Curva ABC';
