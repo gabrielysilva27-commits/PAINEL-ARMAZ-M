@@ -12,8 +12,8 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.90";
-// 3.2.90: executa imediatamente a recuperação inicial do 03.11.20 solicitada pelo servidor.
+const VERSION = "3.2.91";
+// 3.2.91: adiciona telemetria completa da tarefa 03.11.20 para diagnóstico e validação do backfill.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
 const LOG_DIR = path.join(ROOT, "logs");
@@ -171,14 +171,18 @@ async function main() {
   async function maybeSync031120(force) {
     if (!force && Date.now() - last031120Check < 5 * 60 * 1000) return;
     last031120Check = Date.now();
+    let task = null;
     try {
       const state = await api.pull031120Status();
-      const task = state && state.pull031120;
+      task = state && state.pull031120;
       if (!task || !task.enabled || task.complete || !task.date_from) return;
+      await api.pull031120State({status:"running",stage:"open_report",date_from:task.date_from,date_to:task.date_to}).catch(function(){});
       log("Recebimento 03.11.20: atualizando de " + task.date_from + " a " + task.date_to +
         " · classificação Mapa · veículos " + task.vehicle_from + " a " + task.vehicle_to + ".");
       const csvPath = await promax.export031120(task, config, ROOT, parse031120);
+      await api.pull031120State({status:"running",stage:"parse_file",date_from:task.date_from,date_to:task.date_to,source_file:path.basename(csvPath)}).catch(function(){});
       const parsed = parse031120(csvPath);
+      await api.pull031120State({status:"running",stage:"import",date_from:task.date_from,date_to:task.date_to,source_file:path.basename(csvPath),raw_rows:parsed.raw_rows,days:parsed.days}).catch(function(){});
       const done = await api.pull031120Import({
         date_from: task.date_from,
         date_to: task.date_to,
@@ -186,10 +190,18 @@ async function main() {
         raw_rows: parsed.raw_rows,
         rows: parsed.rows
       });
+      await api.pull031120State({
+        status:"completed",stage:"done",date_from:task.date_from,date_to:task.date_to,
+        source_file:path.basename(csvPath),raw_rows:parsed.raw_rows,days:done.result.days,
+        truck_count:done.result.truck_count,pallets_pulled:done.result.pallets_pulled
+      }).catch(function(){});
       log("Recebimento 03.11.20 atualizado: " + done.result.days + " dia(s), " +
         done.result.truck_count + " carreta(s) e " + done.result.pallets_pulled + " palete(s).");
     } catch (e) {
       const message = e && e.message ? e.message : String(e);
+      await api.pull031120State({
+        status:"error",stage:"failed",date_from:task&&task.date_from||null,date_to:task&&task.date_to||null,error:message
+      }).catch(function(){});
       log("Falha na atualização automática 03.11.20: " + message, true);
     }
   }
