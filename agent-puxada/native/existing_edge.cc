@@ -517,19 +517,33 @@ static ShortcutControls FindShortcutControls(HWND hwnd) {
   return result;
 }
 
-static bool EnterShortcut(const ShortcutControls& controls) {
+static bool EnterShortcut(const ShortcutControls& controls, const std::wstring& reportCode) {
   const RECT& field = controls.field;
   const RECT& button = controls.ok;
   return ClickPoint((field.left+field.right)/2, (field.top+field.bottom)/2) &&
       Key(VK_CONTROL) && Key('A') && Key('A', true) && Key(VK_CONTROL, true) &&
-      TypeText(L"02.05.01") &&
+      TypeText(reportCode) &&
       ClickPoint((button.left+button.right)/2, (button.top+button.bottom)/2);
 }
 
-static bool OpenShortcut(HWND hwnd) {
+static bool OpenShortcut(HWND hwnd, const std::wstring& reportCode = L"02.05.01") {
   const ShortcutControls controls = FindShortcutControls(hwnd);
-  return controls.found && EnterShortcut(controls);
+  return controls.found && EnterShortcut(controls, reportCode);
 }
+static BOOL CALLBACK Find031120Window(HWND hwnd, LPARAM raw) {
+  if (!IsWindowVisible(hwnd) || ClassName(hwnd) != L"Chrome_WidgetWin_1") return TRUE;
+  wchar_t title[512] = {};
+  GetWindowTextW(hwnd, title, 512);
+  std::wstring name(title);
+  std::transform(name.begin(), name.end(), name.begin(), towlower);
+  if (name.find(L"planilha de acompanhamento") != std::wstring::npos ||
+      name.find(L"03.11.20") != std::wstring::npos) {
+    *reinterpret_cast<HWND*>(raw) = hwnd;
+    return FALSE;
+  }
+  return TRUE;
+}
+
 static bool FillReport(HWND hwnd, const std::wstring* values) {
   auto controls = Controls(hwnd);
   std::vector<VisibleControl> edits;
@@ -670,6 +684,58 @@ static bool FillReport(HWND hwnd, const std::wstring* values) {
   }
 
   Sleep(250);
+  return ClickControl(*visualize);
+}
+
+static bool Fill031120(HWND hwnd, const std::wstring* values) {
+  auto controls = Controls(hwnd);
+  std::vector<VisibleControl> edits, combos, visualizes;
+  RECT window = {};
+  if (!GetWindowRect(hwnd, &window)) return false;
+  for (const auto& c : controls) {
+    if (c.type == UIA_EditControlTypeId) edits.push_back(c);
+    if (c.type == UIA_ComboBoxControlTypeId) combos.push_back(c);
+    if (c.type == UIA_ButtonControlTypeId && Contains(c.name, L"visualizar")) visualizes.push_back(c);
+  }
+  std::sort(edits.begin(), edits.end(), [](const VisibleControl& a, const VisibleControl& b) {
+    if (abs(a.rect.top-b.rect.top) > 8) return a.rect.top < b.rect.top;
+    return a.rect.left < b.rect.left;
+  });
+  std::vector<std::vector<VisibleControl>> rows;
+  for (const auto& e : edits) {
+    if (e.rect.top < window.top + 160) continue;
+    if (rows.empty() || abs(e.rect.top-rows.back()[0].rect.top) > 8) rows.push_back({e});
+    else rows.back().push_back(e);
+  }
+  std::vector<std::vector<VisibleControl>> pairs;
+  for (auto& row : rows) {
+    std::sort(row.begin(), row.end(), [](const VisibleControl& a, const VisibleControl& b){return a.rect.left < b.rect.left;});
+    if (row.size() >= 2) pairs.push_back({row[0],row[1]});
+  }
+  if (pairs.size() < 2 || visualizes.empty()) return false;
+  const auto& date = pairs[0];
+  const auto& vehicle = pairs[1];
+
+  const VisibleControl* classification = nullptr;
+  for (const auto& cb : combos) {
+    if (cb.rect.left < window.left + (window.right-window.left)/2 &&
+        cb.rect.top > window.top + 160 && cb.rect.top < date[0].rect.top + 80) {
+      classification = &cb; break;
+    }
+  }
+  if (!classification) return false;
+
+  const VisibleControl* visualize = nullptr;
+  for (const auto& b : visualizes)
+    if (!visualize || b.rect.top > visualize->rect.top) visualize = &b;
+  if (!visualize) return false;
+
+  if (!ClickControl(*classification) || !Key(VK_HOME) || !Key(VK_HOME,true) ||
+      !Key('M') || !Key('M',true) || !Key(VK_RETURN) || !Key(VK_RETURN,true)) return false;
+  Sleep(180);
+  if (!FillControl(date[0], values[0]) || !FillControl(date[1], values[1]) ||
+      !FillControl(vehicle[0], values[2]) || !FillControl(vehicle[1], values[3])) return false;
+  Sleep(180);
   return ClickControl(*visualize);
 }
 
@@ -885,6 +951,10 @@ static napi_value Act(napi_env env, napi_callback_info info) {
     const char* names[] = {"dateFrom","dateTo","warehouse","deposit","operationFrom","operationTo"};
     for (int i = 0; i < 6; ++i) valid = ReadString(env, argv[1], names[i], &values[i]) && valid;
   }
+  if (valid && stage == L"filters031120") {
+    const char* names[] = {"dateFrom","dateTo","vehicleFrom","vehicleTo"};
+    for (int i = 0; i < 4; ++i) valid = ReadString(env, argv[1], names[i], &values[i]) && valid;
+  }
   std::wstring result = L"invalid-parameters";
   if (valid) {
     std::thread worker([&]() {
@@ -896,8 +966,14 @@ static napi_value Act(napi_env env, napi_callback_info info) {
         CoUninitialize();
         return;
       }
-      TargetWindow target = { nullptr, stage == L"shortcut", -1, {} };
-      EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&target));
+      TargetWindow target = { nullptr, stage == L"shortcut" || stage == L"shortcut031120", -1, {} };
+      if (stage == L"filters031120" || stage == L"csv031120") {
+        HWND report031120 = nullptr;
+        EnumWindows(Find031120Window, reinterpret_cast<LPARAM>(&report031120));
+        target.hwnd = report031120;
+      } else {
+        EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&target));
+      }
       RECT r = {};
       if (!target.hwnd || !GetWindowRect(target.hwnd, &r)) result = L"window-not-found";
       else {
@@ -907,27 +983,36 @@ static napi_value Act(napi_env env, napi_callback_info info) {
         SetForegroundWindow(target.hwnd);
         Sleep(300);
         if (!HasForeground(target.hwnd)) result = L"window-not-foreground";
-        else if (stage == L"shortcut") {
+        else if (stage == L"shortcut" || stage == L"shortcut031120") {
           result = L"shortcut-controls-not-found";
+          const std::wstring reportCode = stage == L"shortcut031120" ? L"03.11.20" : L"02.05.01";
           for (HWND candidate : target.candidates) {
             if (IsIconic(candidate)) ShowWindow(candidate, SW_RESTORE);
             SetForegroundWindow(candidate);
             Sleep(250);
             if (!HasForeground(candidate) || !ActivatePromaxTab(candidate)) continue;
             Sleep(350);
-            if (!OpenShortcut(candidate)) continue;
+            if (!OpenShortcut(candidate, reportCode)) continue;
             result = L"shortcut-no-report-window";
-            for (int i = 0; i < 20; ++i) {
+            for (int i = 0; i < 30; ++i) {
               Sleep(200);
-              TargetWindow report = { nullptr, false, -1, {} };
-              EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&report));
-              if (report.hwnd) { result = L"ok"; break; }
+              if (stage == L"shortcut031120") {
+                HWND report031120 = nullptr;
+                EnumWindows(Find031120Window, reinterpret_cast<LPARAM>(&report031120));
+                if (report031120) { result = L"ok"; break; }
+              } else {
+                TargetWindow report = { nullptr, false, -1, {} };
+                EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&report));
+                if (report.hwnd) { result = L"ok"; break; }
+              }
             }
             break;
           }
         } else if (stage == L"filters") {
           result = FillReport(target.hwnd, values) ? L"ok" : L"filter-controls-not-found";
-        } else if (stage == L"csv") {
+        } else if (stage == L"filters031120") {
+          result = Fill031120(target.hwnd, values) ? L"ok" : L"031120-filter-controls-not-found";
+        } else if (stage == L"csv" || stage == L"csv031120") {
           result = ClickNamedButton(target.hwnd, L"csv", false, true) ? L"ok" : L"csv-not-found";
         } else result = L"unknown-stage";
       }
