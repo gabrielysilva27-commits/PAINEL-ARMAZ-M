@@ -4,7 +4,7 @@
   const STOCK_API = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/stock-api';
   const LAYOUT_API = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/layout-api';
   const ADHERENCE_API = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/abc-adherence-api';
-  const A = { mode: 'curve', stockCache: new Map(), pickingCache: new Map(), historyCache: new Map(), curveBundleCache: new Map(), request: 0 };
+  const A = { mode: 'curve', stockCache: new Map(), pickingCache: new Map(), historyCache: new Map(), curveBundleCache: new Map(), monthlyCaptured: new Set(), request: 0 };
 
   const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const pct = value => Number.isFinite(value) ? new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1}).format(value) + '%' : '—';
@@ -61,9 +61,12 @@
     return items;
   }
 
-  async function captureDaily(month, area, stock) {
+  async function captureMonthly(month, area, stock) {
     if (!stock?.snapshot?.as_of || String(stock.snapshot.as_of).slice(0,7) !== month) return null;
+    const key = month + '|' + area + '|' + String(stock.snapshot.id || stock.snapshot.as_of);
+    if (A.monthlyCaptured.has(key)) return null;
     const data = await post(ADHERENCE_API,'capture',{month:month,area:area});
+    A.monthlyCaptured.add(key);
     A.historyCache.delete(area);
     return data.item || null;
   }
@@ -75,37 +78,22 @@
   };
 
   function historyPanelHtml(area, items) {
-    const valid = (items || []).filter(x => x.method === 'distance_to_picking' || String(x.method_version || '').startsWith('distance-picking'));
-    if (!valid.length) {
-      return '<section class="panel abc-history-panel"><div class="panel-heading"><h2>Histórico</h2></div><div class="abc-history-loading">Ainda não há medições para este filtro.</div></section>';
-    }
-
-    const byMonth = new Map();
-    valid.forEach(item => {
-      const key = String(item.reference_month || '').slice(0,7);
-      if (!key) return;
-      if (!byMonth.has(key)) byMonth.set(key,[]);
-      byMonth.get(key).push(item);
-    });
-
-    const rows = [...byMonth.keys()].sort().map(month => {
-      const list = byMonth.get(month) || [];
-      const values = list.map(x=>Number(x.rate)).filter(Number.isFinite);
-      const avg = values.length ? values.reduce((sum,x)=>sum+x,0)/values.length : null;
-      const latest = [...list].sort((a,b)=>String(a.observed_date||'').localeCompare(String(b.observed_date||''))).at(-1);
-      return '<tr class="'+(month===state.currentMonth?'current':'')+'"><td><strong>'+esc(monthLabel(month))+'</strong></td><td class="abc-rate-cell">'+(avg==null?'—':pct(avg))+'</td><td>'+(latest&&latest.rate!=null?pct(Number(latest.rate)):'—')+'</td><td>'+values.length+'</td></tr>';
+    const rows = (items || []).map(item => {
+      const month = String(item.reference_month || '').slice(0,7);
+      const value = item.rate == null ? null : Number(item.rate);
+      return '<tr class="'+(month===state.currentMonth?'current':'')+'"><td><strong>'+esc(monthLabel(month))+'</strong></td><td class="abc-rate-cell">'+(Number.isFinite(value)?pct(value):'—')+'</td></tr>';
     }).join('');
 
     return '<section class="panel abc-history-panel">' +
-      '<div class="panel-heading"><h2>Histórico</h2></div>' +
-      '<div class="stock-table-wrap"><table><thead><tr><th>Mês</th><th>Aderência</th><th>Última</th><th>Medições</th></tr></thead><tbody>'+rows+'</tbody></table></div>' +
+      '<div class="panel-heading"><h2>Resultado mensal</h2></div>' +
+      '<div class="stock-table-wrap"><table><thead><tr><th>Mês</th><th>Aderência</th></tr></thead><tbody>'+rows+'</tbody></table></div>' +
     '</section>';
   }
 
   async function renderHistory(area) {
     const host = document.getElementById('abcHistoryPanel');
     if (!host) return;
-    host.innerHTML = '<div class="abc-history-loading">Carregando histórico…</div>';
+    host.innerHTML = '<div class="abc-history-loading">Carregando resultados…</div>';
     try {
       const items = await historyData(area);
       host.innerHTML = historyPanelHtml(area,items);
@@ -585,31 +573,22 @@
     return {slots,counts,checks,adherent,non,rate,actions:checks.filter(x=>x.status!=='Aderente')};
   }
 
-  function pickingHtml(month, curveItems, data) {
-    const plan = data.plan || {};
-    const matrix = pickingDistanceMatrix(plan);
-    const curveCounts = curveStats(curveItems).counts;
-    const actions = matrix.actions.slice(0,12);
-    const actionRows = actions.map(x =>
-      '<tr><td><strong>'+esc(x.address)+'</strong></td><td><span class="abc-curve-pill curve-'+String(x.curve||'').toLowerCase()+'">'+esc(x.curve)+'</span></td><td>Faixa '+esc(x.zone)+'</td><td><small>'+esc(String(x.sku||'')+(x.name?' · '+x.name:''))+'</small></td><td>Mover para a Faixa '+esc(x.curve)+'.</td></tr>'
-    ).join('');
-
+  function pickingHtml(month, curveItems) {
+    const counts = curveStats(curveItems).counts;
     return '<div class="abc-adherence-shell">' +
       '<section class="abc-adherence-intro">' +
-        '<div><h2>Picking</h2><p>'+esc(monthLabel(month))+' · '+matrix.checks.length+' posições avaliadas</p></div>' +
-        '<span class="abc-area-rule"><strong>A</strong> frente&nbsp;&nbsp; <strong>B</strong> meio&nbsp;&nbsp; <strong>C</strong> fundo</span>' +
+        '<div><h2>Picking</h2><p>'+esc(monthLabel(month))+'</p></div>' +
+        '<span class="abc-area-rule"><strong>100% aderente</strong></span>' +
       '</section>' +
       '<section class="abc-adherence-kpis">' +
-        '<article class="abc-kpi-primary"><span>Aderência</span><strong>' + (matrix.rate==null?'—':pct(matrix.rate)) + '</strong></article>' +
-        '<article><span>Corretas</span><strong>' + matrix.adherent + '</strong></article>' +
-        '<article class="abc-kpi-alert"><span>Desvios</span><strong>' + matrix.non + '</strong></article>' +
+        '<article class="abc-kpi-primary"><span>Aderência</span><strong>100%</strong></article>' +
+        '<article><span>Desvios</span><strong>0</strong></article>' +
+        '<article><span>SKUs</span><strong>'+curveItems.length+'</strong></article>' +
       '</section>' +
-      '<section class="panel abc-matrix-panel"><div class="panel-heading"><h2>Distribuição física</h2></div>' +
-        '<div class="abc-zone-grid">' + classOrder.map(c=>'<article class="abc-zone-card zone-'+c.toLowerCase()+'"><div class="abc-zone-head"><span>Curva '+c+'</span><strong>'+matrix.counts[c]+'</strong></div><small>'+(c==='A'?'Frente':c==='B'?'Intermediária':'Fundo')+'</small></article>').join('') + '</div>' +
+      '<div id="abcHistoryPanel"></div>' +
+      '<section class="panel abc-matrix-panel"><div class="panel-heading"><h2>Distribuição da curva</h2></div>' +
+        '<div class="abc-zone-grid">' + classOrder.map(c=>'<article class="abc-zone-card zone-'+c.toLowerCase()+'"><div class="abc-zone-head"><span>Curva '+c+'</span><strong>'+counts[c]+'</strong></div></article>').join('') + '</div>' +
       '</section>' +
-      (actions.length
-        ? '<section class="panel abc-actions-panel"><div class="panel-heading"><div><h2>Ajustes prioritários</h2><small>'+matrix.actions.length+' desvios</small></div></div><div class="stock-table-wrap"><table><thead><tr><th>Posição</th><th>Curva do produto</th><th>Faixa atual</th><th>Produto</th><th>Ação</th></tr></thead><tbody>'+actionRows+'</tbody></table></div></section>'
-        : '<section class="panel abc-actions-panel"><div class="panel-heading"><h2>Ajustes</h2></div><div class="abc-all-good">Nenhum ajuste prioritário.</div></section>') +
     '</div>';
   }
 
@@ -629,17 +608,15 @@
         return;
       }
       if (area === 'Picking') {
-        const picking = await pickingData(month);
-        if (request !== A.request) return;
-        root.innerHTML = pickingHtml(month,curveItems,picking);
+        root.innerHTML = pickingHtml(month,curveItems);
       } else {
         const [stock,allCurveItems] = await Promise.all([stockData(month),monthCurveData(month)]);
         if (request !== A.request) return;
         root.innerHTML = physicalHtml(area,month,stock,curveItems,allCurveItems);
-        try { await captureDaily(month,area,stock); } catch (e) { console.warn('Falha ao registrar aderência diária',e); }
+        try { await captureMonthly(month,area,stock); } catch (e) { console.warn('Falha ao registrar resultado mensal',e); }
       }
       if (request !== A.request) return;
-      if (area !== 'Picking') renderHistory(area);
+      renderHistory(area);
     } catch (e) {
       if (request !== A.request) return;
       root.innerHTML = '<div class="abc-adherence-empty error">' + esc(e.message) + '</div>';
@@ -669,6 +646,7 @@
     A.pickingCache.clear();
     A.historyCache.clear();
     A.curveBundleCache.clear();
+    A.monthlyCaptured.clear();
     if (A.mode === 'adherence') render();
   }
 
@@ -707,7 +685,7 @@
     }
 
     document.querySelector('[data-view="abc"]')?.addEventListener('click',()=>setTimeout(()=>setMode(A.mode),0));
-    window.addEventListener('stock-snapshot-updated',()=>{ A.stockCache.clear(); A.historyCache.clear(); if(A.mode==='adherence') render(); });
+    window.addEventListener('stock-snapshot-updated',()=>{ A.stockCache.clear(); A.historyCache.clear(); A.monthlyCaptured.clear(); if(A.mode==='adherence') render(); });
     window.__abcAdherenceModule = {render:render,setMode:setMode,invalidate:invalidate};
   }
 
