@@ -69,6 +69,14 @@ class AgentApi {
   oorImport(payload) {
     return this.call("agent_oor_import", payload);
   }
+
+  pull031120Status() {
+    return this.call("agent_031120_status", {});
+  }
+
+  pull031120Import(payload) {
+    return this.call("agent_031120_import", payload);
+  }
 }
 
 module.exports = { AgentApi: AgentApi };
