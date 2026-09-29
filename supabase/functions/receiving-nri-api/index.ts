@@ -529,8 +529,8 @@ async function agentPull031120Status(node:any){
     .order("pull_date",{ascending:false}).limit(1).maybeSingle();
   if(error)throw error;
   const dateFrom=last?.pull_date?nextIsoDay(last.pull_date):start;
-  if(dateFrom>today)return{enabled:true,preferred_node:preferred,complete:true,date_from:null,date_to:today,classification:"Mapa",vehicle_from:"229",vehicle_to:"312",force_run:forceRun};
-  return{enabled:true,preferred_node:preferred,complete:false,date_from:dateFrom,date_to:today,classification:"Mapa",vehicle_from:"229",vehicle_to:"312",force_run:forceRun};
+  if(dateFrom>today)return{enabled:true,preferred_node:preferred,complete:true,date_from:null,date_to:today,classification:"Mapa",vehicle_from:"225",vehicle_to:"312",force_run:forceRun};
+  return{enabled:true,preferred_node:preferred,complete:false,date_from:dateFrom,date_to:today,classification:"Mapa",vehicle_from:"225",vehicle_to:"312",force_run:forceRun};
 }
 async function agentPull031120Import(node:any,b:any){
   const preferred=await agentPull031120PreferredNode();
