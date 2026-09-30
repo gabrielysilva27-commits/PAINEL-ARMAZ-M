@@ -38,7 +38,7 @@ Deno.serve(async req=>{
   const {count,error:ce}=await db.from('efd_maps').select('map_id',{count:'exact',head:true}).is('reference_date',null);check(ce);
   const {data:config,error:ae}=await db.from('efd_agent_config').select('status,last_scan_at,last_error,diagnostic,root_path,diagnostic_requested').eq('id',1).single();check(ae);
   // Dates are local operational timestamps; the cutoff is on the departure day.
-  const maps=(rows||[]).map(r=>({...r,status:!r.valid?'excluded':!r.physical_at?'pending':r.physical_at<=r.reference_date+'T21:00:00'?'on_time':'late'}));
+  const maps=(rows||[]).map(r=>({...r,status:!r.valid?'excluded':!r.physical_at?'pending':Date.parse(r.physical_at)<=Date.parse(r.reference_date+'T21:00:00')?'on_time':'late'}));
   return reply({month,maps,unmatched_maps:count||0,cutoff:'21:00',target:90,source:'PC_Física · 03.11.20 + PCD',coverage:'Base inicial do arquivo anexado; pendências de conciliação disponíveis.',agent:u.role==='admin'?config:{status:config.status,last_scan_at:config.last_scan_at,last_error:config.last_error}});
  }catch(e){console.error(e);return reply({error:'Não foi possível processar o EFD. Tente novamente.'},500)}
 });
