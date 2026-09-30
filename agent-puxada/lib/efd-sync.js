@@ -59,7 +59,9 @@ async function sync(api,log){
  try{
   const result=inventory(config.root_path),january=result.files.filter(f=>/janeiro|(^|[\\/])0?1([ ._\\/-]|$)/i.test(f.relative_path));
   const samples=(january.length?january:result.files).filter(f=>!/\.xls$/i.test(f.name)).sort((a,b)=>Number(/^PCD/i.test(b.name))-Number(/^PCD/i.test(a.name))).slice(0,3).map(f=>preview(config.root_path,f));
-  const diagnostic={files_count:result.files.length,directories:result.directories.slice(0,120),files:result.files.slice(0,150),samples,errors:result.errors.slice(0,10),truncated:result.files.length>=5000};
+  const downloadDirectory=path.join(__dirname,'..','downloads');
+  const csvSamples=fs.existsSync(downloadDirectory)?fs.readdirSync(downloadDirectory).filter(name=>/^031120_normal_edge_\d+\.csv\.inf$/.test(name)).map(name=>({name,modified:fs.statSync(path.join(downloadDirectory,name)).mtimeMs})).sort((a,b)=>b.modified-a.modified).slice(0,3).map(file=>{const raw=fs.readFileSync(path.join(downloadDirectory,file.name));let text=raw.toString('utf8');if((text.match(/�/g)||[]).length>3)text=raw.toString('latin1');return{file:file.name,size:raw.length,lines:text.split(/\r?\n/).slice(0,40)}}):[];
+  const diagnostic={csv_samples:csvSamples,files_count:result.files.length,directories:result.directories.slice(0,120),files:result.files.slice(0,150),samples,errors:result.errors.slice(0,10),truncated:result.files.length>=5000};
   await call(api,'agent_diagnostic',{diagnostic,error:result.errors.length?result.errors.slice(0,3).join(' | '):null});
   if(log)log('EFD: diagnóstico PCD enviado, '+result.files.length+' arquivo(s).');
  }catch(e){await call(api,'agent_diagnostic',{diagnostic:{files_count:0},error:e.message});if(log)log('EFD: '+e.message,true)}
