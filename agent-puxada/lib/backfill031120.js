@@ -6,10 +6,13 @@ async function run({api,promax,config,root,parse,log,task}){
  async function fetchPeriod(period){
   await api.pull031120State({status:'running',stage:'open_report',...period,coverage});
   const file=await promax.export031120({...task,...period},config,root,parse),parsed=parse(file);source=path.basename(file);
-  if(parsed.rows.some(row=>row.pull_date<period.date_from||row.pull_date>period.date_to))throw Error('031120_FILTER_MISMATCH: arquivo contém dias fora do período solicitado.');
+  const outside=parsed.rows.filter(row=>row.pull_date<period.date_from||row.pull_date>period.date_to);
+  parsed.rows=parsed.rows.filter(row=>row.pull_date>=period.date_from&&row.pull_date<=period.date_to);
+  if(!parsed.rows.length)throw Error('031120_NO_DATA: arquivo '+path.basename(file)+' sem entradas dentro de '+period.date_from+' a '+period.date_to+'.');
+  if(outside.length)log('03.11.20: '+outside.length+' dias fora do intervalo foram excluídos da importação.');
   raw+=parsed.raw_rows;for(const row of parsed.rows)rows.set(row.pull_date,row);
   await api.pull031120Import({...period,source_file:source,raw_rows:parsed.raw_rows,rows:parsed.rows});
-  coverage.files.push({source_file:source,date_from:period.date_from,date_to:period.date_to,days:parsed.rows.length});return parsed;
+  coverage.files.push({source_file:source,date_from:period.date_from,date_to:period.date_to,days:parsed.rows.length,excluded_days:outside.map(row=>row.pull_date)});return parsed;
  }
  const periods=monthPeriods(task.date_from,task.date_to);let missing=[];
  try{const full=await fetchPeriod({date_from:task.date_from,date_to:task.date_to});const found=new Set(full.rows.map(r=>r.pull_date.slice(0,7)));missing=periods.filter(p=>!found.has(p.month));coverage.months=[...found].sort()}

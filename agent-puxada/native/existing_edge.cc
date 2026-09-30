@@ -748,6 +748,54 @@ static bool FillReport(HWND hwnd, const std::wstring* values) {
   return ClickControl(*visualize);
 }
 
+// Verify the displayed values through UI Automation before generating a report.
+static std::wstring Read031120Value(const VisibleControl& control) {
+  IUIAutomation* automation = nullptr;
+  IUIAutomationElement* element = nullptr;
+  std::wstring value;
+  POINT point = {(control.rect.left+control.rect.right)/2,
+                 (control.rect.top+control.rect.bottom)/2};
+  if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+      IID_IUIAutomation, reinterpret_cast<void**>(&automation))) && automation &&
+      SUCCEEDED(automation->ElementFromPoint(point, &element)) && element) {
+    const PROPERTYID properties[] = {UIA_ValueValuePropertyId, UIA_LegacyIAccessibleValuePropertyId};
+    for (PROPERTYID property : properties) {
+      VARIANT current; VariantInit(&current);
+      if (SUCCEEDED(element->GetCurrentPropertyValue(property, &current)) &&
+          current.vt == VT_BSTR && current.bstrVal && SysStringLen(current.bstrVal)) {
+        value.assign(current.bstrVal, SysStringLen(current.bstrVal));
+      }
+      VariantClear(&current);
+      if (!value.empty()) break;
+    }
+  }
+  if (element) element->Release();
+  if (automation) automation->Release();
+  return value;
+}
+static bool Fill031120Control(const VisibleControl& control, const std::wstring& value) {
+  for (int attempt=0; attempt<2; ++attempt) {
+    if (!ClickControl(control)) return false;
+    Sleep(120);
+    if (!Key(VK_CONTROL) || !Key('A') || !Key('A',true) || !Key(VK_CONTROL,true)) return false;
+    for (wchar_t character : value) {
+      if (!TypeText(std::wstring(1,character))) return false;
+      Sleep(35); // Allow the Promax date mask to handle each character.
+    }
+    if (!Key(VK_TAB) || !Key(VK_TAB,true)) return false;
+    Sleep(180);
+    if (Read031120Value(control) == value) return true;
+  }
+  return false;
+}
+static bool Select031120Mapa(const VisibleControl& control) {
+  if (!ClickControl(control) || !Key(VK_HOME) || !Key(VK_HOME,true) ||
+      !Key('M') || !Key('M',true) || !Key(VK_RETURN) || !Key(VK_RETURN,true)) return false;
+  Sleep(180);
+  std::wstring selected = Read031120Value(control);
+  std::transform(selected.begin(), selected.end(), selected.begin(), towlower);
+  return selected == L"mapa";
+}
 static bool Fill031120ByGeometry(HWND hwnd, const std::wstring* values) {
   RECT r = {};
   if (!GetWindowRect(hwnd, &r)) return false;
@@ -756,24 +804,18 @@ static bool Fill031120ByGeometry(HWND hwnd, const std::wstring* values) {
 
   auto px = [&](double x){ return r.left + static_cast<int>(w*x + 0.5); };
   auto py = [&](double y){ return r.top + static_cast<int>(h*y + 0.5); };
-  auto fill = [&](double x, double y, const std::wstring& value) {
-    if (!ClickPoint(px(x), py(y))) return false;
-    Sleep(90);
-    return Key(VK_CONTROL) && Key('A') && Key('A', true) &&
-        Key(VK_CONTROL, true) && TypeText(value);
+  auto control = [&](double x, double y) {
+    return VisibleControl{UIA_EditControlTypeId, L"", {px(x)-2,py(y)-2,px(x)+2,py(y)+2}};
   };
 
   // Coordenadas normalizadas da tela 03.11.20 validada pela operação:
   // Classificação=M​​apa; pares Data e Veículo; botão Visualizar.
-  if (!ClickPoint(px(0.303), py(0.366)) ||
-      !Key(VK_HOME) || !Key(VK_HOME, true) ||
-      !Key('M') || !Key('M', true) ||
-      !Key(VK_RETURN) || !Key(VK_RETURN, true)) return false;
-  Sleep(180);
-  if (!fill(0.686,0.358,values[0]) || !fill(0.852,0.358,values[1]) ||
-      !fill(0.686,0.397,values[2]) || !fill(0.852,0.397,values[3])) return false;
-  Sleep(180);
-  return ClickPoint(px(0.921), py(0.842));
+  if (!Select031120Mapa(control(0.308,0.358)) ||
+      !Fill031120Control(control(0.690,0.350),values[0]) ||
+      !Fill031120Control(control(0.855,0.350),values[1]) ||
+      !Fill031120Control(control(0.690,0.388),values[2]) ||
+      !Fill031120Control(control(0.855,0.388),values[3])) return false;
+  return ClickPoint(px(0.924), py(0.824));
 }
 
 static bool Fill031120(HWND hwnd, const std::wstring* values) {
@@ -792,7 +834,7 @@ static bool Fill031120(HWND hwnd, const std::wstring* values) {
   });
   std::vector<std::vector<VisibleControl>> rows;
   for (const auto& e : edits) {
-    if (e.rect.top < window.top + 160) continue;
+    if (e.rect.top < window.top + 160 || e.rect.left < window.left + (window.right-window.left)/2) continue;
     if (rows.empty() || abs(e.rect.top-rows.back()[0].rect.top) > 8) rows.push_back({e});
     else rows.back().push_back(e);
   }
@@ -819,15 +861,11 @@ static bool Fill031120(HWND hwnd, const std::wstring* values) {
     if (!visualize || b.rect.top > visualize->rect.top) visualize = &b;
   if (!visualize) return Fill031120ByGeometry(hwnd, values);
 
-  if (!ClickControl(*classification) || !Key(VK_HOME) || !Key(VK_HOME,true) ||
-      !Key('M') || !Key('M',true) || !Key(VK_RETURN) || !Key(VK_RETURN,true))
-    return Fill031120ByGeometry(hwnd, values);
-  Sleep(180);
-  if (!FillControl(date[0], values[0]) || !FillControl(date[1], values[1]) ||
-      !FillControl(vehicle[0], values[2]) || !FillControl(vehicle[1], values[3]))
-    return Fill031120ByGeometry(hwnd, values);
-  Sleep(180);
-  return ClickControl(*visualize) || Fill031120ByGeometry(hwnd, values);
+  if (!Select031120Mapa(*classification) ||
+      !Fill031120Control(date[0], values[0]) || !Fill031120Control(date[1], values[1]) ||
+      !Fill031120Control(vehicle[0], values[2]) || !Fill031120Control(vehicle[1], values[3]))
+    return false; // Never generate or fall back to unverified filters.
+  return ClickControl(*visualize);
 }
 
 struct SaveWindows { HWND saveAs = nullptr; HWND download = nullptr; };
