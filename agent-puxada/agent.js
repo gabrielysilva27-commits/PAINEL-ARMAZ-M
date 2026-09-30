@@ -7,12 +7,13 @@ const { loadAgentToken } = require("./lib/secrets");
 const { parse020501 } = require("./lib/csv020501");
 const { parse031120 } = require("./lib/pull031120");
 const oorSync = require("./lib/oor-sync");
+const efdSync = require("./lib/efd-sync");
 const promax = require("./lib/promax");
 const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.104";
+const VERSION = "3.2.105";
 // 3.2.102: reforça ativação do Edge com retries; pacote completo adiciona Parar/Reiniciar no launcher.\n// 3.2.102 final build: pacote consolidado após todas as alterações.\n// 3.2.103: 03.11.20 considera somente carretas oficiais 225,229,231,246,264,271,289,298,312.\n// 3.2.103 final build: pacote consolidado com filtro oficial de carretas.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
@@ -228,6 +229,7 @@ async function main() {
   if (await maybeUpdate(true)) return;
 
   log("Agente Puxada iniciado em " + os.hostname() + ".");
+  await efdSync.sync(api,log).catch(e=>log("EFD: "+e.message,true));
   await maybeSync031120(true);
   let stopping = false;
   process.on("SIGINT", function () { stopping = true; });
@@ -237,6 +239,7 @@ async function main() {
     let job = null;
     try {
       if (await maybeUpdate(false)) return;
+      await efdSync.sync(api,log).catch(e=>log("EFD: "+e.message,true));
       await maybeSync031120(false);
       await maybeSyncOor(false);
       if (!await waitForQuietComputer(() => stopping)) break;
