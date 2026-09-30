@@ -80,7 +80,8 @@ function parse031120(file) {
   for (let r = headerRow + 1; r < matrix.length; r++) {
     const row = matrix[r];
     const d = isoDate(row[cols.date]);
-    const vehicle = String(row[cols.vehicle] || "").replace(/\D/g, "");
+    const vehicleDigits = String(row[cols.vehicle] || "").replace(/\D/g, "");
+    const vehicle = vehicleDigits ? String(Number(vehicleDigits)) : "";
     const mapRaw = String(row[cols.map] || "").trim();
     if (!d || !vehicle || !mapRaw) continue;
     rawRows++;
