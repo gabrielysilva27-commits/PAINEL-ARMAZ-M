@@ -13,8 +13,31 @@ Deno.serve(async req=>{
   if(action.startsWith('agent_')){
    const token=req.headers.get('x-agent-token');if(!token)return reply({error:'Agente não autorizado'},401);
    const {data:node,error}=await db.from('receiving_pull_agent_nodes').select('id,slot_code').eq('token_hash',await hash(token)).eq('active',true).maybeSingle();check(error);
-   if(!node||node.slot_code!=='ADM')return reply({error:'Leitura PCD reservada ao Computador ADM'},403);
-   if(action==='agent_status'){const {data,error}=await db.from('efd_agent_config').select('*').eq('id',1).single();check(error);return reply({config:data})}
+   if(!node)return reply({error:'Agente não autorizado'},403);
+   if(['agent_pcd_import','agent_diagnostic'].includes(action)&&node.slot_code!=='ADM')return reply({error:'Leitura PCD reservada ao Computador ADM'},403);
+   if(action==='agent_status'){const {data,error}=await db.from('efd_agent_config').select('*').eq('id',1).single();check(error);return reply({config:{...data,pcd_enabled:node.slot_code==='ADM'}})}
+   if(action==='agent_pcd_import'||action==='agent_phase_import'){
+    if(!Array.isArray(b.rows)||b.rows.length>500||JSON.stringify(b.rows).length>400000)return reply({error:'Lote inválido'},400);
+    const source=String(b.source_file||'').slice(0,180);if(!source)return reply({error:'Arquivo de origem necessário'},400);
+    const digit=(v:unknown)=>/^\d{1,12}$/.test(String(v||''));
+    const date=(v:unknown)=>/^2026-\d{2}-\d{2}$/.test(String(v||''));
+    const timestamp=(v:unknown)=>v===null||v===undefined||/^2026-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(String(v));
+    const rows=b.rows.map((r:any)=>{
+     if(!digit(r.vehicle)||!/^\w{5,12}$/.test(String(r.plate||'')))throw Error('Identificação de veículo inválida');
+     if(action==='agent_pcd_import'){
+      if(!date(r.reference_date))throw Error('Data PCD inválida');
+      return {reference_date:r.reference_date,vehicle:String(Number(r.vehicle)),plate:String(r.plate).toUpperCase(),route_name:String(r.route_name||'').slice(0,200),expected_arrival:String(r.expected_arrival||'').slice(0,30),source_file:String(r.source_file||source).slice(0,180),updated_at:new Date().toISOString()};
+     }
+     if(!digit(r.map_id)||(r.reference_date!==null&&!date(r.reference_date))||!timestamp(r.arrival_at)||!timestamp(r.physical_at))throw Error('Fase inválida');
+     return {map_id:String(Number(r.map_id)),vehicle:String(Number(r.vehicle)),plate:String(r.plate).toUpperCase(),reference_date:r.reference_date,arrival_at:r.arrival_at||null,physical_at:r.physical_at||null,map_type:String(r.map_type||'').slice(0,60),fleet_type:String(r.fleet_type||'').slice(0,60),source_file:'agent_031120_'+source,updated_at:new Date().toISOString()};
+    });
+    const table=action==='agent_pcd_import'?'efd_pcd_routes':'efd_phase_maps';
+    if(rows.length){const {error}=await db.from(table).upsert(rows,{onConflict:action==='agent_pcd_import'?'reference_date,vehicle,plate':'map_id'});check(error)}
+    return reply({ok:true,imported:rows.length});
+   }
+   if(action==='agent_reconcile'){
+    const {data,error}=await db.rpc('efd_reconcile');check(error);return reply({ok:true,updated_maps:data});
+   }
    if(action==='agent_diagnostic'){
     const d=b.diagnostic;
     if(!d||typeof d!=='object'||JSON.stringify(d).length>200000)return reply({error:'Diagnóstico inválido'},400);
@@ -34,11 +57,13 @@ Deno.serve(async req=>{
   if(action!=='dashboard')return reply({error:'Ação inválida'},400);
   const month=String(b.month||'2026-01');if(!/^2026-(0[1-9]|1[0-2])$/.test(month))return reply({error:'Mês inválido'},400);
   const from=month+'-01';const end=new Date(Date.UTC(2026,Number(month.slice(5)),1)).toISOString().slice(0,10);
-  const {data:rows,error:re}=await db.from('efd_maps').select('*').gte('reference_date',from).lt('reference_date',end).order('reference_date').order('vehicle').limit(10000);check(re);
+  const rows:any[]=[];
+  for(let offset=0;offset<20000;offset+=1000){const {data:page,error:re}=await db.from('efd_maps').select('*').gte('reference_date',from).lt('reference_date',end).order('reference_date').order('vehicle').order('map_id').range(offset,offset+999);check(re);rows.push(...(page||[]));if((page||[]).length<1000)break}
+
   const {count,error:ce}=await db.from('efd_maps').select('map_id',{count:'exact',head:true}).is('reference_date',null);check(ce);
   const {data:config,error:ae}=await db.from('efd_agent_config').select('status,last_scan_at,last_error,diagnostic,root_path,diagnostic_requested').eq('id',1).single();check(ae);
   // Dates are local operational timestamps; the cutoff is on the departure day.
   const maps=(rows||[]).map(r=>({...r,status:!r.valid?'excluded':!r.physical_at?'pending':Date.parse(r.physical_at)<=Date.parse(r.reference_date+'T21:00:00')?'on_time':'late'}));
-  return reply({month,maps,unmatched_maps:count||0,cutoff:'21:00',target:90,source:'PC_Física · 03.11.20 + PCD',coverage:'Base inicial do arquivo anexado; pendências de conciliação disponíveis.',agent:u.role==='admin'?config:{status:config.status,last_scan_at:config.last_scan_at,last_error:config.last_error}});
+  return reply({month,maps,unmatched_maps:count||0,cutoff:'21:00',target:90,source:'PC_Física · 03.11.20 + PCD',coverage:'Mapas conciliados entre fases do 03.11.20 e programação PCD.',agent:u.role==='admin'?config:{status:config.status,last_scan_at:config.last_scan_at,last_error:config.last_error}});
  }catch(e){console.error(e);return reply({error:'Não foi possível processar o EFD. Tente novamente.'},500)}
 });

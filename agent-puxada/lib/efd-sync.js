@@ -28,7 +28,7 @@ function preview(root,file){
  }
  return{file:file.relative_path,note:'Formato identificado; leitura de conteúdo pendente.'};
 }
-function xlsxPreview(buf){
+function xlsxPreview(buf,rowLimit=8){
  let end=-1;for(let i=buf.length-22;i>=Math.max(0,buf.length-65557);i--){if(buf.readUInt32LE(i)===0x06054b50){end=i;break}}
  if(end<0)throw Error('Arquivo Excel ZIP inválido');
  const entries=new Map();let offset=buf.readUInt32LE(end+16);const count=buf.readUInt16LE(end+10);
@@ -41,7 +41,37 @@ function xlsxPreview(buf){
  function decode(s){return s.replace(/&(#x[0-9a-f]+|#[0-9]+|amp|lt|gt|quot|apos);/gi,(_,v)=>v[0]==='#'?String.fromCodePoint(v[1].toLowerCase()==='x'?parseInt(v.slice(2),16):parseInt(v.slice(1),10)):({amp:'&',lt:'<',gt:'>',quot:'"',apos:"'"}[v]))}
  function texts(s){return [...s.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map(x=>decode(x[1])).join('')}
  const strings=[...read('xl/sharedStrings.xml').matchAll(/<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/g)].map(x=>texts(x[1]));
- return [...entries.keys()].filter(x=>/^xl\/worksheets\/sheet[0-9]+\.xml$/.test(x)).slice(0,2).map(sheet=>({sheet,rows:[...read(sheet).matchAll(/<row(?:\s[^>]*)?>([\s\S]*?)<\/row>/g)].slice(0,8).map(row=>[...row[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)].map(c=>{const ref=/\br="([^"]+)"/.exec(c[1])?.[1]||'',type=/\bt="([^"]+)"/.exec(c[1])?.[1],v=/<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/.exec(c[2])?.[1]||'';const value=type==='s'?strings[Number(v)]||'':type==='inlineStr'?texts(c[2]):decode(v);return value?ref+':'+value.slice(0,180):''}).filter(Boolean).join(' | '))}));
+ return [...entries.keys()].filter(x=>/^xl\/worksheets\/sheet[0-9]+\.xml$/.test(x)).slice(0,2).map(sheet=>({sheet,rows:[...read(sheet).matchAll(/<row(?:\s[^>]*)?>([\s\S]*?)<\/row>/g)].slice(0,rowLimit).map(row=>[...row[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)].map(c=>{const ref=/\br="([^"]+)"/.exec(c[1])?.[1]||'',type=/\bt="([^"]+)"/.exec(c[1])?.[1],v=/<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/.exec(c[2])?.[1]||'';const value=type==='s'?strings[Number(v)]||'':type==='inlineStr'?texts(c[2]):decode(v);return value?ref+':'+value.slice(0,180):''}).filter(Boolean).join(' | '))}));
+}
+function pcdRows(root,file){
+ const match=file.name.match(/^PCD[^0-9]*(\d{2})[.\-_](\d{2})[.\-_](2026).*\.xlsx$/i);if(!match)return [];
+ const date=match[3]+'-'+match[2]+'-'+match[1];
+ const rows=[];
+ for(const sheet of xlsxPreview(fs.readFileSync(path.join(root,file.relative_path)),5000)){
+  let columns=null;
+  for(const line of sheet.rows){
+   const cells={};for(const cell of line.split(/ \| (?=[A-Z]+\d+:)/)){const m=cell.match(/^([A-Z]+)\d+:(.*)$/);if(m)cells[m[1]]=m[2]}
+   const entries=Object.entries(cells),norm=require('./efd-phases').norm;
+   if(!columns){const plate=entries.find(([k,v])=>norm(v)==='VEICULO'),vehicle=entries.find(([k,v])=>norm(v).includes('ORDEM'));if(plate&&vehicle)columns={plate:plate[0],vehicle:vehicle[0],route:entries.find(([k,v])=>norm(v)==='NOME ROTA')?.[0],arrival:entries.find(([k,v])=>norm(v).includes('PREV. CHEG'))?.[0]};continue}
+   const vehicle=String(cells[columns.vehicle]||'').trim(),plate=String(cells[columns.plate]||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+   if(!/^\d+$/.test(vehicle)||plate.length<5)continue;
+   rows.push({reference_date:date,vehicle:String(Number(vehicle)),plate,route_name:cells[columns.route]||'',expected_arrival:cells[columns.arrival]||'',source_file:file.relative_path});
+  }
+ }
+ return rows;
+}
+const STATE_PATH=path.join(__dirname,'..','..','data','efd-incorporation.json');
+function loadState(){try{return JSON.parse(fs.readFileSync(STATE_PATH,'utf8'))}catch(e){return{csv:{},pcd:{}}}}
+function saveState(state){fs.mkdirSync(path.dirname(STATE_PATH),{recursive:true});fs.writeFileSync(STATE_PATH,JSON.stringify(state),'utf8')}
+async function importBatches(api,action,rows,source){for(let i=0;i<rows.length;i+=500)await call(api,action,{rows:rows.slice(i,i+500),source_file:source})}
+async function phases(api,state,log){
+ const dir=path.join(__dirname,'..','downloads');if(!fs.existsSync(dir))return{files:0,maps:0};let files=0,maps=0;
+ const candidates=fs.readdirSync(dir).filter(name=>/^031120_normal_edge_\d+\.csv\.inf$/.test(name)).map(name=>{const stat=fs.statSync(path.join(dir,name));return{name,size:stat.size,modified:stat.mtimeMs}}).sort((a,b)=>a.modified-b.modified);
+ for(const file of candidates){const signature=file.size+':'+file.modified;if(state.csv[file.name]===signature)continue;
+  const parsed=require('./efd-phases').parse(path.join(dir,file.name));await importBatches(api,'agent_phase_import',parsed.rows,file.name);state.csv[file.name]=signature;saveState(state);files++;maps+=parsed.rows.length;
+  if(log)log('EFD: '+parsed.rows.length+' mapas e '+parsed.events+' fases incorporados de '+file.name);
+ }
+ return{files,maps};
 }
 let lastCheck=0;
 function operationalDay(timestamp){
@@ -54,16 +84,24 @@ function shouldScan(config,now=Date.now()){
 async function sync(api,log){
  const now=Date.now();if(now-lastCheck<30000)return;lastCheck=now;
  let config;try{const r=await call(api,'agent_status');config=r.config}catch(e){if(/reservada/.test(e.message))return;throw e}
- if(!shouldScan(config,now))return;
+ const state=loadState();let phaseResult;
+ try{phaseResult=await phases(api,state,log)}catch(e){if(config.pcd_enabled!==false)await call(api,'agent_diagnostic',{diagnostic:{phase_error:e.message},error:e.message});throw e}
+ if(config.pcd_enabled===false){if(phaseResult.files)await call(api,'agent_reconcile');return}
+ if(!shouldScan(config,now)){if(phaseResult.files)await call(api,'agent_reconcile');return}
  if(log)log('EFD: lendo PCD pelo Computador ADM em '+config.root_path);
  try{
   const result=inventory(config.root_path),january=result.files.filter(f=>/janeiro|(^|[\\/])0?1([ ._\\/-]|$)/i.test(f.relative_path));
+  const changed=result.files.filter(file=>/^PCD.*\.xlsx$/i.test(file.name)&&state.pcd[file.relative_path]!==file.size+':'+file.modified_at),routes=new Map();
+  for(const file of changed)for(const row of pcdRows(config.root_path,file))routes.set(row.reference_date+'|'+row.vehicle+'|'+row.plate,row);
+  await importBatches(api,'agent_pcd_import',[...routes.values()],'PCD 2026');
+  for(const file of changed)state.pcd[file.relative_path]=file.size+':'+file.modified_at;saveState(state);
+  const reconciliation=await call(api,'agent_reconcile');
   const samples=(january.length?january:result.files).filter(f=>!/\.xls$/i.test(f.name)).sort((a,b)=>Number(/^PCD/i.test(b.name))-Number(/^PCD/i.test(a.name))).slice(0,3).map(f=>preview(config.root_path,f));
   const downloadDirectory=path.join(__dirname,'..','downloads');
   const csvSamples=fs.existsSync(downloadDirectory)?fs.readdirSync(downloadDirectory).filter(name=>/^031120_normal_edge_\d+\.csv\.inf$/.test(name)).map(name=>({name,modified:fs.statSync(path.join(downloadDirectory,name)).mtimeMs})).sort((a,b)=>b.modified-a.modified).slice(0,3).map(file=>{const raw=fs.readFileSync(path.join(downloadDirectory,file.name));let text=raw.toString('utf8');if((text.match(/�/g)||[]).length>3)text=raw.toString('latin1');return{file:file.name,size:raw.length,lines:text.split(/\r?\n/).slice(0,40)}}):[];
-  const diagnostic={csv_samples:csvSamples,files_count:result.files.length,directories:result.directories.slice(0,120),files:result.files.slice(0,150),samples,errors:result.errors.slice(0,10),truncated:result.files.length>=5000};
+  const diagnostic={incorporation:{phase_files:phaseResult.files,phase_maps:phaseResult.maps,pcd_files:changed.length,pcd_routes:routes.size,updated_maps:reconciliation.updated_maps},csv_samples:csvSamples,files_count:result.files.length,directories:result.directories.slice(0,120),files:result.files.slice(0,150),samples,errors:result.errors.slice(0,10),truncated:result.files.length>=5000};
   await call(api,'agent_diagnostic',{diagnostic,error:result.errors.length?result.errors.slice(0,3).join(' | '):null});
   if(log)log('EFD: diagnóstico PCD enviado, '+result.files.length+' arquivo(s).');
  }catch(e){await call(api,'agent_diagnostic',{diagnostic:{files_count:0},error:e.message});if(log)log('EFD: '+e.message,true)}
 }
-module.exports={sync,inventory,preview,xlsxPreview,shouldScan};
+module.exports={sync,inventory,preview,xlsxPreview,shouldScan,pcdRows,phases};
