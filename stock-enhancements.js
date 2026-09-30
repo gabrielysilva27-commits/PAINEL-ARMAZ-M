@@ -140,11 +140,12 @@
   }
 
   function wireObservers(){
-    const rep=$('replenishmentView'), stock=$('stockBaseView'); if(!rep||!stock)return false;
-    const obsRep=new MutationObserver(()=>{if(!rep.classList.contains('hidden')&&!rep.querySelector('[data-rpl-v3]'))setTimeout(()=>renderReplenishment(false),0);});
+    // Reabastecimento é controlado exclusivamente por replenishment-lazy.js.
+    // Antes, este arquivo também tentava renderizar a mesma view e os dois
+    // módulos disputavam a tela, fazendo o usuário ver layouts diferentes.
+    const stock=$('stockBaseView'); if(!stock)return false;
     const obsStock=new MutationObserver(()=>{if(!stock.classList.contains('hidden')&&!stock.querySelector('[data-stock-v3]'))setTimeout(()=>renderStock(false),0);});
-    obsRep.observe(rep,{childList:true,subtree:false,attributes:true,attributeFilter:['class']}); obsStock.observe(stock,{childList:true,subtree:false,attributes:true,attributeFilter:['class']});
-    document.querySelector('[data-view="replenishment"]')?.addEventListener('click',()=>setTimeout(()=>renderReplenishment(false),0));
+    obsStock.observe(stock,{childList:true,subtree:false,attributes:true,attributeFilter:['class']});
     document.querySelector('[data-view="stock-base"]')?.addEventListener('click',()=>setTimeout(()=>renderStock(false),0));
     return true;
   }
@@ -153,9 +154,8 @@
     core=await import('./stock-core.js?v=20260916-2');
     if(!$('stockEnhancementCss')){const l=document.createElement('link');l.id='stockEnhancementCss';l.rel='stylesheet';l.href='stock-enhancements.css?v=20260917-5';document.head.appendChild(l);}
     wireObservers();
-    if(!$('replenishmentView').classList.contains('hidden'))renderReplenishment(true);
     if(!$('stockBaseView').classList.contains('hidden'))renderStock(true);
-    window.__stockEnhancements={renderReplenishment,renderStock};
+    window.__stockEnhancements={renderStock};
   }
   boot();
 })();
