@@ -44,8 +44,10 @@ function xlsxPreview(buf,rowLimit=8){
  return [...entries.keys()].filter(x=>/^xl\/worksheets\/sheet[0-9]+\.xml$/.test(x)).slice(0,2).map(sheet=>({sheet,rows:[...read(sheet).matchAll(/<row(?:\s[^>]*)?>([\s\S]*?)<\/row>/g)].slice(0,rowLimit).map(row=>[...row[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)].map(c=>{const ref=/\br="([^"]+)"/.exec(c[1])?.[1]||'',type=/\bt="([^"]+)"/.exec(c[1])?.[1],v=/<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/.exec(c[2])?.[1]||'';const value=type==='s'?strings[Number(v)]||'':type==='inlineStr'?texts(c[2]):decode(v);return value?ref+':'+value.slice(0,180):''}).filter(Boolean).join(' | '))}));
 }
 function pcdRows(root,file){
- const match=file.name.match(/^PCD[^0-9]*(\d{2})[.\-_](\d{2})[.\-_](2026).*\.xlsx$/i);if(!match)return [];
- const date=match[3]+'-'+match[2]+'-'+match[1];
+ const match=file.name.match(/^PCD[^0-9]*(\d{2})[.\-_](\d{2})(?:[.\-_](\d{4}|\d{2}))?.*\.xlsx$/i);if(!match)return [];
+ const year=match[3]?(match[3].length===2?'20'+match[3]:match[3]):path.basename(root);if(year!=='2026')return [];
+ const date=year+'-'+match[2]+'-'+match[1];
+ if(new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date)throw Error('EFD_PCD_INVALID_DATE: '+file.name);
  const rows=[];
  for(const sheet of xlsxPreview(fs.readFileSync(path.join(root,file.relative_path)),5000)){
   let columns=null;
@@ -84,7 +86,7 @@ function shouldScan(config,now=Date.now()){
 async function sync(api,log){
  const now=Date.now();if(now-lastCheck<30000)return;lastCheck=now;
  let config;try{const r=await call(api,'agent_status');config=r.config}catch(e){if(/reservada/.test(e.message))return;throw e}
- const state=loadState();let phaseResult;
+ const state=loadState();if(state.pcdParserVersion!==2){state.pcd={};state.pcdParserVersion=2}let phaseResult;
  try{phaseResult=await phases(api,state,log)}catch(e){if(config.pcd_enabled!==false)await call(api,'agent_diagnostic',{diagnostic:{phase_error:e.message},error:e.message});throw e}
  if(config.pcd_enabled===false){if(phaseResult.files)await call(api,'agent_reconcile');return}
  if(!shouldScan(config,now)&&Object.keys(state.pcd).length){if(phaseResult.files)await call(api,'agent_reconcile');return}
