@@ -13,7 +13,7 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.106";
+const VERSION = "3.2.107";
 // 3.2.102: reforça ativação do Edge com retries; pacote completo adiciona Parar/Reiniciar no launcher.\n// 3.2.102 final build: pacote consolidado após todas as alterações.\n// 3.2.103: 03.11.20 considera somente carretas oficiais 225,229,231,246,264,271,289,298,312.\n// 3.2.103 final build: pacote consolidado com filtro oficial de carretas.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
@@ -169,6 +169,7 @@ async function main() {
   }
 
   let last031120Check = 0;
+  let last031120Run = 0;
   async function maybeSync031120(force) {
     if (!force && Date.now() - last031120Check < 60 * 1000) return;
     last031120Check = Date.now();
@@ -177,6 +178,7 @@ async function main() {
       const state = await api.pull031120Status();
       task = state && state.pull031120;
       if (!task || !task.enabled || task.complete || !task.date_from) return;
+      if (!force && !task.force_run && Date.now()-last031120Run<2*60*60*1000) return;
       if (!task.force_run) {
         const unlocked = existingEdge.desktopUnlocked();
         const idle = existingEdge.idleMilliseconds();
@@ -187,6 +189,7 @@ async function main() {
       } else {
         log("Recebimento 03.11.20: FORCE_RUN ativo; ignorando gate de inatividade para este teste.");
       }
+      last031120Run=Date.now();
       await api.pull031120State({status:"running",stage:"open_report",date_from:task.date_from,date_to:task.date_to}).catch(function(){});
       log("Recebimento 03.11.20: atualizando de " + task.date_from + " a " + task.date_to +
         " · classificação Mapa · veículos " + task.vehicle_from + " a " + task.vehicle_to + ".");
@@ -232,17 +235,27 @@ async function main() {
   await efdSync.sync(api,log).catch(e=>log("EFD: "+e.message,true));
   await maybeSync031120(true);
   let stopping = false;
+  let lastBackgroundPing = 0;
   process.on("SIGINT", function () { stopping = true; });
   process.on("SIGTERM", function () { stopping = true; });
 
   while (!stopping) {
     let job = null;
     try {
+      if (Date.now()-lastBackgroundPing>=30000) {
+        lastBackgroundPing=Date.now();
+        await api.ping(await info()).catch(e=>log("Estado do agente: "+e.message,true));
+      }
       if (await maybeUpdate(false)) return;
       await efdSync.sync(api,log).catch(e=>log("EFD: "+e.message,true));
       await maybeSync031120(false);
       await maybeSyncOor(false);
-      if (!await waitForQuietComputer(() => stopping)) break;
+      // Keep the scheduler alive while the operator is using the computer.
+      // Only browser interaction waits for an idle, unlocked desktop.
+      if (!existingEdge.desktopUnlocked() || (existingEdge.idleMilliseconds() ?? 0) < IDLE_REQUIRED_MS) {
+        await sleep(5000);
+        continue;
+      }
       const response = await api.poll(await info());
       job = response.job;
 

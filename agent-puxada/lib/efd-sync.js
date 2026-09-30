@@ -43,9 +43,18 @@ function xlsxPreview(buf){
  const strings=[...read('xl/sharedStrings.xml').matchAll(/<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/g)].map(x=>texts(x[1]));
  return [...entries.keys()].filter(x=>/^xl\/worksheets\/sheet[0-9]+\.xml$/.test(x)).slice(0,2).map(sheet=>({sheet,rows:[...read(sheet).matchAll(/<row(?:\s[^>]*)?>([\s\S]*?)<\/row>/g)].slice(0,8).map(row=>[...row[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)].map(c=>{const ref=/\br="([^"]+)"/.exec(c[1])?.[1]||'',type=/\bt="([^"]+)"/.exec(c[1])?.[1],v=/<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/.exec(c[2])?.[1]||'';const value=type==='s'?strings[Number(v)]||'':type==='inlineStr'?texts(c[2]):decode(v);return value?ref+':'+value.slice(0,180):''}).filter(Boolean).join(' | '))}));
 }
+let lastCheck=0;
+function operationalDay(timestamp){
+ return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(timestamp));
+}
+function shouldScan(config,now=Date.now()){
+ const last=Date.parse(config.last_scan_at||'');
+ return !!config.diagnostic_requested||!Number.isFinite(last)||operationalDay(last)!==operationalDay(now);
+}
 async function sync(api,log){
+ const now=Date.now();if(now-lastCheck<30000)return;lastCheck=now;
  let config;try{const r=await call(api,'agent_status');config=r.config}catch(e){if(/reservada/.test(e.message))return;throw e}
- if(!config.diagnostic_requested)return;
+ if(!shouldScan(config,now))return;
  if(log)log('EFD: lendo PCD pelo Computador ADM em '+config.root_path);
  try{
   const result=inventory(config.root_path),january=result.files.filter(f=>/janeiro|(^|[\\/])0?1([ ._\\/-]|$)/i.test(f.relative_path));
@@ -55,4 +64,4 @@ async function sync(api,log){
   if(log)log('EFD: diagnóstico PCD enviado, '+result.files.length+' arquivo(s).');
  }catch(e){await call(api,'agent_diagnostic',{diagnostic:{files_count:0},error:e.message});if(log)log('EFD: '+e.message,true)}
 }
-module.exports={sync,inventory,preview,xlsxPreview};
+module.exports={sync,inventory,preview,xlsxPreview,shouldScan};
