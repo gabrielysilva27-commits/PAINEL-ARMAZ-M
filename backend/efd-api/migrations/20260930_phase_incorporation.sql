@@ -20,10 +20,11 @@ begin
  insert into public.efd_maps(map_id,vehicle,plate,reference_date,arrival_at,physical_at,map_type,fleet_type,valid,validation_note,source_file,updated_at)
  select p.map_id,p.vehicle,p.plate,p.reference_date,p.arrival_at,p.physical_at,
  coalesce(nullif(p.map_type,''),'Rota'),coalesce(nullif(p.fleet_type,''),old.fleet_type,'PCD'),
- p.reference_date is not null and r.vehicle is not null and (coalesce(p.map_type,'') in ('','Rota')),
+ p.reference_date is not null and (coalesce(p.map_type,'') in ('Rota','AS') or (coalesce(p.map_type,'')='' and r.vehicle is not null)),
  case when p.reference_date is null then 'Sem fase Saída CDD no arquivo.'
- when coalesce(p.map_type,'') not in ('','Rota') then 'Mapa fora da operação de rota.'
- when r.vehicle is null then 'Sem correspondência de data, veículo e placa no PCD.' else null end,
+ when coalesce(p.map_type,'') not in ('','Rota','AS') then 'Mapa fora da operação de rota.'
+ when r.vehicle is null and p.map_type in ('Rota','AS') then 'Saída e tipo de mapa confirmados no 03.11.20; sem correspondência no PCD.'
+ when r.vehicle is null then 'Tipo de mapa sem confirmação no PCD.' else null end,
  p.source_file,now()
  from public.efd_phase_maps p
  left join public.efd_pcd_routes r on r.reference_date=p.reference_date and r.vehicle=p.vehicle and r.plate=p.plate

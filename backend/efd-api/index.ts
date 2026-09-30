@@ -64,6 +64,6 @@ Deno.serve(async req=>{
   const {data:config,error:ae}=await db.from('efd_agent_config').select('status,last_scan_at,last_error,diagnostic,root_path,diagnostic_requested').eq('id',1).single();check(ae);
   // Dates are local operational timestamps; the cutoff is on the departure day.
   const maps=(rows||[]).map(r=>({...r,status:!r.valid?'excluded':!r.physical_at?'pending':Date.parse(r.physical_at)<=Date.parse(r.reference_date+'T21:00:00')?'on_time':'late'}));
-  return reply({month,maps,unmatched_maps:count||0,cutoff:'21:00',target:90,source:'PC_Física · 03.11.20 + PCD',coverage:'Mapas conciliados entre fases do 03.11.20 e programação PCD.',agent:u.role==='admin'?config:{status:config.status,last_scan_at:config.last_scan_at,last_error:config.last_error}});
+  return reply({month,maps,unmatched_maps:count||0,cutoff:'21:00',target:90,source:'PC_Física · 03.11.20 + PCD',coverage:'Fases reais do 03.11.20 e programação PCD.',agent:u.role==='admin'?config:{status:config.status,last_scan_at:config.last_scan_at,last_error:config.last_error}});
  }catch(e){console.error(e);return reply({error:'Não foi possível processar o EFD. Tente novamente.'},500)}
 });
