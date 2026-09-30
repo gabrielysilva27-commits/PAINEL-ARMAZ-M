@@ -1,6 +1,6 @@
 const fs=require('fs');
 const path=require('path');
-const {execFileSync}=require('child_process');
+const zlib=require('zlib');
 const ENDPOINT='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/efd-api';
 async function call(api,action,payload={}){
  const r=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json','x-agent-token':api.token},body:JSON.stringify({action,...payload})});
@@ -22,21 +22,26 @@ function preview(root,file){
  const p=path.join(root,file.relative_path);
  if(file.size>15*1024*1024)return{file:file.relative_path,note:'Arquivo acima do limite de leitura inicial.'};
  if(/\.(csv|txt)$/i.test(p)){const fd=fs.openSync(p,'r');try{const b=Buffer.alloc(16384),n=fs.readSync(fd,b,0,b.length,0);return{file:file.relative_path,lines:b.subarray(0,n).toString('latin1').split(/\r?\n/).slice(0,8)}}finally{fs.closeSync(fd)}}
- if(/\.xlsx$/i.test(p)&&process.platform==='win32'){
-  // Read the OpenXML archive without opening Excel or changing the source file.
-  const script=`Add-Type -AssemblyName System.IO.Compression.FileSystem
-  $z=[IO.Compression.ZipFile]::OpenRead($env:EFD_PREVIEW_PATH)
-  function Read-Entry($n){$e=$z.GetEntry($n);if(!$e){return $null};$r=[IO.StreamReader]::new($e.Open());try{return $r.ReadToEnd()}finally{$r.Dispose()}}
-  try{
-   $strings=@();$text=Read-Entry 'xl/sharedStrings.xml';if($text){[xml]$x=$text;$strings=@($x.sst.si|ForEach-Object {($_.SelectNodes('.//*[local-name()="t"]')|ForEach-Object {$_.InnerText}) -join ''})}
-   $entries=@($z.Entries|Where-Object {$_.FullName -match '^xl/worksheets/sheet[0-9]+.xml$'}|Select-Object -First 2)
-   $out=@();foreach($e in $entries){[xml]$x=Read-Entry $e.FullName;$rows=@();foreach($row in ($x.worksheet.sheetData.row|Select-Object -First 8)){$cells=@();foreach($c in $row.c){$v=[string]$c.v;if($c.t -eq 's' -and $v -match '^\\d+$'){$v=$strings[[int]$v]}elseif($c.t -eq 'inlineStr'){$v=$c.is.InnerText};if($v){$cells+=([string]$c.r+':'+$v.Substring(0,[Math]::Min(180,$v.Length)))}};$rows+=($cells -join ' | ')};$out+=@{sheet=$e.FullName;rows=$rows}}
-   ConvertTo-Json -InputObject @($out) -Depth 5 -Compress
-  }finally{$z.Dispose()}`;
-  try{return{file:file.relative_path,sheets:JSON.parse(execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{env:{...process.env,EFD_PREVIEW_PATH:p},timeout:30000,maxBuffer:200000,encoding:'utf8',windowsHide:true}))}}
+ if(/\.xlsx$/i.test(p)){
+  try{return{file:file.relative_path,sheets:xlsxPreview(fs.readFileSync(p))}}
   catch(e){return{file:file.relative_path,error:String(e.message).slice(0,500)}}
  }
  return{file:file.relative_path,note:'Formato identificado; leitura de conteúdo pendente.'};
+}
+function xlsxPreview(buf){
+ let end=-1;for(let i=buf.length-22;i>=Math.max(0,buf.length-65557);i--){if(buf.readUInt32LE(i)===0x06054b50){end=i;break}}
+ if(end<0)throw Error('Arquivo Excel ZIP inválido');
+ const entries=new Map();let offset=buf.readUInt32LE(end+16);const count=buf.readUInt16LE(end+10);
+ for(let i=0;i<count;i++){
+  if(buf.readUInt32LE(offset)!==0x02014b50)throw Error('Diretório ZIP inválido');
+  const n=buf.readUInt16LE(offset+28),extra=buf.readUInt16LE(offset+30),comment=buf.readUInt16LE(offset+32);
+  entries.set(buf.subarray(offset+46,offset+46+n).toString('utf8'),{method:buf.readUInt16LE(offset+10),size:buf.readUInt32LE(offset+20),offset:buf.readUInt32LE(offset+42)});offset+=46+n+extra+comment;
+ }
+ function read(name){const e=entries.get(name);if(!e)return '';const o=e.offset;if(buf.readUInt32LE(o)!==0x04034b50)throw Error('Entrada ZIP inválida');const start=o+30+buf.readUInt16LE(o+26)+buf.readUInt16LE(o+28),b=buf.subarray(start,start+e.size);return(e.method===8?zlib.inflateRawSync(b,{maxOutputLength:20*1024*1024}):e.method===0?b:(()=>{throw Error('Compressão ZIP não suportada')})()).toString('utf8')}
+ function decode(s){return s.replace(/&(#x[0-9a-f]+|#[0-9]+|amp|lt|gt|quot|apos);/gi,(_,v)=>v[0]==='#'?String.fromCodePoint(v[1].toLowerCase()==='x'?parseInt(v.slice(2),16):parseInt(v.slice(1),10)):({amp:'&',lt:'<',gt:'>',quot:'"',apos:"'"}[v]))}
+ function texts(s){return [...s.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map(x=>decode(x[1])).join('')}
+ const strings=[...read('xl/sharedStrings.xml').matchAll(/<si(?:\s[^>]*)?>([\s\S]*?)<\/si>/g)].map(x=>texts(x[1]));
+ return [...entries.keys()].filter(x=>/^xl\/worksheets\/sheet[0-9]+\.xml$/.test(x)).slice(0,2).map(sheet=>({sheet,rows:[...read(sheet).matchAll(/<row(?:\s[^>]*)?>([\s\S]*?)<\/row>/g)].slice(0,8).map(row=>[...row[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)].map(c=>{const ref=/\br="([^"]+)"/.exec(c[1])?.[1]||'',type=/\bt="([^"]+)"/.exec(c[1])?.[1],v=/<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/.exec(c[2])?.[1]||'';const value=type==='s'?strings[Number(v)]||'':type==='inlineStr'?texts(c[2]):decode(v);return value?ref+':'+value.slice(0,180):''}).filter(Boolean).join(' | '))}));
 }
 async function sync(api,log){
  let config;try{const r=await call(api,'agent_status');config=r.config}catch(e){if(/reservada/.test(e.message))return;throw e}
@@ -44,10 +49,10 @@ async function sync(api,log){
  if(log)log('EFD: lendo PCD pelo Computador ADM em '+config.root_path);
  try{
   const result=inventory(config.root_path),january=result.files.filter(f=>/janeiro|(^|[\\/])0?1([ ._\\/-]|$)/i.test(f.relative_path));
-  const samples=(january.length?january:result.files).filter(f=>!/\.xls$/i.test(f.name)).slice(0,3).map(f=>preview(config.root_path,f));
+  const samples=(january.length?january:result.files).filter(f=>!/\.xls$/i.test(f.name)).sort((a,b)=>Number(/^PCD/i.test(b.name))-Number(/^PCD/i.test(a.name))).slice(0,3).map(f=>preview(config.root_path,f));
   const diagnostic={files_count:result.files.length,directories:result.directories.slice(0,120),files:result.files.slice(0,150),samples,errors:result.errors.slice(0,10),truncated:result.files.length>=5000};
   await call(api,'agent_diagnostic',{diagnostic,error:result.errors.length?result.errors.slice(0,3).join(' | '):null});
   if(log)log('EFD: diagnóstico PCD enviado, '+result.files.length+' arquivo(s).');
  }catch(e){await call(api,'agent_diagnostic',{diagnostic:{files_count:0},error:e.message});if(log)log('EFD: '+e.message,true)}
 }
-module.exports={sync,inventory,preview};
+module.exports={sync,inventory,preview,xlsxPreview};
