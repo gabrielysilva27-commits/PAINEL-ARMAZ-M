@@ -23,5 +23,7 @@
  }
  async function load(){view().setAttribute('aria-busy','true');try{S.data=await call('dashboard',{month:S.month});render()}catch(e){view().innerHTML=`<p class="efd-error">${esc(e.message)}</p><button id="efdRetry">Tentar novamente</button>`;$('efdRetry').onclick=load}finally{view().removeAttribute('aria-busy')}}
  function open(){document.querySelectorAll('main > .view').forEach(x=>x.classList.add('hidden'));view().classList.remove('hidden');document.querySelectorAll('.nav-link').forEach(x=>x.classList.toggle('active',x.dataset.view==='efd'));$('pageTitle').textContent='Eficiência de Descarga · EFD';$('pageSubtitle').textContent='PC_Física concluída até 21h.';$('sidebar')?.classList.remove('open');load()}
- const link=document.createElement('button');link.className='nav-link';link.dataset.view='efd';link.innerHTML='<span>◷</span> Eficiência de Descarga';document.querySelector('.nav-link[data-view="abc"]').after(link);link.onclick=e=>{e.preventDefault();open()};view();
+ function mount(){if(!document.querySelector('.nav-link[data-view="layout"]')){setTimeout(mount,100);return}if(document.querySelector('.nav-link[data-view="efd"]'))return;const link=document.createElement('button');link.className='nav-link';link.dataset.view='efd';link.innerHTML='<span>◷</span> Eficiência de Descarga';document.querySelector('.nav-link[data-view="abc"]').after(link);link.onclick=e=>{e.preventDefault();open()};view()}
+ document.addEventListener('click',e=>{const n=e.target.closest?.('.nav-link');if(n?.dataset.view&&n.dataset.view!=='efd')view().classList.add('hidden')},true);
+ mount();
 })();
