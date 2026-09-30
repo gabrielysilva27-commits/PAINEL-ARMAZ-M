@@ -13,7 +13,7 @@ const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
 
 const ROOT = __dirname;
-const VERSION = "3.2.107";
+const VERSION = "3.2.108";
 // 3.2.102: reforça ativação do Edge com retries; pacote completo adiciona Parar/Reiniciar no launcher.\n// 3.2.102 final build: pacote consolidado após todas as alterações.\n// 3.2.103: 03.11.20 considera somente carretas oficiais 225,229,231,246,264,271,289,298,312.\n// 3.2.103 final build: pacote consolidado com filtro oficial de carretas.
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const EXAMPLE_PATH = path.join(ROOT, "config.example.json");
@@ -32,6 +32,7 @@ function sleep(ms) {
   return new Promise(function (resolve) { setTimeout(resolve, ms); });
 }
 
+const backfill031120=require('./lib/backfill031120');
 const IDLE_REQUIRED_MS = 30000;
 async function waitForQuietComputer(stopping) {
   let lastReason = "";
@@ -190,27 +191,8 @@ async function main() {
         log("Recebimento 03.11.20: FORCE_RUN ativo; ignorando gate de inatividade para este teste.");
       }
       last031120Run=Date.now();
-      await api.pull031120State({status:"running",stage:"open_report",date_from:task.date_from,date_to:task.date_to}).catch(function(){});
-      log("Recebimento 03.11.20: atualizando de " + task.date_from + " a " + task.date_to +
-        " · classificação Mapa · veículos " + task.vehicle_from + " a " + task.vehicle_to + ".");
-      const csvPath = await promax.export031120(task, config, ROOT, parse031120);
-      await api.pull031120State({status:"running",stage:"parse_file",date_from:task.date_from,date_to:task.date_to,source_file:path.basename(csvPath)}).catch(function(){});
-      const parsed = parse031120(csvPath);
-      await api.pull031120State({status:"running",stage:"import",date_from:task.date_from,date_to:task.date_to,source_file:path.basename(csvPath),raw_rows:parsed.raw_rows,days:parsed.days}).catch(function(){});
-      const done = await api.pull031120Import({
-        date_from: task.date_from,
-        date_to: task.date_to,
-        source_file: path.basename(csvPath),
-        raw_rows: parsed.raw_rows,
-        rows: parsed.rows
-      });
-      await api.pull031120State({
-        status:"completed",stage:"done",date_from:task.date_from,date_to:task.date_to,
-        source_file:path.basename(csvPath),raw_rows:parsed.raw_rows,days:done.result.days,
-        truck_count:done.result.truck_count,pallets_pulled:done.result.pallets_pulled
-      }).catch(function(){});
-      log("Recebimento 03.11.20 atualizado: " + done.result.days + " dia(s), " +
-        done.result.truck_count + " carreta(s) e " + done.result.pallets_pulled + " palete(s).");
+      const coverage=await backfill031120.run({api,promax,config,root:ROOT,parse:parse031120,log,task});
+      log("03.11.20 concluído: "+coverage.months.length+" mês(es) com registros; "+coverage.unavailable.length+" mês(es) a verificar.");
     } catch (e) {
       const message = e && e.message ? e.message : String(e);
       await api.pull031120State({
