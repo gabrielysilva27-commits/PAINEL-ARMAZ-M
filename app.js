@@ -5,12 +5,17 @@ const MONTHS = [
 const AREAS = ['Regulador','Picking','Câmara Fria','Marketplace'];
 const COLD_ROOM_SKUS = new Set(['827','828','838']);
 
+const LAST_VIEW_KEY='pa_last_view';
+const LAST_MONTH_KEY='pa_last_month';
+const LAST_AREA_KEY='pa_last_area';
+const savedMonth=localStorage.getItem(LAST_MONTH_KEY);
+const savedArea=localStorage.getItem(LAST_AREA_KEY);
 const state = {
   token: localStorage.getItem('pa_session') || '',
   user: null,
   months: [],
-  currentMonth: '2026-06',
-  currentArea: 'Regulador',
+  currentMonth: /^2026-(0[1-9]|1[0-2])$/.test(savedMonth||'') ? savedMonth : '2026-06',
+  currentArea: AREAS.includes(savedArea) ? savedArea : 'Regulador',
   currentItems: [],
   reports: { sales:null, picking:null, catalog:null, marketplace:null },
   marketplaceItems: []
@@ -34,13 +39,20 @@ function showToast(message, error=false) {
 
 function setLoggedIn(user) {
   state.user=user;
+  document.documentElement.classList.remove('restoring-session');
   $('loginScreen').classList.add('hidden'); $('appShell').classList.remove('hidden');
   $('userName').textContent=user.display_name || user.username; $('userRole').textContent=user.role==='admin'?'ADM':'LOGÍSTICA';
   $('userInitials').textContent=(user.display_name||user.username).split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase();
   document.querySelectorAll('.admin-only').forEach(el=>el.classList.toggle('hidden',user.role!=='admin'));
 }
 
-function logoutLocal(){ state.token='';state.user=null;localStorage.removeItem('pa_session');$('appShell').classList.add('hidden');$('loginScreen').classList.remove('hidden');$('loginPassword').value=''; }
+function logoutLocal(){
+  state.token='';state.user=null;
+  localStorage.removeItem('pa_session');
+  localStorage.removeItem(LAST_VIEW_KEY);
+  document.documentElement.classList.remove('restoring-session');
+  $('appShell').classList.add('hidden');$('loginScreen').classList.remove('hidden');$('loginPassword').value='';
+}
 
 async function refreshMonths() {
   const data=await api('months'); state.months=data.months||[];
@@ -64,7 +76,7 @@ function monthInfo(month){ return state.months.find(m=>m.reference_month?.starts
 function renderMonths(){
   const strip=$('monthStrip'), select=$('monthFilter'), imp=$('importMonth'); strip.innerHTML=''; select.innerHTML=''; imp.innerHTML='';
   for(const [key,label] of MONTHS){ const info=monthInfo(key); const imported=info?.status==='imported';
-    const btn=document.createElement('button'); btn.className=`month-pill ${imported?'imported':'pending'} ${key===state.currentMonth?'active':''}`; btn.innerHTML=`<strong>${label}</strong><small>${imported?'Atualizado':'Pendente'}</small>`; btn.onclick=()=>{state.currentMonth=key; select.value=key; renderMonths();loadCurve();}; strip.appendChild(btn);
+    const btn=document.createElement('button'); btn.className=`month-pill ${imported?'imported':'pending'} ${key===state.currentMonth?'active':''}`; btn.innerHTML=`<strong>${label}</strong><small>${imported?'Atualizado':'Pendente'}</small>`; btn.onclick=()=>{state.currentMonth=key;localStorage.setItem(LAST_MONTH_KEY,state.currentMonth); select.value=key; renderMonths();loadCurve();}; strip.appendChild(btn);
     const op=new Option(`${label}/2026${imported?' •':''}`,key); select.add(op); imp.add(new Option(`${label}/2026`,key));
   }
   select.value=state.currentMonth; imp.value=state.currentMonth;
@@ -92,7 +104,7 @@ async function renderAreaCards(fetchAll=false){
   for(const area of AREAS){ let count='—',volume='';
     if(area===state.currentArea){count=state.currentItems.length;volume=state.currentItems.reduce((s,x)=>s+Number(x.volume_hl||0),0)}
     else if(fetchAll && monthInfo(state.currentMonth)?.status==='imported'){try{const d=await api('curve',{month:state.currentMonth,area});count=d.items.length;volume=d.items.reduce((s,x)=>s+Number(x.volume_hl||0),0)}catch{}}
-    const b=document.createElement('button');b.className=`area-card ${area===state.currentArea?'active':''}`;b.innerHTML=`<strong>${area}</strong><span>${count==='—'?'Sem dados':`${count} SKUs • ${fmt.format(volume)} HL`}</span>`;b.onclick=()=>{state.currentArea=area;$('areaFilter').value=area;loadCurve();};wrap.appendChild(b);
+    const b=document.createElement('button');b.className=`area-card ${area===state.currentArea?'active':''}`;b.innerHTML=`<strong>${area}</strong><span>${count==='—'?'Sem dados':`${count} SKUs • ${fmt.format(volume)} HL`}</span>`;b.onclick=()=>{state.currentArea=area;localStorage.setItem(LAST_AREA_KEY,state.currentArea);$('areaFilter').value=area;loadCurve();};wrap.appendChild(b);
   }
 }
 
@@ -247,17 +259,46 @@ async function submitImport(){
   }catch(e){$('importError').textContent=e.message;}finally{btn.textContent='Gerar e atualizar';updateImportReady();}
 }
 
+function rememberView(view){
+  if(view) localStorage.setItem(LAST_VIEW_KEY,String(view));
+}
 function setView(view){
+  rememberView(view);
   document.querySelectorAll('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
   if(view==='abc'){$('abcView').classList.remove('hidden');$('placeholderView').classList.add('hidden');$('pageTitle').textContent='Curva ABC';$('pageSubtitle').textContent='Classificação mensal dos SKUs por participação de volume em Hectos.';}
   else {$('abcView').classList.add('hidden');$('placeholderView').classList.remove('hidden');const names={overview:'Visão geral',operation:'Operação',indicators:'Indicadores',routines:'Rotinas',people:'Pessoas',reports:'Relatórios'};$('pageTitle').textContent=names[view]||'Módulo';$('placeholderTitle').textContent=names[view]||'Módulo';$('pageSubtitle').textContent='Módulo em preparação.';}
   $('sidebar').classList.remove('open');
 }
+function restoreLastView(){
+  const wanted=localStorage.getItem(LAST_VIEW_KEY)||'abc';
+  if(wanted==='abc'){setView('abc');return;}
+  let attempt=0;
+  const tryOpen=()=>{
+    const link=document.querySelector('.nav-link[data-view="'+CSS.escape(wanted)+'"]');
+    if(!link){
+      if(++attempt<12)setTimeout(tryOpen,350);
+      else setView('abc');
+      return;
+    }
+    link.click();
+    setTimeout(()=>{
+      const placeholder=$('placeholderView');
+      const restored=link.classList.contains('active') && (!placeholder || placeholder.classList.contains('hidden'));
+      if(!restored && ++attempt<8) tryOpen();
+    },450);
+  };
+  tryOpen();
+}
+// Guarda também as páginas adicionadas pelos módulos carregados depois do app.js.
+document.addEventListener('click',e=>{
+  const nav=e.target.closest?.('.nav-link[data-view]');
+  if(nav)rememberView(nav.dataset.view);
+},true);
 
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=$('loginButton');$('loginError').textContent='';btn.disabled=true;btn.textContent='Entrando...';try{const d=await api('login',{username:$('loginUser').value,password:$('loginPassword').value},false);state.token=d.token;localStorage.setItem('pa_session',state.token);setLoggedIn(d.user);await refreshMonths();await loadCurve();}catch(err){$('loginError').textContent=err.message;}finally{btn.disabled=false;btn.textContent='Entrar';}});
 $('togglePassword').onclick=()=>{$('loginPassword').type=$('loginPassword').type==='password'?'text':'password'};
 $('logoutButton').onclick=async()=>{try{await api('logout')}catch{}logoutLocal()};
-$('monthFilter').onchange=e=>{state.currentMonth=e.target.value;renderMonths();loadCurve()};$('areaFilter').onchange=e=>{state.currentArea=e.target.value;loadCurve()};
+$('monthFilter').onchange=e=>{state.currentMonth=e.target.value;localStorage.setItem(LAST_MONTH_KEY,state.currentMonth);renderMonths();loadCurve()};$('areaFilter').onchange=e=>{state.currentArea=e.target.value;localStorage.setItem(LAST_AREA_KEY,state.currentArea);loadCurve()};
 $('skuSearch').oninput=renderTable;$('classFilter').onchange=renderTable;$('importButton').onclick=openImport;$('closeImport').onclick=closeImport;$('cancelImport').onclick=closeImport;$('confirmImport').onclick=submitImport;$('menuButton').onclick=()=>$('sidebar').classList.toggle('open');document.querySelectorAll('.nav-link').forEach(b=>b.onclick=()=>setView(b.dataset.view));
 $('reportSales').onchange=e=>{if(e.target.files[0])handleReport('sales',e.target.files[0])};
 $('reportPicking').onchange=e=>{if(e.target.files[0])handleReport('picking',e.target.files[0])};
@@ -267,7 +308,7 @@ $('reportMarketplace').onchange=e=>{if(e.target.files[0])handleReport('marketpla
 (async function init(){
   renderMonths();renderAreaCards();
   if(!state.token)return;
-  try{const d=await api('session');setLoggedIn(d.user);await refreshMonths();await loadCurve();}catch{logoutLocal();}
+  try{const d=await api('session');setLoggedIn(d.user);await refreshMonths();await loadCurve();restoreLastView();}catch{logoutLocal();}
 })();
 
 
