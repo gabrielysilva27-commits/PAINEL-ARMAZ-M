@@ -820,6 +820,19 @@ static bool Fill031120ByGeometry(HWND hwnd, const std::wstring* values) {
 
 static bool Fill031120(HWND hwnd, const std::wstring* values) {
   auto controls = Controls(hwnd);
+  // Annual export leaves the result page open. Return to its filter form
+  // before trying to fill any fields; otherwise coordinates target the report.
+  bool hasVisualize = false;
+  const VisibleControl* back = nullptr;
+  for (const auto& control : controls) {
+    if (control.type == UIA_ButtonControlTypeId && Contains(control.name,L"visualizar")) hasVisualize = true;
+    if (control.type == UIA_ButtonControlTypeId && control.name == L"voltar") back = &control;
+  }
+  if (!hasVisualize && back) {
+    if (!ClickControl(*back)) return false;
+    Sleep(1400);
+    controls = Controls(hwnd);
+  }
   std::vector<VisibleControl> edits, combos, visualizes;
   RECT window = {};
   if (!GetWindowRect(hwnd, &window)) return false;
