@@ -1875,8 +1875,8 @@ async function export031120(job, config, rootDir, validateCsv) {
   const vals = {
     dateFrom: formatDate(job.date_from),
     dateTo: formatDate(job.date_to),
-    vehicleFrom: String(job.vehicle_from || "225"),
-    vehicleTo: String(job.vehicle_to || "312")
+    vehicleFrom: "0",
+    vehicleTo: "999"
   };
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(vals.dateFrom) ||
       !/^\d{2}\/\d{2}\/\d{4}$/.test(vals.dateTo) ||

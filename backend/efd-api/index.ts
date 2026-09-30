@@ -58,9 +58,9 @@ Deno.serve(async req=>{
   const month=String(b.month||'2026-01');if(!/^2026-(0[1-9]|1[0-2])$/.test(month))return reply({error:'Mês inválido'},400);
   const from=month+'-01';const end=new Date(Date.UTC(2026,Number(month.slice(5)),1)).toISOString().slice(0,10);
   const rows:any[]=[];
-  for(let offset=0;offset<20000;offset+=1000){const {data:page,error:re}=await db.from('efd_maps').select('*').gte('reference_date',from).lt('reference_date',end).order('reference_date').order('vehicle').order('map_id').range(offset,offset+999);check(re);rows.push(...(page||[]));if((page||[]).length<1000)break}
+  for(let offset=0;offset<20000;offset+=1000){const {data:page,error:re}=await db.from('efd_route_maps').select('*').gte('reference_date',from).lt('reference_date',end).order('reference_date').order('vehicle').order('map_id').range(offset,offset+999);check(re);rows.push(...(page||[]));if((page||[]).length<1000)break}
 
-  const {count,error:ce}=await db.from('efd_maps').select('map_id',{count:'exact',head:true}).is('reference_date',null);check(ce);
+  const {count,error:ce}=await db.from('efd_route_maps').select('map_id',{count:'exact',head:true}).is('reference_date',null);check(ce);
   const {data:config,error:ae}=await db.from('efd_agent_config').select('status,last_scan_at,last_error,diagnostic,root_path,diagnostic_requested').eq('id',1).single();check(ae);
   // Dates are local operational timestamps; the cutoff is on the departure day.
   const maps=(rows||[]).map(r=>({...r,status:!r.valid?'excluded':!r.physical_at?'pending':Date.parse(r.physical_at)<=Date.parse(r.reference_date+'T21:00:00')?'on_time':'late'}));
