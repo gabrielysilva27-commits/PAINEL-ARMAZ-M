@@ -68,7 +68,7 @@ async function phases(api,state,log){
  const dir=path.join(__dirname,'..','downloads');if(!fs.existsSync(dir))return{files:0,maps:0};let files=0,maps=0;
  const candidates=fs.readdirSync(dir).filter(name=>/^031120_normal_edge_\d+\.csv\.inf$/.test(name)).map(name=>{const stat=fs.statSync(path.join(dir,name));return{name,size:stat.size,modified:stat.mtimeMs}}).sort((a,b)=>a.modified-b.modified);
  for(const file of candidates){const signature=file.size+':'+file.modified;if(state.csv[file.name]===signature)continue;
-  const parsed=require('./efd-phases').parse(path.join(dir,file.name));await importBatches(api,'agent_phase_import',parsed.rows,file.name);state.csv[file.name]=signature;saveState(state);files++;maps+=parsed.rows.length;
+  let parsed;try{parsed=require('./efd-phases').parse(path.join(dir,file.name))}catch(e){if(!/^EFD_PHASE_(HEADER_NOT_FOUND|COLUMNS_MISSING|NO_MAPS)$/.test(e.message))throw e;state.csv[file.name]=signature;saveState(state);if(log)log('EFD: arquivo antigo sem fases utilizáveis: '+file.name,true);continue}await importBatches(api,'agent_phase_import',parsed.rows,file.name);state.csv[file.name]=signature;saveState(state);files++;maps+=parsed.rows.length;
   if(log)log('EFD: '+parsed.rows.length+' mapas e '+parsed.events+' fases incorporados de '+file.name);
  }
  return{files,maps};
@@ -87,7 +87,7 @@ async function sync(api,log){
  const state=loadState();let phaseResult;
  try{phaseResult=await phases(api,state,log)}catch(e){if(config.pcd_enabled!==false)await call(api,'agent_diagnostic',{diagnostic:{phase_error:e.message},error:e.message});throw e}
  if(config.pcd_enabled===false){if(phaseResult.files)await call(api,'agent_reconcile');return}
- if(!shouldScan(config,now)){if(phaseResult.files)await call(api,'agent_reconcile');return}
+ if(!shouldScan(config,now)&&Object.keys(state.pcd).length){if(phaseResult.files)await call(api,'agent_reconcile');return}
  if(log)log('EFD: lendo PCD pelo Computador ADM em '+config.root_path);
  try{
   const result=inventory(config.root_path),january=result.files.filter(f=>/janeiro|(^|[\\/])0?1([ ._\\/-]|$)/i.test(f.relative_path));
