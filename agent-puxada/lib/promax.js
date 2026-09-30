@@ -1867,8 +1867,10 @@ async function exportInNormalEdge(job, config, rootDir, validateCsv) {
 }
 
 async function export031120(job, config, rootDir, validateCsv) {
-  if (process.platform !== "win32" || !existingEdge.probe().homeWindows) {
-    throw new Error("031120_EDGE_HOME_NOT_FOUND");
+  // The report can already be open even when no home tab is discoverable.
+  // Let the native action locate the report first, then use the home shortcut.
+  if (process.platform !== "win32" || !existingEdge.probe().available) {
+    throw new Error("031120_EDGE_NATIVE_UNAVAILABLE");
   }
   const vals = {
     dateFrom: formatDate(job.date_from),

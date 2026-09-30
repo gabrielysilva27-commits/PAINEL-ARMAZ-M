@@ -114,9 +114,12 @@ static void InspectEdgeWindow(HWND hwnd, bool* automated, int* tabItems, bool* h
         std::wstring name(raw, SysStringLen(raw));
         std::transform(name.begin(), name.end(), name.begin(), towlower);
         if (isTab && name.find(L"promaxweb") != std::wstring::npos) *hasPromaxTab = true;
-        if (name.find(L"automated test") != std::wstring::npos ||
-            (name.find(L"controlado") != std::wstring::npos && name.find(L"teste") != std::wstring::npos) ||
-            name.find(L"webdriver") != std::wstring::npos) {
+        // Match the browser's automation banner, never arbitrary page content.
+        // A ChatGPT tab discussing WebDriver must not exclude a normal Edge window.
+        if (type == UIA_TextControlTypeId && name.size() < 180 &&
+            (name.find(L"is being controlled by automated test software") != std::wstring::npos ||
+             (name.find(L"está sendo controlado") != std::wstring::npos &&
+              name.find(L"software de teste") != std::wstring::npos))) {
           *automated = true;
         }
         SysFreeString(raw);
