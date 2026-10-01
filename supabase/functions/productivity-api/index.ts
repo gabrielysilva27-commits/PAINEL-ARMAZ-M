@@ -35,7 +35,7 @@ async function save(table:string,row:any,conflict?:string){const q=conflict?db.f
 async function employee(id:unknown){const {data,error}=await db.from('wlp_employees').select('id,job_title').eq('id',text(id,40)).eq('active',true).maybeSingle();if(error)throw error;if(!data)throw Error('Colaborador inválido ou inativo.');return data.id}
 async function overtimeAllowed(id:string,hours:number){if(hours<=0)return;const {data,error}=await db.from('wlp_employees').select('job_title').eq('id',id).single();if(error)throw error;if(/empilhadeira|empilhador/i.test(data.job_title))throw Error('Empilhadores não recebem horas extras.');}
 Deno.serve(async req=>{
- if(req.method==='OPTIONS')return reply({ok:true});if(req.method==='GET')return reply({service:'productivity-api',version:'2026-10-01-history-3'});if(req.method!=='POST')return reply({error:'Método inválido.'},405);
+ if(req.method==='OPTIONS')return reply({ok:true});if(req.method==='GET')return reply({service:'productivity-api',version:'2026-10-01-transport-4'});if(req.method!=='POST')return reply({error:'Método inválido.'},405);
  try{const u=await session(req);if(!u)return reply({error:'Sessão inválida ou expirada.'},401);const b=await req.json();
  if(b.action==='historical')return reply({months:await all(()=>db.from('wlp_monthly_archive').select('reference_month,payload,imported_at').order('reference_month')),rules:{daily_hours:7+20/60,monthly_overtime:13,forklift_overtime:0,shift_pattern:'6x1'}});
  if(b.action==='dashboard')return reply({dashboard:await dashboard(date(b.from),date(b.to))});

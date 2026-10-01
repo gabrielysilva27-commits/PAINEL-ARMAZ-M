@@ -1,6 +1,6 @@
 export const AREAS={picking:{label:'Picking / montagem',unit:'paletes'},carregamento:{label:'Carregamento',unit:'paletes'},descarga:{label:'Descarga',unit:'paletes'},retorno:{label:'Retorno',unit:'caixas'},repack:{label:'Repack',unit:'caixas'},despejo:{label:'Despejo',unit:'caixas'},reforma:{label:'Reforma de paletes',unit:'paletes'},outras:{label:'Outras atividades',unit:'tarefas'}};
 export const localDay=v=>new Date(v).toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'});
-Object.assign(AREAS,{emp_carregamento:{label:'Empilhadores C — carregamento',unit:'HL'},manobra:{label:'Manobra de caminhões',unit:'carros'},cheio_b:{label:'Cheio B',unit:'paletes'},conferencia:{label:'Conferência',unit:'mapas'},descarga_cheio:{label:'Descarga de cheio',unit:'paletes'},descarga_vazio:{label:'Descarga de vazio',unit:'paletes'}});
+Object.assign(AREAS,{emp_carregamento:{label:'Empilhadores C — carregamento',unit:'HL'},manobra:{label:'Manobra de caminhões',unit:'carros'},cheio_b:{label:'Cheio B',unit:'paletes'},conferencia:{label:'Conferência',unit:'mapas'},descarga_cheio:{label:'Descarga de cheio',unit:'carretas'},descarga_vazio:{label:'Descarga de vazio',unit:'carros'}});
 export function summarize(activities,attendance,targets){
  const units=new Map(), hours=new Map();
  const key=x=>`${x.employee_id}|${x.reference_date}|${x.area}`;
