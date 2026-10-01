@@ -2,13 +2,30 @@
 
 Primeira versão do módulo de gestão do Painel Armazém. A Workstation não foi alterada.
 
+## WLP oficial x desdobramento individual
+
+O padrão oficial define WLP como indicador global mensal de performance e dimensionamento do armazém. A fórmula oficial é:
+
+`WLP = Volume total fornecido (HL) / (TT QLP Terceiros × 7,33 horas por turno × dias úteis do orçamento)`
+
+No painel, o WLP oficial permanece separado do detalhamento individual. O nível individual é um desdobramento operacional para gestão: produção atribuída à pessoa ou função dividida pelas horas-pessoa calculadas daquela pessoa/função. Esse desdobramento ajuda a comparar execução, dimensionar equipe e identificar oportunidades, mas não substitui a fórmula oficial global.
+
+Regras aplicadas ao desdobramento individual:
+
+- O numerador global do WLP continua sendo o volume total do armazém em HL.
+- O denominador oficial depende de QLP de terceiros, 7,33 horas e dias úteis de orçamento.
+- O cálculo individual usa HH real/estimada da pessoa para a atividade, com presença, jornada 7h20 e HE quando aplicável.
+- Empilhadores permanecem com HE zero.
+- Rateios, proxies e estimativas não viram meta oficial automaticamente.
+- Produções em unidades diferentes continuam separadas: HL, paletes, caixas, carros e carretas não são somados entre si.
+
 ## Fontes e cálculo
 
 - Repack e despejo: somente tarefas concluídas do cronômetro, com executor identificado. Históricos coletivos não são atribuídos a pessoas.
 - Outras atividades: registro individual com volume, minutos e referência da origem.
 - Jornada: horas decimais por pessoa, data, atividade e turno. As horas extras entram no denominador. Distribuir as horas entre as atividades, sem repetir a jornada integral.
 - Produtividade por área: soma dos volumes dividida pela soma das horas-pessoa. Unidades permanecem separadas. Sem produção ou jornada correspondente, o resultado fica incompleto.
-- Consolidado HL/hh: volume diário informado dividido pelas jornadas registradas. A fórmula oficial e a cobertura de equipe devem ser validadas antes de usar como WLP oficial.
+- Consolidado HL/hh operacional: volume diário informado dividido pelas jornadas registradas. Para virar WLP oficial, o denominador precisa ser o QLP de terceiros × 7,33 × dias úteis de orçamento.
 - EFD: mapas válidos com PC física até 21h divididos pelos mapas válidos. É indicador de prazo, sem atribuição individual de descarga.
 - Dimensionamento: volume previsto / meta de unidades por hora-pessoa; dividir por horas diárias × dias × disponibilidade e arredondar pessoas para cima. Salva premissas, resultado e decisão.
 - Fechamento: preserva um snapshot diário, junto da data, turno, participantes, canal, discussão e ações. Não publica resultados na Workstation nesta etapa.
@@ -26,6 +43,7 @@ Executar `node --test tests/productivity*.test.mjs`. Os testes cobrem horas extr
 ## Próximas etapas
 
 Importadores das planilhas de 2026 após o recebimento dos arquivos, validação da fórmula oficial de WLP, cadastro completo da equipe e integração de consulta individual na Workstation. O início da tarefa determina a data operacional do repack; a distribuição de tarefas que atravessam dias deve ser definida antes de fechamento oficial.
+
 # Histórico 2026 publicado
 
 O histórico mensal está em `wlp_monthly_archive`, protegido por RLS e sem acesso direto de anon/authenticated. A ação `historical` da API exige a mesma sessão ativa do painel. Os dados individuais não são publicados como arquivos estáticos.
