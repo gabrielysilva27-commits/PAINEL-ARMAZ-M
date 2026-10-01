@@ -35,3 +35,11 @@ Janeiro a setembro: volume TOTAL da ANS, produção PBR1/PBR2 atribuída a Ivani
 As taxas históricas são estimativas pela escala 6x1 e pelos dias planejados da fonte, com jornada 7h20 e HE mensal de 13h por pessoa; empilhadores têm HE zero. Elas não alimentam as jornadas diárias nem o WLP global medido. Fevereiro da reforma ausente permanece nulo. Setembro do repack termina em 18/09 e não recebe taxa por hora com denominador mensal. Manobra aguarda carros atendidos/dia; ida e volta formam um ciclo por carro. Cadastro histórico, ausências e calendário divergente em 21/04 e 25/08 ainda precisam ser validados.
 
 O simulador inclui HE alocada à semana, limitada a 13h por pessoa e zerada para áreas de empilhadores. A HE mensal não deve ser repetida em cada semana. Metas e previsão do volume TOTAL ainda devem ser informadas; o plano de entrega não cobre toda a movimentação.
+
+## Fechamento do histórico 2026 — 01/10/2026
+
+O histórico de janeiro a setembro incorpora o 030237 e mantém cada fonte na sua finalidade: produção nominal da EFC para montagem/conferência C, PCD/031120 para referências de carros/carretas, SAROBA somente como estimativa de refugo e 030237 como memória documental/HL complementar. As funções confirmadas de conferência são Alex e Ruan no cheio A, Luis Carlos Marques no cheio B, Tiago no vazio A e Vanderson no vazio B; Everton Mantovam é o ajudante fixo das baias; os demais ajudantes dessa frente permanecem no refugo; repack é exclusivo da equipe de repack.
+
+O dimensionamento semanal só oferece automaticamente referências históricas cujo escopo da atividade esteja completo, com quantidade, horas e período fechados. Rateios, proxies, estimativas e bases parciais continuam visíveis para análise, mas não são usados como produtividade sugerida. Isso evita transformar PCD, 031120 ou SAROBA em meta oficial de produtividade individual.
+
+Pendências preservadas sem imputação: montagem C sem base nominal em 12/09, SAROBA parcial no fim de setembro, repack de setembro somente até 18/09 e códigos de presença não definidos quando impedem o cálculo de horas.
