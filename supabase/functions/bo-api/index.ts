@@ -289,13 +289,16 @@ async function validatedForExport(body:any){
     if(/^\d{4}-\d{2}-\d{2}$/.test(String(body?.to||"")))query=query.lte("occurrence_date",body.to);
     const {data,error}=await query;if(error)throw error;all.push(...(data||[]));if((data||[]).length<500)break;
   }
+  // Use the validated confrontation quantities once, attributed to the originating shift.
+  const exportRows=await hydrateSources(all);
   const pa:any[]=[],daily:any[]=[];
-  for(const row of all)for(const item of row.items||[]){
+  for(const row of exportRows)for(const item of row.items||[]){
     const qty=Number(item.total_qty||0),factor=item.factor_hecto==null||item.factor_hecto_commercial==null?null:Number(item.factor_hecto)*Number(item.factor_hecto_commercial),cost=item.average_cost==null?null:Number(item.average_cost);
     const validator=row.validator?.display_name||row.validator?.username||"";
     const subjectType=row.subject_type||"Funcionário";
     const subjectName=subjectType==="Funcionário"?row.employee_name:(subjectType==="Fábrica"?(row.factory_name||"Fábrica"):"Armazém");
     const subjectFunction=subjectType==="Funcionário"?row.employee_function:"";
+    const exportShift=row.record_kind==="turn_a_confront"&&row.source?.record_kind==="turn_c_origin"?row.source.shift:row.shift;
     pa.push({
       "Data":row.occurrence_date,
       "Responsável":subjectName,
@@ -306,11 +309,11 @@ async function validatedForExport(body:any){
       "Situação":situationFromReason(row.reason),
       "Área/ Local":row.location,
       "Conferente":row.conferencer?.display_name||"",
-      "Turno":row.shift,
+      "Turno":exportShift,
     });
     daily.push({
       "Código":item.sku_code,"Produto":item.sku_name,"Situação":situationFromReason(row.reason),"Quantidade":qty,
-      "Responsável":subjectName,"Função":subjectFunction,"Área":row.location,"Turno":row.shift,
+      "Responsável":subjectName,"Função":subjectFunction,"Área":row.location,"Turno":exportShift,
       "B.O.":row.bo_number,"Data":row.occurrence_date,"Motivo":row.reason,
     });
   }
