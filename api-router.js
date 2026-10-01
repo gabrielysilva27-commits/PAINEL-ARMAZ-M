@@ -4,6 +4,7 @@
   const marketplaceApi = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/marketplace-api';
   let layoutScriptPromise = null;
   let blitzScriptPromise = null;
+  let booted = false;
 
   window.fetch = (input, init = {}) => {
     try {
@@ -165,19 +166,28 @@
   }
 
   function boot() {
+    const nav = document.querySelector('.sidebar nav');
+    const main = document.querySelector('main');
+    if (!nav || !main || !document.getElementById('abcView')) {
+      setTimeout(boot, 30);
+      return;
+    }
     const source = document.getElementById('kpiSource');
     if (source) {
       source.textContent = '';
       source.style.display = 'none';
     }
     document.getElementById('placeholderView')?.remove();
-    installAreaRules();
     installLayout();
     installBlitz();
-    document.documentElement.dataset.abcAreaRules = '2026-10-01-clean-router';
+    installAreaRules();
+    booted = true;
+    document.documentElement.dataset.abcAreaRules = '2026-10-01-menu-base';
     document.documentElement.dataset.blitzVersion = '2026-10-01-dia-2';
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
-  else setTimeout(boot, 0);
+  boot();
+  setTimeout(installAreaRules, 250);
+  setTimeout(installAreaRules, 1200);
+  setTimeout(() => { if (!booted) boot(); }, 1200);
 })();
