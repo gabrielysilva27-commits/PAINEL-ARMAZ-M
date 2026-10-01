@@ -6,7 +6,7 @@ async function hash(t:string){const b=new Uint8Array(await crypto.subtle.digest(
 function check(e:any){if(e)throw e;}
 async function all(make:()=>any){const rows:any[]=[];for(let n=0;n<50000;n+=1000){const {data,error}=await make().range(n,n+999);check(error);rows.push(...data);if(data.length<1000)return rows;}throw Error('Limite de consulta excedido');}
 Deno.serve(async req=>{
- if(req.method==='OPTIONS')return reply({ok:true});if(req.method==='GET')return reply({service:'efc-api',version:'2026-10-01-1'});if(req.method!=='POST')return reply({error:'Método inválido'},405);
+ if(req.method==='OPTIONS')return reply({ok:true});if(req.method==='GET')return reply({service:'efc-api',version:'2026-10-01-history-3'});if(req.method!=='POST')return reply({error:'Método inválido'},405);
  try{
  const b=await req.json();
  if(b.action==='agent_events'){
@@ -21,6 +21,7 @@ Deno.serve(async req=>{
  const {data:u,error:ue}=await db.from('app_users').select('id,role').eq('id',s.user_id).eq('active',true).maybeSingle();check(ue);if(!u)return reply({error:'Acesso negado'},403);
  const month=String(b.month||'');if(!/^2026-(0[1-9]|1[0-2])$/.test(month))return reply({error:'Mês inválido'},400);
  if(b.action==='adjust'){
+  if(month<='2026-09')return reply({error:'Histórico fechado: os resultados originais do Excel foram preservados.'},409);
   if(u.role!=='admin')return reply({error:'Acesso administrativo necessário'},403);
   const kinds:any={helpers:['name','map','date','vehicle','pallets','start','end'],checkers:['name','map','date','vehicle','pallets'],priority:['priority'],capacity:['positions','palletization'],legacy_pay:['absences','compensation'],pcd:['eligible']};
   const allowed=kinds[b.kind],id=String(b.id||''),reason=String(b.reason||'').trim();if(!allowed||!id.startsWith(month+':'+b.kind+':')||!reason||reason.length>1000)return reply({error:'Correção inválida'},400);
@@ -32,10 +33,10 @@ Deno.serve(async req=>{
  if(b.action==='request_scan'){if(u.role!=='admin')return reply({error:'Acesso administrativo necessário'},403);const {error}=await db.from('efd_agent_config').update({diagnostic_requested:true,status:'pending'}).eq('id',1);check(error);return reply({ok:true});}
  if(b.action!=='dashboard')return reply({error:'Ação inválida'},400);
  const from=month+'-01',next=new Date(Date.UTC(2026,Number(month.slice(5)),1)).toISOString().slice(0,10),before=new Date(Date.parse(from+'T12:00:00Z')-2*86400000).toISOString().slice(0,10);
- const [chunks,patches,events,pcd,agent]=await Promise.all([all(()=>db.from('efc_archive').select('*').eq('month',month).order('kind').order('chunk')),all(()=>db.from('efc_adjustments').select('*').eq('month',month).order('record_id')),all(()=>db.from('efc_agent_events').select('id,payload').gte('reference_date',before).lt('reference_date',next).order('id')),all(()=>db.from('efd_pcd_routes').select('*').gte('reference_date',from).lt('reference_date',next).order('reference_date').order('vehicle').order('plate')),db.from('efd_agent_config').select('status,last_scan_at,last_error').eq('id',1).single()]);check(agent.error);
+ const [chunks,patches,events,pcd,agent,history]=await Promise.all([all(()=>db.from('efc_archive').select('*').eq('month',month).order('kind').order('chunk')),all(()=>db.from('efc_adjustments').select('*').eq('month',month).order('record_id')),all(()=>db.from('efc_agent_events').select('id,payload').gte('reference_date',before).lt('reference_date',next).order('id')),all(()=>db.from('efd_pcd_routes').select('*').gte('reference_date',from).lt('reference_date',next).order('reference_date').order('vehicle').order('plate')),db.from('efd_agent_config').select('status,last_scan_at,last_error').eq('id',1).single(),db.from('efc_workbook_history').select('payload').eq('month',month).maybeSingle()]);check(agent.error);check(history.error);
  const data:any={};for(const c of chunks){data[c.kind]??=[];data[c.kind].push(...c.payload);}for(const p of patches){const row=data[p.kind]?.find((x:any)=>x.id===p.record_id);if(row){Object.assign(row,p.patch);row.adjustment_reason=p.reason;}}
  const ev=new Map((data.events||[]).map((e:any)=>[[e.map,String(e.phase).trim().toUpperCase(),e.date,e.time].join('|'),e]));for(const e of events)ev.set([e.payload.map,String(e.payload.phase).trim().toUpperCase(),e.payload.date,e.payload.time].join('|'),{...e.payload,id:e.id,source:'Puxada'});data.events=[...ev.values()];
  const planned=data.pcd||[];for(const r of pcd){const matches=planned.filter((p:any)=>p.date===r.reference_date&&(String(p.plate).replace(/[^A-Z0-9]/gi,'').toUpperCase()===r.plate||String(p.plate)===r.vehicle));if(matches.length){for(const p of matches){p.plate=r.plate;p.vehicle=r.vehicle;p.agent_source=r.source_file;}}else planned.push({id:'pcd-agent:'+r.reference_date+'|'+r.plate,date:r.reference_date,plate:r.plate,vehicle:r.vehicle,route:r.route_name,eligible:true,source:'Puxada'});}data.pcd=planned;
- return reply({month,data,agent:agent.data,sources:[...new Set(chunks.map(c=>c.source))],adjustments:patches.length});
+ return reply({month,data,history:history.data?.payload||null,agent:agent.data,sources:[...new Set(chunks.map(c=>c.source))],adjustments:patches.length});
  }catch(e){console.error('efc-api',e);return reply({error:'Não foi possível processar EFC. Confira os dados e tente novamente.'},400);}
 });

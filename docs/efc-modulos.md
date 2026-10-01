@@ -26,3 +26,15 @@ O agente adiciona Carregado e Carga Montada sem substituir a integração EFD. O
 Itens de mapas após 24/09 e outubro; divergências de datas/mapas em meses anteriores; horários individuais de conferentes; presença nominal para fechamento; identificação/rateio de equipe em Chopp/Marketplace; origem completa de avarias; execução de abastecimento. Prioridades com falta de conclusão não recebem OK automaticamente. EFC é provisória até validar programação e viagens múltiplas.
 
 Verificações: testes de fronteiras de faixas, corte de horário, virada de dia, falta de itens, ambiguidade de mapas, sistema WMS, prioridade incompleta, capacidade e autenticação/autorização/auditoria. Validação visual autenticada depende de sessão funcional no navegador.
+
+## Histórico e regras a partir de outubro
+
+Os meses de janeiro a setembro de 2026 usam os resultados salvos no arquivo Excel. O histórico não passa pelo cálculo revisado nem pode ser alterado pelas correções de atividades do painel. Cada mês preserva o dashboard, a EFM de cada atividade, o ranking original, as equivalências e as parcelas de remuneração. O total salvo do Excel é preservado mesmo quando sua fórmula soma apenas parte dos colaboradores.
+
+A aba Reabastecimento contém dois quadros. RESSUPRIDO mede pallets em relação às posições de picking. TT REABASTECIDO mede caixas em relação às caixas de picking. Ambos são importados com seus resultados diários e acumulados; não devem ser confundidos com aderência ao módulo WMS. Datas e colunas de acumulado são identificadas por suas fórmulas, pois mudam entre os arquivos. O histograma de carregamento preserva o período selecionado no gráfico original, que pode ser uma semana; seu subtítulo informa essa seleção.
+
+O histórico privado fica em `efc_workbook_history`, com RLS e acesso reservado ao servidor. O endpoint valida a sessão existente antes de devolver o histórico. Os arquivos privados gerados pelo extrator não devem ser incluídos no repositório.
+
+O padrão DPO fornecido estabelece EFC até 6h30 para frota fixa e 8h30 para spot; as exclusões de mapas exigem classificação real. Uma frota não identificada não deve produzir uma EFC aparentemente completa. O documento define EFM como tempo real dividido pelo esperado: resultados acima de 100% indicam estouro do tempo, e não devem ser limitados a 100%. O algoritmo de complexidade do WMS não é fornecido pelo PDF. O padrão por faixa de caixas por pallet é uma aproximação provisória, explicitamente identificada.
+
+A aderência de ressuprimento WMS requer atividades completas divididas pelas geradas. A estimativa de demanda acima do picking continua disponível separadamente. Outubro não deve reutilizar os itens de setembro presentes no arquivo original. Itens ausentes ou frota sem classificação permanecem pendentes até integração ou correção dos insumos.
