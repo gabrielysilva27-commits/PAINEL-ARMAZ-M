@@ -207,7 +207,18 @@
     return group;
   }
 
-  function moveToPuxada(view, icon, label) {
+  function moveExistingToPuxada(view, icon, label) {
+    const group = ensurePuxadaGroup();
+    const submenu = group?.querySelector('.module-submenu');
+    const button = document.querySelector(`.nav-link[data-view="${view}"]`);
+    if (!submenu || !button) return null;
+    button.innerHTML = `<span>${icon}</span> ${label}`;
+    button.classList.add('module-sub-link');
+    if (button.parentElement !== submenu) submenu.appendChild(button);
+    return button;
+  }
+
+  function createPuxadaButton(view, icon, label) {
     const group = ensurePuxadaGroup();
     const submenu = group?.querySelector('.module-submenu');
     if (!submenu) return null;
@@ -226,13 +237,13 @@
 
   function installPuxadaMenu() {
     ensurePuxadaGroup();
-    moveToPuxada('layout', '⌗', 'Layout');
-    moveToPuxada('stock-base', '▦', 'Físico × Sistema');
-    moveToPuxada('replenishment', '↻', 'Reabastecimento');
-    moveToPuxada('pull-pedforme', '▤', 'Pedforme');
-    moveToPuxada('temperature', '°', 'Temperatura');
+    moveExistingToPuxada('layout', '⌗', 'Layout');
+    moveExistingToPuxada('stock-base', '▦', 'Físico × Sistema');
+    moveExistingToPuxada('replenishment', '↻', 'Reabastecimento');
+    moveExistingToPuxada('pull-pedforme', '▤', 'Pedforme');
+    moveExistingToPuxada('temperature', '°', 'Temperatura');
 
-    const oor = moveToPuxada('pull-oor', '⊙', 'OOR');
+    const oor = createPuxadaButton('pull-oor', '⊙', 'OOR');
     if (oor) oor.onclick = async event => {
       activateNav(event.currentTarget);
       document.querySelector('.pull-nav-group')?.classList.add('open');
@@ -244,7 +255,7 @@
       }
     };
 
-    const policy = moveToPuxada('pull-policy', '▦', 'Política de Estoque');
+    const policy = createPuxadaButton('pull-policy', '▦', 'Política de Estoque');
     if (policy) policy.onclick = async event => {
       activateNav(event.currentTarget);
       document.querySelector('.pull-nav-group')?.classList.add('open');
@@ -275,13 +286,14 @@
     installPuxadaMenu();
     installAreaRules();
     booted = true;
-    document.documentElement.dataset.abcAreaRules = '2026-10-01-puxada-menu';
+    document.documentElement.dataset.abcAreaRules = '2026-10-01-puxada-menu-2';
     document.documentElement.dataset.blitzVersion = '2026-10-01-dia-2';
   }
 
   boot();
   setTimeout(installPuxadaMenu, 250);
   setTimeout(installPuxadaMenu, 900);
+  setTimeout(installPuxadaMenu, 2200);
   setTimeout(installAreaRules, 250);
   setTimeout(installAreaRules, 1200);
   setTimeout(() => { if (!booted) boot(); }, 1200);
