@@ -17,6 +17,10 @@ function handler(role='admin',valid=true){
 const request=(body,token='test')=>new Request('https://example.test',{method:'POST',headers:{'Content-Type':'application/json',...(token?{'x-session-token':token}:{})},body:JSON.stringify(body)});
 test('API rejeita consulta e escrita sem sessão',async()=>{const h=handler();for(const action of ['dashboard','employee','target'])assert.equal((await h.serve(request({action},''))).status,401);assert.equal(h.mutations(),0)});
 test('API rejeita token sem sessão ativa',async()=>{const h=handler('admin',false);assert.equal((await h.serve(request({action:'dashboard'}))).status,401)});
+test('Histórico exige sessão e permite consulta sem autorização de escrita',async()=>{
+ const signedOut=handler();assert.equal((await signedOut.serve(request({action:'historical'},''))).status,401);
+ const reader=handler('viewer');const r=await reader.serve(request({action:'historical'}));assert.equal(r.status,200);const d=await r.json();assert.equal(d.rules.monthly_overtime,13);assert.equal(d.rules.forklift_overtime,0);assert.equal(reader.mutations(),0);
+});
 test('Usuário de consulta não pode gravar dados nem concluir ações',async()=>{const h=handler('viewer');for(const action of ['employee','attendance','activity','target','volume','action_status','closure','simulation'])assert.equal((await h.serve(request({action}))).status,403);assert.equal(h.mutations(),0)});
 test('Administrador recebe painel vazio sem indicadores inventados',async()=>{const h=handler();const r=await h.serve(request({action:'dashboard',from:'2026-10-01',to:'2026-10-01'}));assert.equal(r.status,200);const d=(await r.json()).dashboard;assert.equal(d.wlp.value,null);assert.equal(d.efd.total,0);assert.equal(d.rows.length,0)});
 test('API rejeita conclusão de ação sem resultado e simulação inválida',async()=>{const h=handler();assert.equal((await h.serve(request({action:'action_status',status:'completed',result:''}))).status,400);assert.equal((await h.serve(request({action:'simulation',volume:100,target:0}))).status,400);assert.equal(h.mutations(),0)});

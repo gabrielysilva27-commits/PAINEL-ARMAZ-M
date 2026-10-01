@@ -26,3 +26,12 @@ Executar `node --test tests/productivity*.test.mjs`. Os testes cobrem horas extr
 ## Próximas etapas
 
 Importadores das planilhas de 2026 após o recebimento dos arquivos, validação da fórmula oficial de WLP, cadastro completo da equipe e integração de consulta individual na Workstation. O início da tarefa determina a data operacional do repack; a distribuição de tarefas que atravessam dias deve ser definida antes de fechamento oficial.
+# Histórico 2026 publicado
+
+O histórico mensal está em `wlp_monthly_archive`, protegido por RLS e sem acesso direto de anon/authenticated. A ação `historical` da API exige a mesma sessão ativa do painel. Os dados individuais não são publicados como arquivos estáticos.
+
+Janeiro a setembro: volume TOTAL da ANS, produção PBR1/PBR2 atribuída a Ivanildo, todos os canais de repack rateados entre Andrei e Richard e volume TOTAL rateado entre os dois empilhadores C. Os 45 nomes confirmados estão cadastrados; ADM e candidatos pendentes ficam fora.
+
+As taxas históricas são estimativas pela escala 6x1 e pelos dias planejados da fonte, com jornada 7h20 e HE mensal de 13h por pessoa; empilhadores têm HE zero. Elas não alimentam as jornadas diárias nem o WLP global medido. Fevereiro da reforma ausente permanece nulo. Setembro do repack termina em 18/09 e não recebe taxa por hora com denominador mensal. Manobra aguarda carros atendidos/dia; ida e volta formam um ciclo por carro. Cadastro histórico, ausências e calendário divergente em 21/04 e 25/08 ainda precisam ser validados.
+
+O simulador inclui HE alocada à semana, limitada a 13h por pessoa e zerada para áreas de empilhadores. A HE mensal não deve ser repetida em cada semana. Metas e previsão do volume TOTAL ainda devem ser informadas; o plano de entrega não cobre toda a movimentação.

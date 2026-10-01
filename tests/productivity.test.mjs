@@ -1,4 +1,11 @@
 import test from 'node:test';
+test('HE semanal aumenta capacidade; empilhadores permanecem sem HE',()=>{
+ const inputs={volume:1200,target:10,hours:7+20/60,days:6,availability:1,headcount:2};
+ const base=simulate(inputs),withHE=simulate({...inputs,overtime_hours:3});
+ assert.equal(withHE.capacity_per_person,base.capacity_per_person+3);
+ assert.throws(()=>simulate({...inputs,area:'emp_carregamento',overtime_hours:1}));
+ assert.throws(()=>simulate({...inputs,overtime_hours:14}));
+});
 import assert from 'node:assert/strict';
 import {summarize,simulate,repackActivities,localDay} from '../supabase/functions/productivity-api/core.mjs';
 test('Horas extras entram no denominador em horas decimais',()=>{
