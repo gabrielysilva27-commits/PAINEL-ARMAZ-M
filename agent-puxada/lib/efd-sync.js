@@ -69,7 +69,14 @@ async function importBatches(api,action,rows,source){for(let i=0;i<rows.length;i
 async function phases(api,state,log){
  const dir=path.join(__dirname,'..','downloads');if(!fs.existsSync(dir))return{files:0,maps:0};let files=0,maps=0;
  const candidates=fs.readdirSync(dir).filter(name=>/^031120_normal_edge_\d+\.csv\.inf$/.test(name)).map(name=>{const stat=fs.statSync(path.join(dir,name));return{name,size:stat.size,modified:stat.mtimeMs}}).sort((a,b)=>a.modified-b.modified);
- for(const file of candidates){const signature=file.size+':'+file.modified;if(state.csv[file.name]===signature)continue;
+ for(const file of candidates){const signature=file.size+':'+file.modified;
+  state.efcCsv??={};
+  if(state.efcCsv[file.name]!==signature){try{
+   let events=[];try{events=require('./efc-events').parse(path.join(dir,file.name))}catch(e){if(!/^EFC_(HEADER_NOT_FOUND|COLUMNS_MISSING)$/.test(e.message))throw e;}
+   for(let i=0;i<events.length;i+=500){const response=await fetch('https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/efc-api',{method:'POST',headers:{'Content-Type':'application/json','x-agent-token':api.token},body:JSON.stringify({action:'agent_events',rows:events.slice(i,i+500),source_file:file.name})});if(!response.ok)throw Error('EFC_IMPORT_HTTP_'+response.status);}
+   state.efcCsv[file.name]=signature;saveState(state);if(events.length&&log)log('EFC: '+events.length+' fases de carregamento incorporadas de '+file.name);
+  }catch(e){if(log)log('EFC: falha ao incorporar '+file.name+': '+e.message,true);}}
+  if(state.csv[file.name]===signature)continue;
   let parsed;try{parsed=require('./efd-phases').parse(path.join(dir,file.name))}catch(e){if(!/^EFD_PHASE_(HEADER_NOT_FOUND|COLUMNS_MISSING|NO_MAPS)$/.test(e.message))throw e;state.csv[file.name]=signature;saveState(state);if(log)log('EFD: arquivo antigo sem fases utilizáveis: '+file.name,true);continue}await importBatches(api,'agent_phase_import',parsed.rows,file.name);state.csv[file.name]=signature;saveState(state);files++;maps+=parsed.rows.length;
   if(log)log('EFD: '+parsed.rows.length+' mapas e '+parsed.events+' fases incorporados de '+file.name);
  }
