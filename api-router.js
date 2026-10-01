@@ -44,7 +44,6 @@
     };
 
     const source=document.getElementById('kpiSource');if(source){source.textContent='';source.style.display='none';}
-    document.querySelectorAll('.nav-link').forEach(b=>{if(b.dataset.view!=='abc')b.remove();});
     document.getElementById('placeholderView')?.remove();
 
     const abcNav=document.querySelector('.nav-link[data-view="abc"]');
@@ -52,17 +51,24 @@
     if(!abcNav||!abcView)return;
     abcNav.onclick=null;
 
-    const layoutNav=document.createElement('button');
-    layoutNav.className='nav-link';layoutNav.dataset.view='layout';layoutNav.innerHTML='<span>⌗</span> Layout';abcNav.insertAdjacentElement('afterend',layoutNav);
+    let layoutNav=document.querySelector('.nav-link[data-view="layout"]');
+    if(!layoutNav){
+      layoutNav=document.createElement('button');
+      layoutNav.className='nav-link';layoutNav.dataset.view='layout';layoutNav.innerHTML='<span>⌗</span> Layout';abcNav.insertAdjacentElement('afterend',layoutNav);
+    }
 
-    const layoutView=document.createElement('section');layoutView.className='view hidden';layoutView.id='layoutView';
-    layoutView.innerHTML='<div class="layout-module"><div class="layout-tabs"><button class="layout-tab active" data-layout-tab="picking">Picking</button></div><section class="layout-section" data-layout-panel="picking"></section></div>';
-    abcView.insertAdjacentElement('afterend',layoutView);
+    let layoutView=document.getElementById('layoutView');
+    if(!layoutView){
+      layoutView=document.createElement('section');layoutView.className='view hidden';layoutView.id='layoutView';
+      layoutView.innerHTML='<div class="layout-module"><div class="layout-tabs"><button class="layout-tab active" data-layout-tab="picking">Picking</button></div><section class="layout-section" data-layout-panel="picking"></section></div>';
+      abcView.insertAdjacentElement('afterend',layoutView);
+    }
 
     const activate=(target)=>{document.querySelectorAll('.nav-link').forEach(b=>b.classList.toggle('active',b===target));document.getElementById('sidebar')?.classList.remove('open');};
     abcNav.addEventListener('click',()=>{layoutView.classList.add('hidden');abcView.classList.remove('hidden');activate(abcNav);const t=document.getElementById('pageTitle'),s=document.getElementById('pageSubtitle');if(t)t.textContent='Curva ABC';if(s)s.textContent='Análise mensal por área operacional.';});
     layoutNav.addEventListener('click',async()=>{
-      abcView.classList.add('hidden');layoutView.classList.remove('hidden');activate(layoutNav);
+      document.querySelectorAll('main > .view').forEach(v=>v.classList.add('hidden'));
+      layoutView.classList.remove('hidden');activate(layoutNav);
       const t=document.getElementById('pageTitle'),s=document.getElementById('pageSubtitle');if(t)t.textContent='Layout';if(s)s.textContent='Picking físico sincronizado com a Curva ABC.';
       try{const mod=await ensureLayoutScript();await mod?.open?.();}catch(e){showToast(e.message,true);}
     });
