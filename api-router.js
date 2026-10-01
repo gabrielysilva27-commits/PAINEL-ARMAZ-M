@@ -2,7 +2,7 @@
   const originalFetch=window.fetch.bind(window);
   const mainApi='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/painel-api';
   const marketplaceApi='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/marketplace-api';
-  let layoutScriptPromise=null;
+  let layoutScriptPromise=null,blitzScriptPromise=null;
 
   window.fetch=(input,init={})=>{
     try{
@@ -16,8 +16,7 @@
   };
 
   function loadCss(href){if(document.querySelector(`link[href^="${href.split('?')[0]}"]`))return;const l=document.createElement('link');l.rel='stylesheet';l.href=href;document.head.appendChild(l);}
-  function loadScript(src){if(document.querySelector(`script[src^="${src.split('?')[0]}"]`))return;const s=document.createElement('script');s.src=src;s.defer=true;document.body.appendChild(s);}
-
+  function loadScript(src){return new Promise((resolve,reject)=>{if(document.querySelector(`script[src^="${src.split('?')[0]}"]`))return resolve();const s=document.createElement('script');s.src=src;s.async=true;s.onload=resolve;s.onerror=()=>reject(new Error('Não foi possível carregar '+src));document.body.appendChild(s);});}
   function ensureLayoutScript(){
     if(window.__pickingLayout)return Promise.resolve(window.__pickingLayout);
     if(layoutScriptPromise)return layoutScriptPromise;
@@ -28,11 +27,9 @@
     });
     return layoutScriptPromise;
   }
+  function ensureBlitz(){loadCss('blitz.css?v=20261001-planilha-2');if(!blitzScriptPromise)blitzScriptPromise=loadScript('blitz.js?v=20261001-planilha-2');return blitzScriptPromise;}
 
   setTimeout(()=>{
-    loadCss('blitz.css?v=20261001-1');
-    loadScript('blitz.js?v=20261001-1');
-
     const isColdRoomSku=(code,master)=>{const product=master.get(code),name=normText(product?.name||'');return name.includes('chopp')&&(name.includes('barril')||name.includes('keg'));};
     window.buildAreas=function(){
       const sales=state.reports.sales.data.values,picking=state.reports.picking.data.values,master=state.reports.catalog.data.values;
@@ -69,9 +66,10 @@
       const t=document.getElementById('pageTitle'),s=document.getElementById('pageSubtitle');if(t)t.textContent='Layout';if(s)s.textContent='Picking físico sincronizado com a Curva ABC.';
       try{const mod=await ensureLayoutScript();await mod?.open?.();}catch(e){showToast(e.message,true);}
     });
+    ensureBlitz().catch(e=>showToast?.(e.message,true));
 
     document.documentElement.dataset.abcAreaRules='2026-09-16-picking-nao-v5';
     document.documentElement.dataset.layoutVersion='2026-09-16-layout-lite-v1';
-    document.documentElement.dataset.blitzVersion='2026-10-01-blitz-v1';
+    document.documentElement.dataset.blitzVersion='2026-10-01-planilha-2';
   },0);
 })();
