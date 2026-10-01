@@ -1,8 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "jsr:@supabase/supabase-js@2.57.4";
 
 const db=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,{auth:{persistSession:false}});
-const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-session-token","Access-Control-Allow-Methods":"POST, OPTIONS","Content-Type":"application/json; charset=utf-8"};
+const cors={"Access-Control-Allow-Origin":"https://painel-armaz-m.gabrielysilva27.workers.dev","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-session-token","Access-Control-Allow-Methods":"POST, OPTIONS","Content-Type":"application/json; charset=utf-8"};
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:cors});
 function b64url(bytes:Uint8Array){let s="";for(const b of bytes)s+=String.fromCharCode(b);return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");}
 async function sha256(text:string){return b64url(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(text))));}
@@ -18,7 +18,7 @@ Deno.serve(async(req:Request)=>{
       const {data,error}=await db.from("abc_marketplace_products").select("sku_code,sku_name,source_file,imported_at").eq("active",true).order("sku_code");if(error)throw error;
       return json({items:data||[],count:(data||[]).length});
     }
-    if(action==="marketplace_import"){
+    if(action==="marketplace_import"){if(user.role!=="admin")return json({error:"Acesso restrito à administração."},403);
       const incoming=Array.isArray(body.items)?body.items:[];const source=String(body.source_file||"");
       const seen=new Set<string>();const items:any[]=[];
       for(const row of incoming){const code=String(row?.sku_code??"").trim().replace(/\.0+$/,'');if(!/^\d+$/.test(code)||seen.has(code))continue;seen.add(code);items.push({sku_code:code,sku_name:String(row?.sku_name??"").trim()||null,active:true,source_file:source,imported_at:new Date().toISOString(),imported_by:user.id,updated_at:new Date().toISOString()});}

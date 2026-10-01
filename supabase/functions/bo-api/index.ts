@@ -320,7 +320,7 @@ async function validatedForExport(body:any){
 async function issuePins(rows:any[]){
   const issued=await Promise.all(rows.map(async row=>{const pin=randomPin();return{row,pin,record:await pinRecord(pin)};}));
   for(const entry of issued){
-    const {error}=await db.from("bo_conferencers").update({...entry.record,pin_admin_value:entry.pin}).eq("id",entry.row.id);if(error)throw error;
+    const {error}=await db.from("bo_conferencers").update({...entry.record,pin_admin_value:null}).eq("id",entry.row.id);if(error)throw error;
     await db.from("bo_conferencer_sessions").delete().eq("conferencer_id",entry.row.id);
   }
   return issued.map(x=>({id:x.row.id,display_name:x.row.display_name,pin:x.pin}));
@@ -338,10 +338,10 @@ Deno.serve(async(req:Request)=>{
     }
     if(action==="pin_login"){
       const id=cleanText(body?.conferencer_id,60),pin=cleanText(body?.pin,12);
-      const {data:row}=await db.from("bo_conferencers").select("id,display_name,pin_salt,pin_hash,pin_admin_value,failed_attempts,locked_until,active").eq("id",id).eq("active",true).maybeSingle();
+      const {data:row}=await db.from("bo_conferencers").select("id,display_name,pin_salt,pin_hash,failed_attempts,locked_until,active").eq("id",id).eq("active",true).maybeSingle();
       const locked=!!row?.locked_until&&Date.parse(row.locked_until)>Date.now();
       const valid=!locked&&/^\d{6}$/.test(pin)&&(
-        (row?.pin_admin_value&&constantTimeEqual(pin,String(row.pin_admin_value))) ||
+        
         await verifyPin(pin,row).catch(()=>false)
       );
       if(!row||!valid){
@@ -396,8 +396,8 @@ Deno.serve(async(req:Request)=>{
     if(action==="export")return json(req,await validatedForExport(body));
     if(action==="pin_status"){
       if(user.role!=="admin")return json(req,{error:"Somente administradores gerenciam PINs."},403);
-      const {data,error}=await db.from("bo_conferencers").select("id,display_name,pin_hash,pin_admin_value,pin_updated_at,active").order("display_name");if(error)throw error;
-      return json(req,{conferencers:(data||[]).map((x:any)=>({id:x.id,display_name:x.display_name,pin_ready:!!x.pin_hash,pin:x.pin_admin_value||null,pin_updated_at:x.pin_updated_at,active:x.active}))});
+      const {data,error}=await db.from("bo_conferencers").select("id,display_name,pin_hash,pin_updated_at,active").order("display_name");if(error)throw error;
+      return json(req,{conferencers:(data||[]).map((x:any)=>({id:x.id,display_name:x.display_name,pin_ready:!!x.pin_hash,pin:null,pin_updated_at:x.pin_updated_at,active:x.active}))});
     }
     if(action==="generate_missing_pins"){
       if(user.role!=="admin")return json(req,{error:"Somente administradores gerenciam PINs."},403);

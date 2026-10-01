@@ -1,0 +1,9 @@
+# Panel security review — 2026-10-01
+
+Scope: panel public schema, RLS, table/RPC grants, storage and sources of all 19 deployed Edge Functions. Workstation read only for employee roster.
+
+Applied: RLS/public privilege removal on three backend-only tables; revoked public execute on three internal security-definer functions; fixed trigger search_path; closed direct legacy ABC table grants; administrative guards on ABC/catalog/marketplace/layout imports, stock writes and adherence capture; restricted management CORS; atomic persistent per-identity login throttling (10 attempts/15 min) for panel, repack, gate and forklift; escaped username lookup wildcards; removed main API error details; removed all 8 BO plaintext PIN copies after verifying supported PBKDF2 hashes, preserving current PINs and one-time issuance; Promax browser diagnostics no longer mutate trusted persistent state and public probe requires agent auth; new/reset gate PINs use salted PBKDF2-200000, legacy SHA256 upgrades on successful sign-in without changing PINs.
+
+Validation: compilation/deployment of 11 Edge Functions; database checks show zero tables without RLS, zero publicly executable security-definer functions, zero plaintext BO PINs and zero public grants on protected tables. Transactional throttle test: first 10 allowed, 11th denied. Supabase advisor has only informational backend-only RLS/no-policy notices.
+
+Limits: logged-in UI regression pending after browser login fetch error. Review is not a penetration test. Portaria four-digit PINs retained for workflow compatibility; legacy hashes persist until successful sign-in/reset. Staff PIN policy and full auth migration can be planned separately. Custom app-session validation precedes private operations despite verify_jwt=false. Employee list entry screens are preserved.

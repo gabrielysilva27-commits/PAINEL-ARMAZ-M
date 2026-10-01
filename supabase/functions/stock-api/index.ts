@@ -8,7 +8,7 @@ const db = createClient(
 );
 
 const cors = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "https://painel-armaz-m.gabrielysilva27.workers.dev",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-session-token",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Content-Type": "application/json; charset=utf-8",
@@ -33,7 +33,7 @@ async function requireSession(req: Request) {
   return u || null;
 }
 
-const canEdit = (u: any) => !!u?.id;
+const canEdit = (u: any) => u?.role === "admin";
 const todayBR = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 const rowKey = (r: any) => String(r?.id || `${r?.area || ""}|${r?.address || ""}|${r?.sku_code || ""}`);
 const isFefoReady = (r: any) => ["Prioridade FEFO", "Aguardar lote anterior"].includes(String(r?.fefo_status || "")) && Number.isFinite(Number(r?.pallets)) && Number(r.pallets) > 0;

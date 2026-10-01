@@ -1,8 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "jsr:@supabase/supabase-js@2.57.4";
 
 const db=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,{auth:{persistSession:false}});
-const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-session-token","Access-Control-Allow-Methods":"POST, OPTIONS","Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"};
+const cors={"Access-Control-Allow-Origin":"https://painel-armaz-m.gabrielysilva27.workers.dev","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, x-session-token","Access-Control-Allow-Methods":"POST, OPTIONS","Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store"};
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:cors});
 function b64url(bytes:Uint8Array){let s="";for(const b of bytes)s+=String.fromCharCode(b);return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");}
 async function sha256(text:string){return b64url(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(text))));}
@@ -27,7 +27,7 @@ Deno.serve(async(req:Request)=>{
     if(action==="get"){
       const data=await readAllCatalog();const valid=data.filter((x:any)=>Number(x.factor_hecto_commercial)>0).length;return json({items:data,count:data.length,valid_factor_count:valid,no_factor_count:data.length-valid});
     }
-    if(action==="import"){const items=Array.isArray(body.items)?body.items:[];if(!items.length)return json({error:"Nenhum produto recebido"},400);let saved=0,withFactor=0;
+    if(action==="import"){if(user.role!=="admin")return json({error:"Acesso restrito à administração."},403);const items=Array.isArray(body.items)?body.items:[];if(!items.length)return json({error:"Nenhum produto recebido"},400);let saved=0,withFactor=0;
       for(let i=0;i<items.length;i+=200){const batch=items.slice(i,i+200).map((x:any)=>{const factor=n(x.factor_hecto_commercial);return{sku_code:String(x.sku_code||"").trim(),sku_name:String(x.sku_name||""),factor_hecto_commercial:factor&&factor>0?factor:null,boxes_per_pallet:n(x.boxes_per_pallet),source_file:String(body.source_file||"01.11"),updated_at:new Date().toISOString()};}).filter((x:any)=>x.sku_code);if(!batch.length)continue;const {error}=await db.from("product_catalog").upsert(batch,{onConflict:"sku_code"});if(error)throw error;saved+=batch.length;withFactor+=batch.filter((x:any)=>Number(x.factor_hecto_commercial)>0).length;}
       return json({ok:true,count:saved,valid_factor_count:withFactor,no_factor_count:saved-withFactor});
     }

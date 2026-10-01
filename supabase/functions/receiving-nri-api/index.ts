@@ -498,6 +498,9 @@ async function failAgentJob(node:any,b:any){
 }
 
 async function agentPull031120PreferredNode(){
+  const {data:owner}=await db.from("receiving_pull_031120_state").select("agent_node_id").eq("status","running").gt("updated_at",new Date(Date.now()-30*60000).toISOString()).order("updated_at",{ascending:false}).limit(1).maybeSingle();
+  if(owner){const {data:ownerNode}=await db.from("receiving_pull_agent_nodes").select("slot_code").eq("id",owner.agent_node_id).eq("active",true).maybeSingle();if(ownerNode)return ownerNode.slot_code;}
+
   const cutoff=new Date(Date.now()-90*1000).toISOString();
   const {data,error}=await db.from("receiving_pull_agent_nodes")
     .select("slot_code,status,last_seen_at").eq("active",true).gte("last_seen_at",cutoff);
@@ -519,18 +522,27 @@ function nextIsoDay(v:string){
 async function agentPull031120Status(node:any){
   const now=new Date().toISOString();
   await db.from("receiving_pull_agent_nodes").update({last_seen_at:now,updated_at:now}).eq("id",node.id);
-  const preferred=await agentPull031120PreferredNode();
-  const {data:forceState}=await db.from("receiving_pull_031120_state").select("agent_node_id,stage").eq("stage","force_run").limit(1).maybeSingle();
+  let preferred=await agentPull031120PreferredNode();
+  const {data:forceState}=await db.from("receiving_pull_031120_state").select("agent_node_id,stage,date_from,date_to").eq("stage","force_run").limit(1).maybeSingle();
   const forceRun=!!forceState;
-  const start="2026-09-17",today=todayBr();
+  if(forceState){const {data:forcedNode}=await db.from("receiving_pull_agent_nodes").select("slot_code").eq("id",forceState.agent_node_id).eq("active",true).maybeSingle();if(forcedNode)preferred=forcedNode.slot_code;}
+  const start="2026-01-01",today=todayBr();
+  if(!forceRun){
+    const {data:recentRun,error:recentError}=await db.from("receiving_pull_031120_state").select("started_at").in("status",["running","completed","error"]).order("started_at",{ascending:false,nullsFirst:false}).limit(1).maybeSingle();
+    if(recentError)throw recentError;
+    if(recentRun?.started_at&&Date.now()-Date.parse(recentRun.started_at)<120*60000)return{enabled:true,preferred_node:preferred,complete:true,date_from:null,date_to:today,force_run:false};
+  }
   if(!preferred||node.slot_code!==preferred)return{enabled:false,preferred_node:preferred||null,complete:false,force_run:forceRun};
   const {data:last,error}=await db.from("receiving_pull_daily")
     .select("pull_date").gte("pull_date",start).like("source_file","agent_031120_%")
     .order("pull_date",{ascending:false}).limit(1).maybeSingle();
   if(error)throw error;
-  const dateFrom=last?.pull_date?nextIsoDay(last.pull_date):start;
-  if(dateFrom>today)return{enabled:true,preferred_node:preferred,complete:true,date_from:null,date_to:today,classification:"Mapa",vehicle_from:"225",vehicle_to:"312",force_run:forceRun};
-  return{enabled:true,preferred_node:preferred,complete:false,date_from:dateFrom,date_to:today,classification:"Mapa",vehicle_from:"225",vehicle_to:"312",force_run:forceRun};
+  const nextFrom=last?.pull_date?nextIsoDay(last.pull_date):start;
+  const rollingFrom=new Date(Date.parse(today+"T12:00:00Z")-6*86400000).toISOString().slice(0,10);
+  const lowerBound=rollingFrom<start?start:rollingFrom;
+  const dateFrom=forceState?.date_from||(nextFrom>lowerBound?lowerBound:nextFrom);
+  const dateTo=forceState?.date_to||today;
+  return{enabled:true,preferred_node:preferred,complete:false,date_from:dateFrom,date_to:dateTo,classification:"Mapa",vehicle_from:"0",vehicle_to:"999",force_run:forceRun};
 }
 async function agentPull031120Import(node:any,b:any){
   const preferred=await agentPull031120PreferredNode();
@@ -546,12 +558,10 @@ async function agentPull031120Import(node:any,b:any){
       pallets_pulled:Math.max(0,Math.round(Number(x.pallets_pulled)||0)),vehicle_counts:vc,
       source_file:source,imported_at:new Date().toISOString()});
   }
-  const upserts:any[]=[];let cursor=from,guard=0;
-  while(cursor<=to&&guard++<62){
-    upserts.push(byDate.get(cursor)||{pull_date:cursor,truck_count:0,pallets_pulled:0,vehicle_counts:{},source_file:source,imported_at:new Date().toISOString()});
-    cursor=nextIsoDay(cursor);
-  }
-  if(!upserts.length||guard>62)throw new Error("Período 03.11.20 excede o limite seguro.");
+  if(Date.parse(to+"T00:00:00Z")-Date.parse(from+"T00:00:00Z")>365*86400000)throw new Error("Período 03.11.20 excede um ano.");
+  // Absence in an historical report is unknown, not a confirmed zero.
+  const upserts=[...byDate.values()].sort((a:any,b:any)=>a.pull_date.localeCompare(b.pull_date));
+  if(!upserts.length)throw new Error("031120_NO_DATA: nenhuma entrada disponível no período.");
   const {error:ue}=await db.from("receiving_pull_daily").upsert(upserts,{onConflict:"pull_date"});if(ue)throw ue;
   const truckTotal=upserts.reduce((s:number,x:any)=>s+Number(x.truck_count||0),0);
   const palletTotal=upserts.reduce((s:number,x:any)=>s+Number(x.pallets_pulled||0),0);
@@ -574,6 +584,7 @@ async function agentPull031120State(node:any,b:any){
     last_error:status==="error"?(clean(b.error,1000)||"Falha 03.11.20."):null,
     updated_at:now
   };
+  if(b.coverage&&typeof b.coverage==="object"&&JSON.stringify(b.coverage).length<=60000)row.coverage=b.coverage;
   if(status==="running"){
     row.started_at=now;
     await db.from("receiving_pull_031120_state").update({stage:"claimed",updated_at:now}).eq("stage","force_run");
@@ -610,10 +621,11 @@ Deno.serve(async(req:Request)=>{
     const {data,error}=await db.from("receiving_gate_users").select("id,display_name").eq("active",true).order("display_name");if(error)throw error;
     return json(req,{users:data||[]});
   }
-  if(a==="gate_login"){
+  if(a==="gate_login"){if(!await consumeLoginAttempt("receiving-nri-api",b.user_id))return json(req,{error:"Muitas tentativas. Aguarde 15 minutos."},429);
     const userId=clean(b.user_id,80),pin=clean(b.pin,10);if(!userId)throw new Error("Selecione seu nome.");if(!/^\d{4}$/.test(pin))throw new Error("Informe o PIN de 4 dígitos.");
     const {data:g,error}=await db.from("receiving_gate_users").select("id,display_name,pin_hash,active").eq("id",userId).maybeSingle();if(error)throw error;
-    if(!g||!g.active||!g.pin_hash||await hash(pin)!==g.pin_hash)return json(req,{error:"Nome ou PIN da Portaria inválido."},401);
+    if(!g||!g.active||!g.pin_hash||!await verifyGatePin(pin,g.pin_hash))return json(req,{error:"Nome ou PIN da Portaria inválido."},401);
+    if(!String(g.pin_hash).startsWith("pbkdf2-sha256$")){const {error:upgradeError}=await db.from("receiving_gate_users").update({pin_hash:await gatePinHash(pin)}).eq("id",g.id).eq("pin_hash",g.pin_hash);if(upgradeError)throw upgradeError;}
     const token=crypto.randomUUID()+crypto.randomUUID();const tokenHash=await hash(token);const expires=new Date(Date.now()+12*60*60*1000).toISOString();
     await db.from("receiving_gate_sessions").delete().lt("expires_at",new Date().toISOString());
     const {error:se}=await db.from("receiving_gate_sessions").insert({token_hash:tokenHash,gate_user_id:g.id,expires_at:expires});if(se)throw se;
@@ -704,7 +716,7 @@ Deno.serve(async(req:Request)=>{
     const userId=clean(b.id,80);if(!userId)throw new Error("Usuário da Portaria inválido.");
     const {data:old,error:oe}=await db.from("receiving_gate_users").select("id,display_name,pin_hash").eq("id",userId).single();if(oe)throw oe;
     if(a==="gate_generate_pin"&&old.pin_hash)return json(req,{issued:null});
-    const pin=randomPin();const {error}=await db.from("receiving_gate_users").update({pin_hash:await hash(pin),updated_at:new Date().toISOString()}).eq("id",userId);if(error)throw error;
+    const pin=randomPin();const {error}=await db.from("receiving_gate_users").update({pin_hash:await gatePinHash(pin),updated_at:new Date().toISOString()}).eq("id",userId);if(error)throw error;
     await db.from("receiving_gate_sessions").delete().eq("gate_user_id",userId);
     return json(req,{issued:{id:old.id,display_name:old.display_name,pin}});
   }
@@ -765,3 +777,27 @@ Deno.serve(async(req:Request)=>{
   return json(req,{error:message},500)
 }
 });
+async function consumeLoginAttempt(scope:string,identity:unknown){
+ const normalized=String(identity??"").trim().toLowerCase().slice(0,200);
+ const hash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(scope+":"+normalized))),b=>b.toString(16).padStart(2,"0")).join("");
+ const {data,error}=await db.rpc("consume_login_attempt",{p_key:hash});
+ if(error)throw error;return data===true;
+}
+
+async function deriveGatePin(pin:string,salt:string){
+ const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(pin),"PBKDF2",false,["deriveBits"]);
+ const bytes=new Uint8Array(await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(salt),iterations:200000},key,256));
+ return Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");
+}
+async function gatePinHash(pin:string){
+ const salt=Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,"0")).join("");
+ return "pbkdf2-sha256$200000$"+salt+"$"+await deriveGatePin(pin,salt);
+}
+async function verifyGatePin(pin:string,stored:string){
+ if(!stored.startsWith("pbkdf2-sha256$"))return await hash(pin)===stored;
+ const [scheme,iterations,salt,expected]=stored.split("$");
+ if(iterations!=="200000"||!salt||!expected)return false;
+ const actual=await deriveGatePin(pin,salt);let diff=actual.length^expected.length;
+ for(let i=0;i<Math.max(actual.length,expected.length);i++)diff|=(actual.charCodeAt(i)||0)^(expected.charCodeAt(i)||0);
+ return diff===0;
+}
