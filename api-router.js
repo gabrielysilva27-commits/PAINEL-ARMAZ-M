@@ -27,7 +27,7 @@
     });
     return layoutScriptPromise;
   }
-  function ensureBlitz(){loadCss('blitz.css?v=20261001-planilha-2');if(!blitzScriptPromise)blitzScriptPromise=loadScript('blitz.js?v=20261001-planilha-2');return blitzScriptPromise;}
+  function ensureBlitz(){loadCss('blitz.css?v=20261001-planilha-3');if(!blitzScriptPromise)blitzScriptPromise=loadScript('blitz.js?v=20261001-planilha-3');return blitzScriptPromise;}
 
   setTimeout(()=>{
     const isColdRoomSku=(code,master)=>{const product=master.get(code),name=normText(product?.name||'');return name.includes('chopp')&&(name.includes('barril')||name.includes('keg'));};
@@ -76,6 +76,6 @@
 
     document.documentElement.dataset.abcAreaRules='2026-09-16-picking-nao-v5';
     document.documentElement.dataset.layoutVersion='2026-09-16-layout-lite-v1';
-    document.documentElement.dataset.blitzVersion='2026-10-01-planilha-2';
+    document.documentElement.dataset.blitzVersion='2026-10-01-planilha-3';
   },0);
 })();
