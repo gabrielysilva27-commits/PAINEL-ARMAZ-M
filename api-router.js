@@ -27,7 +27,7 @@
     });
     return layoutScriptPromise;
   }
-  function ensureBlitz(){loadCss('blitz.css?v=20261001-planilha-3');if(!blitzScriptPromise)blitzScriptPromise=loadScript('blitz.js?v=20261001-planilha-3');return blitzScriptPromise;}
+  function ensureBlitz(){loadCss('blitz.css?v=20261001-dia-1');if(!blitzScriptPromise)blitzScriptPromise=loadScript('blitz.js?v=20261001-dia-1');return blitzScriptPromise;}
 
   function ensurePuxadaMenu(){
     const nav=document.querySelector('.sidebar nav');
@@ -108,6 +108,6 @@
 
     document.documentElement.dataset.abcAreaRules='2026-09-16-picking-nao-v5';
     document.documentElement.dataset.layoutVersion='2026-09-16-layout-lite-v1';
-    document.documentElement.dataset.blitzVersion='2026-10-01-planilha-3';
+    document.documentElement.dataset.blitzVersion='2026-10-01-dia-1';
   },0);
 })();
