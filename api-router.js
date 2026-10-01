@@ -15,6 +15,9 @@
     return originalFetch(input,init);
   };
 
+  function loadCss(href){if(document.querySelector(`link[href^="${href.split('?')[0]}"]`))return;const l=document.createElement('link');l.rel='stylesheet';l.href=href;document.head.appendChild(l);}
+  function loadScript(src){if(document.querySelector(`script[src^="${src.split('?')[0]}"]`))return;const s=document.createElement('script');s.src=src;s.defer=true;document.body.appendChild(s);}
+
   function ensureLayoutScript(){
     if(window.__pickingLayout)return Promise.resolve(window.__pickingLayout);
     if(layoutScriptPromise)return layoutScriptPromise;
@@ -27,6 +30,9 @@
   }
 
   setTimeout(()=>{
+    loadCss('blitz.css?v=20261001-1');
+    loadScript('blitz.js?v=20261001-1');
+
     const isColdRoomSku=(code,master)=>{const product=master.get(code),name=normText(product?.name||'');return name.includes('chopp')&&(name.includes('barril')||name.includes('keg'));};
     window.buildAreas=function(){
       const sales=state.reports.sales.data.values,picking=state.reports.picking.data.values,master=state.reports.catalog.data.values;
@@ -66,5 +72,6 @@
 
     document.documentElement.dataset.abcAreaRules='2026-09-16-picking-nao-v5';
     document.documentElement.dataset.layoutVersion='2026-09-16-layout-lite-v1';
+    document.documentElement.dataset.blitzVersion='2026-10-01-blitz-v1';
   },0);
 })();
