@@ -62,6 +62,25 @@
     view.classList.remove('hidden');
   }
 
+  function addNavButton(view, icon, label, afterSelector, handler) {
+    const existing = document.querySelector(`.nav-link[data-view="${view}"]`);
+    if (existing) {
+      existing.onclick = handler;
+      return existing;
+    }
+    const nav = document.querySelector('.sidebar nav');
+    if (!nav) return null;
+    const button = document.createElement('button');
+    button.className = 'nav-link';
+    button.dataset.view = view;
+    button.innerHTML = `<span>${icon}</span> ${label}`;
+    button.onclick = handler;
+    const anchor = afterSelector ? document.querySelector(afterSelector) : null;
+    if (anchor?.parentElement === nav) anchor.insertAdjacentElement('afterend', button);
+    else nav.appendChild(button);
+    return button;
+  }
+
   function ensureLayoutScript() {
     if (window.__pickingLayout) return Promise.resolve(window.__pickingLayout);
     if (layoutScriptPromise) return layoutScriptPromise;
@@ -99,25 +118,6 @@
     } catch (error) {
       console.warn('Regras ABC não aplicadas:', error);
     }
-  }
-
-  function addNavButton(view, icon, label, afterSelector, handler) {
-    const existing = document.querySelector(`.nav-link[data-view="${view}"]`);
-    if (existing) {
-      existing.onclick = handler;
-      return existing;
-    }
-    const nav = document.querySelector('.sidebar nav');
-    if (!nav) return null;
-    const button = document.createElement('button');
-    button.className = 'nav-link';
-    button.dataset.view = view;
-    button.innerHTML = `<span>${icon}</span> ${label}`;
-    button.onclick = handler;
-    const anchor = afterSelector ? document.querySelector(afterSelector) : null;
-    if (anchor?.parentElement === nav) anchor.insertAdjacentElement('afterend', button);
-    else nav.appendChild(button);
-    return button;
   }
 
   function installLayout() {
@@ -165,6 +165,98 @@
     });
   }
 
+  function ensurePuxadaStyle() {
+    if (document.getElementById('puxadaMenuStyle')) return;
+    const style = document.createElement('style');
+    style.id = 'puxadaMenuStyle';
+    style.textContent = `
+      .module-nav-group{display:grid;gap:3px}
+      .module-nav-group .module-toggle{position:relative}
+      .module-nav-group .module-toggle:after{content:"⌄";position:absolute;right:10px;color:#9b9ca1}
+      .module-nav-group.open .module-toggle:after{content:"⌃"}
+      .module-nav-group:not(.open) .module-submenu{display:none}
+      .module-submenu{display:grid;gap:2px;margin:0 0 2px 18px}
+      .module-submenu .module-sub-link{font-size:12px;padding:9px 10px 9px 8px;border-radius:8px;color:#7b7c82}
+      .module-submenu .module-sub-link>span{width:22px}
+      .module-submenu .module-sub-link.active{background:var(--orange-soft,#fff1e6);color:#b95612}
+      .module-nav-group.open>.module-toggle{font-weight:700;color:#5f6068}
+    `;
+    document.head.appendChild(style);
+  }
+
+  function ensurePuxadaGroup() {
+    const nav = document.querySelector('.sidebar nav');
+    if (!nav) return null;
+    ensurePuxadaStyle();
+    let group = document.querySelector('.pull-nav-group');
+    if (!group) {
+      group = document.createElement('div');
+      group.className = 'module-nav-group pull-nav-group open';
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'nav-link module-toggle';
+      toggle.innerHTML = '<span>→</span> Puxada';
+      const submenu = document.createElement('div');
+      submenu.className = 'module-submenu';
+      group.append(toggle, submenu);
+      toggle.onclick = () => group.classList.toggle('open');
+      const anchor = document.querySelector('.nav-link[data-view="abc"]') || nav.firstElementChild;
+      if (anchor?.parentElement === nav) anchor.insertAdjacentElement('afterend', group);
+      else nav.appendChild(group);
+    }
+    return group;
+  }
+
+  function moveToPuxada(view, icon, label) {
+    const group = ensurePuxadaGroup();
+    const submenu = group?.querySelector('.module-submenu');
+    if (!submenu) return null;
+    let button = document.querySelector(`.nav-link[data-view="${view}"]`);
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'nav-link';
+      button.dataset.view = view;
+    }
+    button.innerHTML = `<span>${icon}</span> ${label}`;
+    button.classList.add('module-sub-link');
+    if (button.parentElement !== submenu) submenu.appendChild(button);
+    return button;
+  }
+
+  function installPuxadaMenu() {
+    ensurePuxadaGroup();
+    moveToPuxada('layout', '⌗', 'Layout');
+    moveToPuxada('stock-base', '▦', 'Físico × Sistema');
+    moveToPuxada('replenishment', '↻', 'Reabastecimento');
+    moveToPuxada('pull-pedforme', '▤', 'Pedforme');
+    moveToPuxada('temperature', '°', 'Temperatura');
+
+    const oor = moveToPuxada('pull-oor', '⊙', 'OOR');
+    if (oor) oor.onclick = async event => {
+      activateNav(event.currentTarget);
+      document.querySelector('.pull-nav-group')?.classList.add('open');
+      try {
+        if (!window.__stockOor) await loadScript('oor.js?v=20260928-1');
+        window.__stockOor?.open?.();
+      } catch (error) {
+        window.showToast?.(error.message || String(error), true);
+      }
+    };
+
+    const policy = moveToPuxada('pull-policy', '▦', 'Política de Estoque');
+    if (policy) policy.onclick = async event => {
+      activateNav(event.currentTarget);
+      document.querySelector('.pull-nav-group')?.classList.add('open');
+      try {
+        if (!window.__stockPolicy) await loadScript('stock-policy.js?v=20260924-3');
+        window.__stockPolicy?.open?.();
+      } catch (error) {
+        window.showToast?.(error.message || String(error), true);
+      }
+    };
+  }
+
   function boot() {
     const nav = document.querySelector('.sidebar nav');
     const main = document.querySelector('main');
@@ -180,13 +272,16 @@
     document.getElementById('placeholderView')?.remove();
     installLayout();
     installBlitz();
+    installPuxadaMenu();
     installAreaRules();
     booted = true;
-    document.documentElement.dataset.abcAreaRules = '2026-10-01-menu-base';
+    document.documentElement.dataset.abcAreaRules = '2026-10-01-puxada-menu';
     document.documentElement.dataset.blitzVersion = '2026-10-01-dia-2';
   }
 
   boot();
+  setTimeout(installPuxadaMenu, 250);
+  setTimeout(installPuxadaMenu, 900);
   setTimeout(installAreaRules, 250);
   setTimeout(installAreaRules, 1200);
   setTimeout(() => { if (!booted) boot(); }, 1200);
