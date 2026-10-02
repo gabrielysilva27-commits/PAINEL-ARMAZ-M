@@ -54,7 +54,7 @@
 #blitzView .blitz-form textarea{min-height:70px;resize:vertical}
 #blitzView .blitz-loss-list{grid-column:1/-1;border:1px solid var(--pa-line);border-radius:16px;padding:10px;background:#fbfcfe}
 #blitzView .blitz-loss-head,#blitzView .blitz-loss-row{
-  display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,.8fr) minmax(0,1.8fr) minmax(0,.55fr) minmax(0,1.1fr) 34px;gap:8px;align-items:center;
+  display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,.8fr) minmax(0,.8fr) minmax(0,1.8fr) minmax(0,.55fr) minmax(0,1.1fr) 34px;gap:8px;align-items:center;
 }
 #blitzView .blitz-loss-head{padding:0 2px 8px;color:#657186;font-weight:900;font-size:12px;text-transform:uppercase}
 #blitzView .blitz-loss-row{margin-bottom:8px}
@@ -131,3 +131,9 @@
  #blitzView .blitz-months{gap:4px}
  #blitzView .blitz-months button{padding:9px 10px}
 }
+
+#blitzView .blitz-email-date{display:grid;gap:6px;max-width:190px;margin-bottom:12px;font-size:12px;font-weight:700}
+#blitzView .blitz-email-date input{min-width:0;padding:9px;border:1px solid #d7dce5;border-radius:8px}
+#blitzView .blitz-email-preview th{background:#70a8dc;color:#111;font-size:10px;text-transform:none}
+#blitzView .blitz-email-preview td{background:#eee;font-size:11px}
+#blitzView .blitz-email-preview th,#blitzView .blitz-email-preview td{padding:6px}

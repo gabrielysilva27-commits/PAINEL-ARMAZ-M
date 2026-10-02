@@ -89,8 +89,8 @@
   }
 
   function ensureBlitz() {
-    loadCss('blitz.css?v=20261002-design-1');
-    if (!blitzScriptPromise) blitzScriptPromise = loadScript('blitz.js?v=20261002-product-auto-1');
+    loadCss('blitz.css?v=20261002-email-portal-1');
+    if (!blitzScriptPromise) blitzScriptPromise = loadScript('blitz.js?v=20261002-email-portal-1');
     return blitzScriptPromise;
   }
 
