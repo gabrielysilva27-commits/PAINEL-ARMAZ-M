@@ -281,30 +281,38 @@
       nav.insertBefore(button, group);
     }
 
-    let previous = null;
     for (const view of ['pull-compare', 'pull-oor', 'pull-policy', 'pull-pedforme']) {
       const button = document.querySelector(`.nav-link[data-view="${view}"]`);
       if (!button) continue;
       button.classList.add('module-sub-link');
-      const expected = previous ? previous.nextElementSibling : submenu.firstElementChild;
-      if (expected !== button) submenu.insertBefore(button, expected);
-      previous = button;
+      if (button.parentElement !== submenu) submenu.appendChild(button);
     }
 
-    const control = document.querySelector('.control-nav-group');
-    if (control?.parentElement === nav && control.nextElementSibling !== group) {
-      control.insertAdjacentElement('afterend', group);
-    }
-    previous = group;
     for (const view of ['temperature', 'productivity', 'repack', 'efc']) {
       const button = document.querySelector(`.nav-link[data-view="${view}"]`);
       if (!button) continue;
       button.classList.remove('module-sub-link');
-      if (previous.nextElementSibling !== button || button.parentElement !== nav) {
-        previous.insertAdjacentElement('afterend', button);
-      }
-      previous = button;
+      if (button.parentElement !== nav) nav.appendChild(button);
     }
+    sortMenuAlphabetically(nav);
+  }
+
+  const menuCollator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true });
+  function menuLabel(item) {
+    const button = item.matches('.nav-link') ? item : item.querySelector('.nav-link');
+    const copy = (button || item).cloneNode(true);
+    copy.querySelectorAll('span').forEach(icon => icon.remove());
+    return copy.textContent.trim();
+  }
+  function sortMenuAlphabetically(nav) {
+    const sortChildren = container => {
+      const sorted = [...container.children].sort((a, b) => menuCollator.compare(menuLabel(a), menuLabel(b)));
+      sorted.forEach((item, index) => {
+        if (container.children[index] !== item) container.insertBefore(item, container.children[index] || null);
+      });
+    };
+    nav.querySelectorAll('.module-submenu, .control-submenu').forEach(sortChildren);
+    sortChildren(nav);
   }
 
   let menuObserver = null;
@@ -341,7 +349,7 @@
     watchMenu();
     installAreaRules();
     booted = true;
-    document.documentElement.dataset.abcAreaRules = '2026-10-02-receiving-restore-1';
+    document.documentElement.dataset.abcAreaRules = '2026-10-02-alphabetical-menu-1';
     document.documentElement.dataset.blitzVersion = '2026-10-01-dia-2';
   }
 
