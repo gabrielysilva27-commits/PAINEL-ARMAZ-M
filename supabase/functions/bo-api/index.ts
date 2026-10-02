@@ -1,3 +1,4 @@
+import { createPinRecord, verifyPinRecord } from "./pin-crypto.mjs";
 import { createClient } from "jsr:@supabase/supabase-js@2.57.4";
 import {
   LOCATIONS, MOVEMENT_TYPES, REASONS, RESPONSIBILITIES, SHIFTS,
@@ -6,7 +7,6 @@ import {
 
 const db=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,{auth:{persistSession:false}});
 const PUBLIC_ORIGIN="https://painel-armaz-m.gabrielysilva27.workers.dev";
-const PIN_ITERATIONS=200000;
 const PIN_SESSION_HOURS=8;
 const MAX_PIN_ATTEMPTS=5;
 const LOCK_MINUTES=15;
@@ -27,22 +27,9 @@ function responseHeaders(req:Request){
 const json=(req:Request,body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:responseHeaders(req)});
 
 function b64url(bytes:Uint8Array){let s="";for(const b of bytes)s+=String.fromCharCode(b);return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");}
-function decodeB64url(s:string){const p=s.replace(/-/g,"+").replace(/_/g,"/")+"===".slice((s.length+3)%4);return Uint8Array.from(atob(p),c=>c.charCodeAt(0));}
 function randomToken(size=32){return b64url(crypto.getRandomValues(new Uint8Array(size)));}
 async function sha256(text:string){return b64url(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(text))));}
-async function pbkdf2(secret:string,salt:string){
-  const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(secret),"PBKDF2",false,["deriveBits"]);
-  const bits=await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:decodeB64url(salt),iterations:PIN_ITERATIONS},key,256);
-  return b64url(new Uint8Array(bits));
-}
-function constantTimeEqual(a:string,b:string){let diff=a.length^b.length;for(let i=0;i<Math.max(a.length,b.length);i++)diff|=(a.charCodeAt(i)||0)^(b.charCodeAt(i)||0);return diff===0;}
-async function pinRecord(pin:string){const salt=randomToken(16);return{pin_salt:salt,pin_hash:`pbkdf2-sha256$${PIN_ITERATIONS}$${await pbkdf2(pin,salt)}`,pin_updated_at:new Date().toISOString(),failed_attempts:0,locked_until:null,updated_at:new Date().toISOString()};}
-async function verifyPin(pin:string,row:any){
-  if(!row?.pin_hash?.startsWith("pbkdf2-sha256$")||!row.pin_salt)return false;
-  const [,iterations,expected]=String(row.pin_hash).split("$");
-  if(Number(iterations)!==PIN_ITERATIONS||!expected)return false;
-  return constantTimeEqual(expected,await pbkdf2(pin,row.pin_salt));
-}
+const pinRecord=createPinRecord;
 
 async function readBody(req:Request){
   const declared=Number(req.headers.get("content-length")||0);if(declared>250000)throw new Error("Solicitação muito grande.");
@@ -341,17 +328,23 @@ Deno.serve(async(req:Request)=>{
     }
     if(action==="pin_login"){
       const id=cleanText(body?.conferencer_id,60),pin=cleanText(body?.pin,12);
-      const {data:row}=await db.from("bo_conferencers").select("id,display_name,pin_salt,pin_hash,failed_attempts,locked_until,active").eq("id",id).eq("active",true).maybeSingle();
+      const {data:row,error:readError}=await db.from("bo_conferencers").select("id,display_name,pin_salt,pin_hash,failed_attempts,locked_until,active").eq("id",id).eq("active",true).maybeSingle();
+      if(readError){console.error("PIN credential read failed",{code:readError.code});return json(req,{error:"Não foi possível validar o acesso agora. Tente novamente."},503);}
       const locked=!!row?.locked_until&&Date.parse(row.locked_until)>Date.now();
-      const valid=!locked&&/^\d{6}$/.test(pin)&&(
-        
-        await verifyPin(pin,row).catch(()=>false)
-      );
-      if(!row||!valid){
-        if(row&&!locked){const attempts=Number(row.failed_attempts||0)+1;await db.from("bo_conferencers").update({failed_attempts:attempts,locked_until:attempts>=MAX_PIN_ATTEMPTS?new Date(Date.now()+LOCK_MINUTES*60000).toISOString():null,updated_at:new Date().toISOString()}).eq("id",row.id);}
+      let verification={valid:false,legacy:false};
+      if(row&&!locked&&/^\d{6}$/.test(pin)){
+        try{verification=await verifyPinRecord(pin,row);}catch(error){console.error("PIN cryptographic validation failed",{name:error instanceof Error?error.name:"unknown"});return json(req,{error:"Não foi possível validar o acesso agora. Tente novamente."},503);}
+      }
+      if(!row||!verification.valid){
+        if(row&&!locked){const attempts=Number(row.failed_attempts||0)+1;const {error}=await db.from("bo_conferencers").update({failed_attempts:attempts,locked_until:attempts>=MAX_PIN_ATTEMPTS?new Date(Date.now()+LOCK_MINUTES*60000).toISOString():null,updated_at:new Date().toISOString()}).eq("id",row.id);if(error)throw error;}
         return json(req,{error:locked?"Acesso temporariamente bloqueado. Aguarde 15 minutos.":"Conferente ou PIN inválido."},locked?429:401);
       }
-      await db.from("bo_conferencers").update({failed_attempts:0,locked_until:null,updated_at:new Date().toISOString()}).eq("id",row.id);
+      const update=verification.legacy?await pinRecord(pin):{failed_attempts:0,locked_until:null,updated_at:new Date().toISOString()};
+      // Compare the credential read above so a concurrent administrative reset wins.
+      const {data:confirmed,error:confirmError}=await db.from("bo_conferencers").update(update).eq("id",row.id).eq("pin_hash",row.pin_hash).eq("pin_salt",row.pin_salt).eq("active",true).select("id").maybeSingle();
+      if(confirmError)throw confirmError;
+      if(!confirmed)return json(req,{error:"O cadastro foi atualizado durante o acesso. Tente novamente."},409);
+      if(verification.legacy)console.info("PIN salt encoding upgraded",{conferencer_id:row.id});
       await db.from("bo_conferencer_sessions").delete().eq("conferencer_id",row.id).lt("expires_at",new Date().toISOString());
       const token=randomToken(),expiresAt=new Date(Date.now()+PIN_SESSION_HOURS*3600000).toISOString();
       const {error}=await db.from("bo_conferencer_sessions").insert({conferencer_id:row.id,token_hash:await sha256(token),expires_at:expiresAt});if(error)throw error;
