@@ -13,3 +13,5 @@ test('October never includes stale September demand',()=>{const c=calculate({dem
 test('recorded Excel waivers are explicit, not fabricated load times',()=>{const x=loading(pcd,[{date:'2026-01-02',plate:'ABC1234',phase:'Dispensa EFC',reason:'rec=SIM no Excel'}])[0];assert.equal(x.status,'waived');assert.equal(x.loaded_at,null);});
 
 test('MAPAS selects its own map when the same vehicle has multiple loads',()=>{const result=loading([{date:'2026-10-02',map:'526923',plate:'RJM5A12',vehicle:'291'}],[{date:'2026-10-02',time:'05:00:00',phase:'Carregado',map:'526923',plate:'RJM5A12',emission:'2026-10-02'},{date:'2026-10-02',time:'05:30:00',phase:'Carregado',map:'999999',plate:'RJM5A12',emission:'2026-10-02'}]);assert.equal(result[0].map,'526923');assert.equal(result[0].status,'on_time');});
+
+test('MAPAS number retains its loading when Promax changes the vehicle',()=>{const r=loading([{date:'2026-10-02',map:'526923',plate:'RJM5A12',vehicle:'291'}],[{date:'2026-10-02',time:'04:55:00',phase:'Carregado',map:'526923',plate:'RJV5I40',vehicle:'294',emission:'2026-10-02'}]);assert.equal(r[0].loaded_at,'2026-10-02T04:55:00');});
