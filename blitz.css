@@ -137,3 +137,32 @@
 #blitzView .blitz-email-preview th{background:#70a8dc;color:#111;font-size:10px;text-transform:none}
 #blitzView .blitz-email-preview td{background:#eee;font-size:11px}
 #blitzView .blitz-email-preview th,#blitzView .blitz-email-preview td{padding:6px}
+
+/* Compact monthly charts above the management entry form. */
+#blitzView .blitz-chart-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+#blitzView .blitz-chart{padding:14px 16px;min-height:200px}
+#blitzView .blitz-chart h2{font-size:15px;margin-bottom:12px}
+#blitzView .blitz-coverage{display:flex;align-items:center;justify-content:center;gap:12px;min-height:130px}
+#blitzView .blitz-coverage svg{width:118px;flex:0 1 118px}
+#blitzView .blitz-ring-track,#blitzView .blitz-ring-value{fill:none;stroke-width:10;stroke:#edf0f4}
+#blitzView .blitz-ring-value{stroke:#f47a20;stroke-linecap:round}
+#blitzView .blitz-coverage text{font-size:18px;font-weight:750;fill:#253246}
+#blitzView .blitz-coverage .blitz-ring-label{font-size:10px;font-weight:500;fill:#687386}
+#blitzView .blitz-coverage strong{display:block;font-size:16px}
+#blitzView .blitz-coverage span{display:block;font-size:11px;color:#687386;margin:3px 0 10px}
+#blitzView .blitz-meta{display:inline-block;font-size:11px;padding:5px 8px;border-radius:6px;background:#fff3ea;color:#a34b09}
+#blitzView .blitz-meta.achieved{background:#eaf6ef;color:#247044}
+#blitzView .blitz-daily-chart{display:block;width:100%;height:125px}
+#blitzView .blitz-daily-chart text{font-size:10px;fill:#687386}
+#blitzView .blitz-chart-legend{display:flex;justify-content:center;gap:14px;font-size:11px;color:#687386}
+#blitzView .blitz-chart-legend i{display:inline-block;width:8px;height:8px;border-radius:2px;background:#e0e7ef;margin-right:5px}
+#blitzView .blitz-chart-legend i.orange{background:#f47a20}
+#blitzView .blitz-reason-bars{display:grid;gap:12px;padding-top:3px}
+#blitzView .blitz-reason-label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;margin-bottom:4px}
+#blitzView .blitz-reason-label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#blitzView .blitz-reason-label strong{flex-shrink:0;font-size:11px}
+#blitzView .blitz-bar-track{height:7px;border-radius:5px;background:#edf0f4;overflow:hidden}
+#blitzView .blitz-bar-track i{display:block;height:100%;border-radius:5px;background:#f47a20}
+#blitzView .blitz-chart-empty{display:flex;align-items:center;justify-content:center;min-height:130px;color:#687386;font-size:12px;text-align:center}
+@container(max-width:850px){#blitzView .blitz-chart-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#blitzView .blitz-chart-grid .blitz-chart:last-child{grid-column:1/-1}}
+@container(max-width:550px){#blitzView .blitz-chart-grid{grid-template-columns:minmax(0,1fr)}#blitzView .blitz-chart-grid .blitz-chart:last-child{grid-column:auto}}
