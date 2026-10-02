@@ -62,6 +62,30 @@ function pcdRows(root,file){
  }
  return rows;
 }
+function mapsRows(root,file){
+ const m=file.name.match(/^MAPAS[^0-9]*(\d{2})[.\-_](\d{2})[.\-_](\d{4}|\d{2})\.xlsx$/i);if(!m)return null;
+ const date=(m[3].length===2?'20'+m[3]:m[3])+'-'+m[2]+'-'+m[1];if(!date.startsWith('2026-')||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date)throw Error('EFC_MAPAS_INVALID_DATE: '+file.name);
+ const result=new Map();let found=false;
+ for(const sheet of xlsxPreview(fs.readFileSync(path.join(root,file.relative_path)),5000)){
+  let cols=null;
+  for(const line of sheet.rows){const cells={};for(const c of line.split(/ \| (?=[A-Z]+\d+:)/)){const x=c.match(/^([A-Z]+)\d+:(.*)$/);if(x)cells[x[1]]=x[2]}
+   if(!cols){const entries=Object.entries(cells),norm=require('./efd-phases').norm,pick=name=>entries.find(([k,v])=>norm(v)===name)?.[0];const map=pick('MAPA'),plate=pick('PLACA'),vehicle=pick('VEICULO');if(map&&plate&&vehicle){cols={map,plate,vehicle};found=true}continue}
+   const map=String(cells[cols.map]||'').trim(),plate=String(cells[cols.plate]||'').toUpperCase().replace(/[^A-Z0-9]/g,''),vehicle=String(cells[cols.vehicle]||'').trim();if(!map&&!plate&&!vehicle)continue;
+   if(!/^\d{1,12}$/.test(map)||!/^\d{1,12}$/.test(vehicle)||!/^\w{5,12}$/.test(plate))throw Error('EFC_MAPAS_INVALID_ROW: '+file.name);
+   const row={date,map:String(Number(map)),plate,vehicle:String(Number(vehicle)),eligible:true};const old=result.get(row.map);if(old&&(old.plate!==plate||old.vehicle!==row.vehicle))throw Error('EFC_MAPAS_DUPLICATE_MAP: '+map);result.set(row.map,row);
+  }
+ }
+ if(!found||!result.size)throw Error('EFC_MAPAS_HEADERS_OR_ROWS_MISSING: '+file.name);
+ return{reference_date:date,source_file:file.relative_path,rows:[...result.values()]};
+}
+async function importMaps(api,root,files,state,log){
+ state.maps??={};let count=0,rows=0;
+ const errors=[];for(const file of files.filter(f=>/^MAPAS.*\.xlsx$/i.test(f.name)).sort((a,b)=>b.modified_at.localeCompare(a.modified_at))){try{const signature=file.size+':'+file.modified_at;if(state.maps[file.relative_path]===signature)continue;const payload=mapsRows(root,file);if(!payload)continue;
+  const r=await fetch('https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/efc-api',{method:'POST',headers:{'Content-Type':'application/json','x-agent-token':api.token},body:JSON.stringify({action:'agent_maps',...payload})});if(!r.ok)throw Error('EFC_MAPAS_IMPORT_HTTP_'+r.status);
+  state.maps[file.relative_path]=signature;saveState(state);count++;rows+=payload.rows.length;if(log)log('EFC: '+payload.rows.length+' mapas incorporados de '+file.relative_path);
+ }catch(e){errors.push(file.relative_path+': '+e.message);if(log)log('EFC MAPAS: '+e.message,true)}}
+ return{files:count,rows,errors};
+}
 const STATE_PATH=path.join(__dirname,'..','..','data','efd-incorporation.json');
 function loadState(){try{return JSON.parse(fs.readFileSync(STATE_PATH,'utf8'))}catch(e){return{csv:{},pcd:{}}}}
 function saveState(state){fs.mkdirSync(path.dirname(STATE_PATH),{recursive:true});fs.writeFileSync(STATE_PATH,JSON.stringify(state),'utf8')}
@@ -104,6 +128,7 @@ async function sync(api,log){
   const emptyFiles=[];for(const file of changed){const parsed=pcdRows(config.root_path,file);if(!parsed.length)emptyFiles.push(file.relative_path);for(const row of parsed)routes.set(row.reference_date+'|'+row.vehicle+'|'+row.plate,row);}
   await importBatches(api,'agent_pcd_import',[...routes.values()],'PCD 2026');
   for(const file of changed.filter(f=>!emptyFiles.includes(f.relative_path)))state.pcd[file.relative_path]=file.size+':'+file.modified_at;saveState(state);
+  const mapsResult=await importMaps(api,config.root_path,result.files,state,log);
   const reconciliation=await call(api,'agent_reconcile');
   const samples=(january.length?january:result.files).filter(f=>!/\.xls$/i.test(f.name)).sort((a,b)=>Number(/^PCD/i.test(b.name))-Number(/^PCD/i.test(a.name))).slice(0,3).map(f=>preview(config.root_path,f));
   const downloadDirectory=path.join(__dirname,'..','downloads');
@@ -111,9 +136,9 @@ async function sync(api,log){
   const augustSamples=result.files.filter(f=>/agosto|(^|[\\/])0?8([ ._\\/-]|$)/i.test(f.relative_path)&&/^PCD/i.test(f.name)).slice(0,3).map(f=>preview(config.root_path,f));
   const latestSamples=result.files.filter(f=>/^PCD.*\.xlsx$/i.test(f.name)).sort((a,b)=>{const date=f=>{const m=f.name.match(/(\d{2})[.](\d{2})[.](\d{4}|\d{2})/);return m?(m[3].length===2?'20'+m[3]:m[3])+'-'+m[2]+'-'+m[1]:''};return date(b).localeCompare(date(a))}).slice(0,3).map(f=>({file:f.relative_path,sheets:xlsxPreview(fs.readFileSync(path.join(config.root_path,f.relative_path)),20)}));
   const latestMaps=result.files.filter(f=>/^MAPAS.*\.xlsx$/i.test(f.name)).sort((a,b)=>{const date=f=>{const m=f.name.match(/(\d{2})[.](\d{2})[.](\d{4}|\d{2})/);return m?(m[3].length===2?'20'+m[3]:m[3])+'-'+m[2]+'-'+m[1]:''};return date(b).localeCompare(date(a))}).slice(0,2).map(f=>({file:f.relative_path,sheets:xlsxPreview(fs.readFileSync(path.join(config.root_path,f.relative_path)),20)}));
-  const diagnostic={latest_maps_samples:latestMaps,latest_pcd_samples:latestSamples,empty_pcd_files:emptyFiles,august_samples:augustSamples,pcd_files:result.files.filter(f=>/^PCD/i.test(f.name)).map(f=>({name:f.name,relative_path:f.relative_path})),incorporation:{phase_files:phaseResult.files,phase_maps:phaseResult.maps,pcd_files:changed.length,pcd_routes:routes.size,updated_maps:reconciliation.updated_maps},csv_samples:csvSamples,files_count:result.files.length,directories:result.directories.slice(0,120),files:result.files.slice(0,150),samples,errors:result.errors.slice(0,10),truncated:result.files.length>=5000};
+  const diagnostic={latest_maps_samples:latestMaps,latest_pcd_samples:latestSamples,empty_pcd_files:emptyFiles,august_samples:augustSamples,pcd_files:result.files.filter(f=>/^PCD/i.test(f.name)).map(f=>({name:f.name,relative_path:f.relative_path})),incorporation:{maps_files:mapsResult.files,maps_rows:mapsResult.rows,maps_errors:mapsResult.errors.slice(0,20),phase_files:phaseResult.files,phase_maps:phaseResult.maps,pcd_files:changed.length,pcd_routes:routes.size,updated_maps:reconciliation.updated_maps},csv_samples:csvSamples,files_count:result.files.length,directories:result.directories.slice(0,120),files:result.files.slice(0,150),samples,errors:result.errors.slice(0,10),truncated:result.files.length>=5000};
   await call(api,'agent_diagnostic',{diagnostic,error:result.errors.length?result.errors.slice(0,3).join(' | '):null});
   if(log)log('EFD: diagnóstico PCD enviado, '+result.files.length+' arquivo(s).');
  }catch(e){await call(api,'agent_diagnostic',{diagnostic:{files_count:0},error:e.message});if(log)log('EFD: '+e.message,true)}
 }
-module.exports={sync,inventory,preview,xlsxPreview,shouldScan,pcdRows,phases};
+module.exports={sync,inventory,preview,xlsxPreview,shouldScan,pcdRows,mapsRows,phases};
