@@ -89,8 +89,8 @@
   }
 
   function ensureBlitz() {
-    loadCss('blitz.css?v=20261002-email-portal-only-1');
-    if (!blitzScriptPromise) blitzScriptPromise = loadScript('blitz.js?v=20261002-email-portal-only-1');
+    loadCss('blitz.css?v=20261002-contingency-import-1');
+    if (!blitzScriptPromise) blitzScriptPromise = loadScript('blitz.js?v=20261002-contingency-import-1');
     return blitzScriptPromise;
   }
 
@@ -362,3 +362,4 @@
   setTimeout(installAreaRules, 1200);
   setTimeout(() => { if (!booted) boot(); }, 1200);
 })();
+
