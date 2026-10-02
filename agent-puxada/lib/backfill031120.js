@@ -14,7 +14,7 @@ async function run({api,promax,config,root,parse,log,task}){
  async function fetchPeriod(period){
   await api.pull031120State({status:'running',stage:'open_report',...period,coverage});
   const recovered=cached&&period.date_from===task.date_from&&period.date_to===task.date_to;
-  const file=recovered?cached.file:await promax.export031120({...task,...period},config,root,parse),parsed=parse(file);source=path.basename(file);
+  const file=recovered?cached.file:await promax.export031120({...task,...period,date_from:new Date(Date.parse(period.date_from+"T12:00:00Z")-31*86400000).toISOString().slice(0,10)},config,root,parse),parsed=parse(file);source=path.basename(file);
   const outside=parsed.rows.filter(row=>row.pull_date<period.date_from||row.pull_date>period.date_to);
   parsed.rows=parsed.rows.filter(row=>row.pull_date>=period.date_from&&row.pull_date<=period.date_to);
   parsed.records=parsed.records.filter(row=>!row.reference_date||(row.reference_date>=period.date_from&&row.reference_date<=period.date_to));

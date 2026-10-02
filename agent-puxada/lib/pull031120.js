@@ -62,7 +62,7 @@ function parse031120(file) {
     const map = findCol(h, ["MAPA"]);
     if (date >= 0 && vehicle >= 0 && map >= 0) {
       headerRow = r;
-      cols = { date, vehicle, map };
+      cols = { date, vehicle, map, phase:h.findIndex(x=>x==="FASE") };
       break;
     }
   }
@@ -85,11 +85,12 @@ function parse031120(file) {
     const vehicleDigits = String(row[cols.vehicle] || "").replace(/\D/g, "");
     const vehicle = vehicleDigits ? String(Number(vehicleDigits)) : "";
     const mapRaw = String(row[cols.map] || "").trim();
-    const entrada = row.some(cell => norm(cell) === "ENTRADA CDD");
+    const movement = cols.phase>=0?norm(row[cols.phase]):null;
+    const entrada = cols.phase>=0?/^ENTRADA CDD(?:\/FAB)?$/.test(movement):row.some(cell=>/^ENTRADA CDD(?:\/FAB)?$/.test(norm(cell)));
     const mapDigits = mapRaw.replace(/\D/g, "");
     const map = mapDigits ? String(Number(mapDigits)) : norm(mapRaw);
     records.push({row_no:r-headerRow,reference_date:d||null,vehicle:vehicle||null,map_number:map||null,
-      movement:entrada?"ENTRADA CDD":null,is_entrada_cdd:entrada,raw_values:row});
+      movement:movement||(entrada?"ENTRADA CDD":null),is_entrada_cdd:entrada,raw_values:row});
     if (!d || !vehicle || !mapRaw) continue;
     rawRows++;
 

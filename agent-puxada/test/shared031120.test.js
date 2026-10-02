@@ -20,3 +20,10 @@ test('a report without trailer entries is still published and retained',async()=
  const result=await run({api,promax:{export031120:async()=>'/tmp/report.csv'},config:{},root:'/tmp',parse:()=>({headers:['Data'],records:[{row_no:1,reference_date:'2026-10-02'}],rows:[],raw_rows:1}),log:()=>{},task:{date_from:'2026-10-02',date_to:'2026-10-02'}});
  assert.deepEqual(phases,['start','batch','complete']);assert.deepEqual(result.months,['2026-10']);
 });
+
+test('real Promax Fase Entrada Cdd/Fab is recognized by operation date',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'phase031120-')),file=path.join(dir,'report.csv');
+ try{fs.writeFileSync(file,'Mapa;Fase;Veiculo;Emissao;DtOper;Produto\n001;Entrada Cdd/Fab      ;246;01/10/2026;02/10/2026;X\n001;Carregado;246;01/10/2026;02/10/2026;ENTRADA CDD');
+ const p=parse031120(file);assert.equal(p.rows[0].pull_date,'2026-10-02');assert.equal(p.rows[0].truck_count,1);assert.equal(p.records[1].is_entrada_cdd,false);
+ }finally{fs.rmSync(dir,{recursive:true,force:true})}
+});

@@ -578,7 +578,7 @@ async function agentReport031120Import(node:any,b:any){
   const {data,error}=await db.from("report_031120_imports").insert({agent_node_id:node.id,date_from:from,date_to:to,source_file:clean(b.source_file,180),headers:b.headers,expected_rows:expected}).select("id").single();
   if(error)throw error;return{import_id:data.id};
  }
- const {data:imp,error:ie}=await db.from("report_031120_imports").select("id,status,date_from,date_to,expected_rows").eq("id",String(b.import_id||"")).eq("agent_node_id",node.id).maybeSingle();
+ const {data:imp,error:ie}=await db.from("report_031120_imports").select("id,status,date_from,date_to,expected_rows,headers").eq("id",String(b.import_id||"")).eq("agent_node_id",node.id).maybeSingle();
  if(ie)throw ie;if(!imp)throw new Error("Importação não encontrada.");
  if(phase==="complete"){const {data,error}=await db.rpc("complete_report_031120",{p_import_id:imp.id,p_node_id:node.id});if(error)throw error;return data;}
  if(phase!=="batch"||imp.status!=="uploading")throw new Error("Etapa de importação inválida.");
@@ -586,8 +586,11 @@ async function agentReport031120Import(node:any,b:any){
  const records=b.records.map((r:any)=>{
   const no=Number(r.row_no),date=r.reference_date?isoDate(r.reference_date):null;
   if(!Number.isInteger(no)||no<1||!Array.isArray(r.raw_values)||r.raw_values.length>200||(date&&(date<imp.date_from||date>imp.date_to)))throw new Error("Linha 03.11.20 inválida.");
-  const entrada=r.raw_values.some((v:any)=>String(v??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toUpperCase()==="ENTRADA CDD");
-  return{import_id:imp.id,row_no:no,reference_date:date,vehicle:clean(r.vehicle,40)||null,map_number:clean(r.map_number,60)||null,movement:entrada?"ENTRADA CDD":clean(r.movement,120)||null,is_entrada_cdd:entrada,raw_values:r.raw_values};
+  const normalized=(v:any)=>String(v??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toUpperCase();
+  const phaseCol=imp.headers.findIndex((h:any)=>normalized(h)==="FASE");
+  const movement=phaseCol>=0?normalized(r.raw_values[phaseCol]):clean(r.movement,120);
+  const entrada=phaseCol>=0?/^ENTRADA CDD(?:\/FAB)?$/.test(movement):r.raw_values.some((v:any)=>/^ENTRADA CDD(?:\/FAB)?$/.test(normalized(v)));
+  return{import_id:imp.id,row_no:no,reference_date:date,vehicle:clean(r.vehicle,40)||null,map_number:clean(r.map_number,60)||null,movement:movement||null,is_entrada_cdd:entrada,raw_values:r.raw_values};
  });
  const {error}=await db.from("report_031120_rows").upsert(records,{onConflict:"import_id,row_no"});if(error)throw error;return{rows:records.length};
 }
