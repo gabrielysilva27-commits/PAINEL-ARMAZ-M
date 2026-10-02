@@ -78,9 +78,9 @@ function mapsRows(root,file){
  if(!found||!result.size)throw Error('EFC_MAPAS_HEADERS_OR_ROWS_MISSING: '+file.name);
  return{reference_date:date,source_file:file.relative_path,rows:[...result.values()],excluded};
 }
-async function importMaps(api,root,files,state,log){
+async function importMaps(api,root,files,state,log,targets){
  state.maps??={};let count=0,rows=0;const excluded=[];
- const errors=[];for(const file of files.filter(f=>/^MAPAS.*\.xlsx$/i.test(f.name)).sort((a,b)=>b.modified_at.localeCompare(a.modified_at))){try{const signature=file.size+':'+file.modified_at;if(state.maps[file.relative_path]===signature)continue;const payload=mapsRows(root,file);if(!payload)continue;if(payload.excluded.length)excluded.push({file:file.relative_path,rows:payload.excluded});
+ const errors=[];for(const file of files.filter(f=>/^MAPAS.*\.xlsx$/i.test(f.name)&&targets.includes(mapFileDate(f.name))).sort((a,b)=>b.modified_at.localeCompare(a.modified_at))){try{const signature=file.size+':'+file.modified_at;if(state.maps[file.relative_path]===signature)continue;const date=mapFileDate(file.name);if(!targets.includes(date))continue;const payload=mapsRows(root,file);if(!payload)continue;if(payload.excluded.length)excluded.push({file:file.relative_path,rows:payload.excluded});
   const r=await fetch('https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/efc-api',{method:'POST',headers:{'Content-Type':'application/json','x-agent-token':api.token},body:JSON.stringify({action:'agent_maps',...payload})});if(!r.ok)throw Error('EFC_MAPAS_IMPORT_HTTP_'+r.status);
   state.maps[file.relative_path]=signature;saveState(state);count++;rows+=payload.rows.length;if(log)log('EFC: '+payload.rows.length+' mapas incorporados de '+file.relative_path);
  }catch(e){errors.push(file.relative_path+': '+e.message);if(log)log('EFC MAPAS: '+e.message,true)}}
@@ -94,17 +94,32 @@ async function phases(api,state,log){
  const dir=path.join(__dirname,'..','downloads');if(!fs.existsSync(dir))return{files:0,maps:0};let files=0,maps=0;
  const candidates=fs.readdirSync(dir).filter(name=>/^031120_normal_edge_\d+\.csv\.inf$/.test(name)).map(name=>{const stat=fs.statSync(path.join(dir,name));return{name,size:stat.size,modified:stat.mtimeMs}}).sort((a,b)=>a.modified-b.modified);
  for(const file of candidates){const signature=file.size+':'+file.modified;
-  state.efcCsv??={};
-  if(state.efcCsv[file.name]!==signature){try{
-   let events=[];try{events=require('./efc-events').parse(path.join(dir,file.name))}catch(e){if(!/^EFC_(HEADER_NOT_FOUND|COLUMNS_MISSING)$/.test(e.message))throw e;}
-   for(let i=0;i<events.length;i+=500){const response=await fetch('https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/efc-api',{method:'POST',headers:{'Content-Type':'application/json','x-agent-token':api.token},body:JSON.stringify({action:'agent_events',rows:events.slice(i,i+500),source_file:file.name})});if(!response.ok)throw Error('EFC_IMPORT_HTTP_'+response.status);}
-   state.efcCsv[file.name]=signature;saveState(state);if(events.length&&log)log('EFC: '+events.length+' fases de carregamento incorporadas de '+file.name);
-  }catch(e){if(log)log('EFC: falha ao incorporar '+file.name+': '+e.message,true);}}
   if(state.csv[file.name]===signature)continue;
   let parsed;try{parsed=require('./efd-phases').parse(path.join(dir,file.name))}catch(e){if(!/^EFD_PHASE_(HEADER_NOT_FOUND|COLUMNS_MISSING|NO_MAPS)$/.test(e.message))throw e;state.csv[file.name]=signature;saveState(state);if(log)log('EFD: arquivo antigo sem fases utilizáveis: '+file.name,true);continue}await importBatches(api,'agent_phase_import',parsed.rows,file.name);state.csv[file.name]=signature;saveState(state);files++;maps+=parsed.rows.length;
   if(log)log('EFD: '+parsed.rows.length+' mapas e '+parsed.events+' fases incorporados de '+file.name);
  }
  return{files,maps};
+}
+function mapFileDate(name){const m=name.match(/^MAPAS[^0-9]*(\d{2})[.\-_](\d{2})[.\-_](\d{4}|\d{2})\.xlsx$/i);return m?(m[3].length===2?'20'+m[3]:m[3])+'-'+m[2]+'-'+m[1]:null;}
+function efcTarget(now=new Date()){
+ const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(now).map(x=>[x.type,x.value]));const day=p.year+'-'+p.month+'-'+p.day;return Number(p.hour)>=21?new Date(Date.parse(day+'T12:00:00Z')+86400000).toISOString().slice(0,10):day;
+}
+async function efcCall(api,action,payload={}){const r=await fetch('https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/efc-api',{method:'POST',headers:{'Content-Type':'application/json','x-agent-token':api.token},body:JSON.stringify({action,...payload})});const d=await r.json();if(!r.ok)throw Error(d.error||'EFC_HTTP_'+r.status);return d;}
+let lastNightCheck=0;
+async function nightSync(api,config,state,log,now=Date.now()){
+ const target=efcTarget(new Date(now));if(state.efcClosedTarget===target&&!state.efcPending?.length)return;
+ if(now-lastNightCheck<15*60*1000)return;lastNightCheck=now;
+ try{
+  const status=await efcCall(api,'agent_efc_status');state.efcPending=status.targets;saveState(state);
+  if(!status.targets.length){state.efcClosedTarget=target;saveState(state);return;}
+  const files=inventory(config.root_path).files,read=await importMaps(api,config.root_path,files,state,log,status.targets);
+  if(read.errors.length)throw Error(read.errors.join(' | '));
+  const pending=[];
+  for(const date of status.targets){if(!files.some(f=>mapFileDate(f.name)===date)){pending.push(date);if(log)log('EFC '+date+': aguardando planilha MAPAS.');continue;}
+   const r=await efcCall(api,'agent_efc_cycle',{reference_date:date});if(r.cycle?.status==='completed'||r.stopped){if(log)log('EFC '+date+': todos os '+(r.cycle?.planned||'')+' mapas identificados; rotina encerrada para este dia.');}else{pending.push(date);if(log)log('EFC '+date+': '+(r.cycle?.matched||0)+'/'+(r.cycle?.planned||0)+' mapas identificados; próxima verificação em 15 minutos.');}
+  }
+  state.efcPending=pending;if(!pending.length)state.efcClosedTarget=target;saveState(state);
+ }catch(e){lastNightCheck=now-10*60*1000;if(log)log('EFC noturno: '+e.message,true);}
 }
 let lastCheck=0;
 function operationalDay(timestamp){
@@ -117,7 +132,7 @@ function shouldScan(config,now=Date.now()){
 async function sync(api,log){
  const now=Date.now();if(now-lastCheck<30000)return;lastCheck=now;
  let config;try{const r=await call(api,'agent_status');config=r.config}catch(e){if(/reservada/.test(e.message))return;throw e}
- const state=loadState();if(state.pcdParserVersion!==3){state.pcd={};state.pcdParserVersion=3}let phaseResult;
+ const state=loadState();if(config.pcd_enabled!==false)await nightSync(api,config,state,log,now);if(state.pcdParserVersion!==3){state.pcd={};state.pcdParserVersion=3}let phaseResult;
  try{phaseResult=await phases(api,state,log)}catch(e){if(config.pcd_enabled!==false)await call(api,'agent_diagnostic',{diagnostic:{phase_error:e.message},error:e.message});throw e}
  if(config.pcd_enabled===false){if(phaseResult.files)await call(api,'agent_reconcile');return}
  if(!shouldScan(config,now)&&Object.keys(state.pcd).length){if(phaseResult.files)await call(api,'agent_reconcile');return}
@@ -128,17 +143,16 @@ async function sync(api,log){
   const emptyFiles=[];for(const file of changed){const parsed=pcdRows(config.root_path,file);if(!parsed.length)emptyFiles.push(file.relative_path);for(const row of parsed)routes.set(row.reference_date+'|'+row.vehicle+'|'+row.plate,row);}
   await importBatches(api,'agent_pcd_import',[...routes.values()],'PCD 2026');
   for(const file of changed.filter(f=>!emptyFiles.includes(f.relative_path)))state.pcd[file.relative_path]=file.size+':'+file.modified_at;saveState(state);
-  const mapsResult=await importMaps(api,config.root_path,result.files,state,log);
+  const mapsResult={files:0,rows:0,errors:[],excluded:[]};
   const reconciliation=await call(api,'agent_reconcile');
   const samples=(january.length?january:result.files).filter(f=>!/\.xls$/i.test(f.name)).sort((a,b)=>Number(/^PCD/i.test(b.name))-Number(/^PCD/i.test(a.name))).slice(0,3).map(f=>preview(config.root_path,f));
   const downloadDirectory=path.join(__dirname,'..','downloads');
   const csvSamples=fs.existsSync(downloadDirectory)?fs.readdirSync(downloadDirectory).filter(name=>/^031120_normal_edge_\d+\.csv\.inf$/.test(name)).map(name=>({name,modified:fs.statSync(path.join(downloadDirectory,name)).mtimeMs})).sort((a,b)=>b.modified-a.modified).slice(0,3).map(file=>{const raw=fs.readFileSync(path.join(downloadDirectory,file.name));let text=raw.toString('utf8');if((text.match(/�/g)||[]).length>3)text=raw.toString('latin1');return{file:file.name,size:raw.length,lines:text.split(/\r?\n/).slice(0,40)}}):[];
   const augustSamples=result.files.filter(f=>/agosto|(^|[\\/])0?8([ ._\\/-]|$)/i.test(f.relative_path)&&/^PCD/i.test(f.name)).slice(0,3).map(f=>preview(config.root_path,f));
   const latestSamples=result.files.filter(f=>/^PCD.*\.xlsx$/i.test(f.name)).sort((a,b)=>{const date=f=>{const m=f.name.match(/(\d{2})[.](\d{2})[.](\d{4}|\d{2})/);return m?(m[3].length===2?'20'+m[3]:m[3])+'-'+m[2]+'-'+m[1]:''};return date(b).localeCompare(date(a))}).slice(0,3).map(f=>({file:f.relative_path,sheets:xlsxPreview(fs.readFileSync(path.join(config.root_path,f.relative_path)),20)}));
-  const latestMaps=result.files.filter(f=>/^MAPAS.*\.xlsx$/i.test(f.name)).sort((a,b)=>{const date=f=>{const m=f.name.match(/(\d{2})[.](\d{2})[.](\d{4}|\d{2})/);return m?(m[3].length===2?'20'+m[3]:m[3])+'-'+m[2]+'-'+m[1]:''};return date(b).localeCompare(date(a))}).slice(0,2).map(f=>({file:f.relative_path,sheets:xlsxPreview(fs.readFileSync(path.join(config.root_path,f.relative_path)),100)}));
-  const diagnostic={latest_maps_samples:latestMaps,latest_pcd_samples:latestSamples,empty_pcd_files:emptyFiles,august_samples:augustSamples,pcd_files:result.files.filter(f=>/^PCD/i.test(f.name)).map(f=>({name:f.name,relative_path:f.relative_path})),incorporation:{maps_files:mapsResult.files,maps_rows:mapsResult.rows,maps_errors:mapsResult.errors.slice(0,20),maps_excluded:mapsResult.excluded.slice(0,5),phase_files:phaseResult.files,phase_maps:phaseResult.maps,pcd_files:changed.length,pcd_routes:routes.size,updated_maps:reconciliation.updated_maps},csv_samples:csvSamples,files_count:result.files.length,directories:result.directories.slice(0,120),files:result.files.slice(0,150),samples,errors:result.errors.slice(0,10),truncated:result.files.length>=5000};
+  const diagnostic={latest_pcd_samples:latestSamples,empty_pcd_files:emptyFiles,august_samples:augustSamples,pcd_files:result.files.filter(f=>/^PCD/i.test(f.name)).map(f=>({name:f.name,relative_path:f.relative_path})),incorporation:{maps_files:mapsResult.files,maps_rows:mapsResult.rows,maps_errors:mapsResult.errors.slice(0,20),maps_excluded:mapsResult.excluded.slice(0,5),phase_files:phaseResult.files,phase_maps:phaseResult.maps,pcd_files:changed.length,pcd_routes:routes.size,updated_maps:reconciliation.updated_maps},csv_samples:csvSamples,files_count:result.files.length,directories:result.directories.slice(0,120),files:result.files.slice(0,150),samples,errors:result.errors.slice(0,10),truncated:result.files.length>=5000};
   await call(api,'agent_diagnostic',{diagnostic,error:result.errors.length?result.errors.slice(0,3).join(' | '):null});
   if(log)log('EFD: diagnóstico PCD enviado, '+result.files.length+' arquivo(s).');
  }catch(e){await call(api,'agent_diagnostic',{diagnostic:{files_count:0},error:e.message});if(log)log('EFD: '+e.message,true)}
 }
-module.exports={sync,inventory,preview,xlsxPreview,shouldScan,pcdRows,mapsRows,phases};
+module.exports={sync,inventory,preview,xlsxPreview,shouldScan,pcdRows,mapsRows,efcTarget,nightSync,phases};
