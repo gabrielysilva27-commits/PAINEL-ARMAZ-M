@@ -30,8 +30,16 @@
     nav.insertBefore(group,quality);group.appendChild(parent);group.appendChild(submenu);quality.classList.add('module-sub-link');quality.innerHTML='<span>✓</span> Qualidade';submenu.appendChild(quality);
     const nri=document.createElement('button');nri.className='nav-link module-sub-link';nri.dataset.view='receiving-nri';nri.innerHTML='<span>▤</span> NRI';nri.onclick=openNri;submenu.appendChild(nri);const put=document.createElement('button');put.className='nav-link module-sub-link';put.dataset.view='receiving-putaway';put.innerHTML='<span>⇲</span> Descarga / Guarda';put.onclick=openPutaway;submenu.appendChild(put);bindNavGroupToggle(group,parent);
     const nriView=document.createElement('section');nriView.id='receivingNriView';nriView.className='view hidden';main.appendChild(nriView);const putView=document.createElement('section');putView.id='receivingPutawayView';putView.className='view hidden';main.appendChild(putView);
-    const pullGroup=document.createElement('div');pullGroup.className='module-nav-group pull-nav-group open';const pullParent=document.createElement('button');pullParent.className='nav-link module-nav-parent';pullParent.type='button';pullParent.innerHTML='<span>↔</span> Puxada <span class="module-chevron">⌄</span>';const pullSub=document.createElement('div');pullSub.className='module-submenu';const pull=document.createElement('button');pull.className='nav-link module-sub-link';pull.dataset.view='pull-compare';pull.innerHTML='<span>≋</span> Físico × Sistema';pull.onclick=openPull;pullSub.appendChild(pull);const oor=document.createElement('button');oor.className='nav-link module-sub-link';oor.dataset.view='pull-oor';oor.innerHTML='<span>◎</span> OOR';oor.onclick=openOor;pullSub.appendChild(oor);const policy=document.createElement('button');policy.className='nav-link module-sub-link';policy.dataset.view='pull-policy';policy.innerHTML='<span>▦</span> Política de Estoque';policy.onclick=openPolicy;pullSub.appendChild(policy);pullGroup.appendChild(pullParent);pullGroup.appendChild(pullSub);bindNavGroupToggle(pullGroup,pullParent);
-    const control=document.querySelector('.control-nav-group');(control||group).insertAdjacentElement('afterend',pullGroup);
+    // Reuse the Puxada group created by the central router.
+    let pullGroup=document.querySelector('.pull-nav-group');
+    if(!pullGroup){
+      pullGroup=document.createElement('div');pullGroup.className='module-nav-group pull-nav-group open';
+      const pullParent=document.createElement('button');pullParent.className='nav-link module-nav-parent';pullParent.type='button';pullParent.innerHTML='<span>↔</span> Puxada <span class="module-chevron">⌄</span>';
+      const pullSub=document.createElement('div');pullSub.className='module-submenu';pullGroup.append(pullParent,pullSub);bindNavGroupToggle(pullGroup,pullParent);
+      const control=document.querySelector('.control-nav-group');(control||group).insertAdjacentElement('afterend',pullGroup);
+    }
+    const pullSub=pullGroup.querySelector('.module-submenu');
+    const pull=document.createElement('button');pull.className='nav-link module-sub-link';pull.dataset.view='pull-compare';pull.innerHTML='<span>≋</span> Físico × Sistema';pull.onclick=openPull;pullSub.prepend(pull);
     const pullView=document.createElement('section');pullView.id='pullCompareView';pullView.className='view hidden';main.appendChild(pullView);
     for(const x of document.querySelectorAll('.nav-link:not([data-view="receiving-nri"]):not([data-view="receiving-putaway"]):not([data-view="pull-compare"])'))x.addEventListener('click',()=>{nriView.classList.add('hidden');putView.classList.add('hidden');pullView.classList.add('hidden')});
   }

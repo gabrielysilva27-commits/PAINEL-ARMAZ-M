@@ -237,7 +237,7 @@
 
   function installPuxadaMenu() {
     ensurePuxadaGroup();
-    moveExistingToPuxada('stock-base', '▦', 'Físico × Sistema');
+    moveExistingToPuxada('pull-compare', '≋', 'Físico × Sistema');
 
     const oor = createPuxadaButton('pull-oor', '⊙', 'OOR');
     if (oor) oor.onclick = async event => {
@@ -273,15 +273,16 @@
     const submenu = group?.querySelector('.module-submenu');
     if (!nav || !submenu) return;
 
-    for (const view of ['layout', 'replenishment']) {
+    for (const view of ['layout', 'replenishment', 'stock-base']) {
       const button = submenu.querySelector(`[data-view="${view}"]`);
       if (!button) continue;
       button.classList.remove('module-sub-link');
+      if (view === 'stock-base') button.innerHTML = '<span>▦</span> Estoque x Estoque';
       nav.insertBefore(button, group);
     }
 
     let previous = null;
-    for (const view of ['stock-base', 'pull-oor', 'pull-policy', 'pull-pedforme']) {
+    for (const view of ['pull-compare', 'pull-oor', 'pull-policy', 'pull-pedforme']) {
       const button = document.querySelector(`.nav-link[data-view="${view}"]`);
       if (!button) continue;
       button.classList.add('module-sub-link');
@@ -340,7 +341,7 @@
     watchMenu();
     installAreaRules();
     booted = true;
-    document.documentElement.dataset.abcAreaRules = '2026-10-02-menu-reference-1';
+    document.documentElement.dataset.abcAreaRules = '2026-10-02-receiving-restore-1';
     document.documentElement.dataset.blitzVersion = '2026-10-01-dia-2';
   }
 
