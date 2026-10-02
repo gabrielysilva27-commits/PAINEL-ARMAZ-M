@@ -27,7 +27,7 @@
   $('refreshButton').onclick=refresh;
   async function refresh(){try{const d=await call('worker_home');home=d.home;renderHome()}catch(e){toast(e.message,true)}}
 
-  document.querySelectorAll('[data-process]').forEach(b=>b.onclick=()=>{processType=b.dataset.process;document.querySelectorAll('[data-process]').forEach(x=>x.classList.toggle('active',x===b));$('repackFields').classList.toggle('hidden',processType!=='repack');updateQuantityUI()});
+  document.querySelectorAll('[data-process]').forEach(b=>b.onclick=()=>{processType=b.dataset.process;document.querySelectorAll('[data-process]').forEach(x=>x.classList.toggle('active',x===b));$('repackFields').classList.toggle('hidden',processType!=='repack');$('despejoTargetHint').classList.toggle('hidden',processType!=='despejo');updateQuantityUI()});
   $('channelSelect').onchange=()=>{if($('channelSelect').value==='bag')$('packagingSelect').value='BAG';updateTargetHint()};
   $('packagingSelect').onchange=updateTargetHint;
   function fillTargets(){const cur=$('packagingSelect').value;$('packagingSelect').innerHTML='<option value="">Não informar</option>'+(home?.targets||[]).map(x=>`<option value="${esc(x.packaging_code)}">${esc(x.packaging_code)} · ${Math.floor(Number(x.target_seconds_per_box)/60)}m ${String(Number(x.target_seconds_per_box)%60).padStart(2,'0')}s/CX</option>`).join('');if([...$('packagingSelect').options].some(o=>o.value===cur))$('packagingSelect').value=cur;updateTargetHint()}
