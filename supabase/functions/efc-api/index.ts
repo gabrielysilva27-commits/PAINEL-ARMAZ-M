@@ -8,7 +8,12 @@ async function hash(t:string){const b=new Uint8Array(await crypto.subtle.digest(
 function check(e:any){if(e)throw e;}
 async function all(make:()=>any){const rows:any[]=[];for(let n=0;n<50000;n+=1000){const {data,error}=await make().range(n,n+999);check(error);rows.push(...data);if(data.length<1000)return rows;}throw Error('Limite de consulta excedido');}
 async function agentNode(req:Request){const t=req.headers.get('x-agent-token');if(!t)return null;const {data,error}=await db.from('receiving_pull_agent_nodes').select('id').eq('token_hash',await hash(t)).eq('active',true).eq('slot_code','ADM').maybeSingle();check(error);return data;}
-async function activeCycles(){const target=cycleTarget();const {data,error}=await db.from('efc_night_cycles').select('reference_date').eq('reference_date',target).maybeSingle();check(error);if(!data){const {error:ie}=await db.from('efc_night_cycles').upsert({reference_date:target,status:'waiting'},{onConflict:'reference_date',ignoreDuplicates:true});check(ie);}return all(()=>db.from('efc_night_cycles').select('*').in('status',['waiting','running']).order('reference_date'));}
+async function activeCycles(){
+ const target=cycleTarget();const {data:latest,error}=await db.from('efc_night_cycles').select('reference_date').order('reference_date',{ascending:false}).limit(1).maybeSingle();check(error);
+ const start=latest?.reference_date?new Date(Date.parse(latest.reference_date+'T12:00:00Z')+86400000).toISOString().slice(0,10):target;
+ for(let date=start;date<=target;date=new Date(Date.parse(date+'T12:00:00Z')+86400000).toISOString().slice(0,10)){const {error:ie}=await db.from('efc_night_cycles').upsert({reference_date:date,status:'waiting',started_at:date+'T00:00:00Z'},{onConflict:'reference_date',ignoreDuplicates:true});check(ie);}
+ return all(()=>db.from('efc_night_cycles').select('*').in('status',['waiting','running']).order('reference_date'));
+}
 async function reconcileCycle(date:string){
  const {data:cycle,error}=await db.from('efc_night_cycles').select('*').eq('reference_date',date).maybeSingle();check(error);if(!cycle||!['waiting','running'].includes(cycle.status))return cycle;
  const {data:file,error:fe}=await db.from('efc_agent_map_files').select('*').eq('reference_date',date).maybeSingle();check(fe);if(!file)return cycle;
