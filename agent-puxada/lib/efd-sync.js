@@ -54,7 +54,7 @@ function pcdRows(root,file){
   for(const line of sheet.rows){
    const cells={};for(const cell of line.split(/ \| (?=[A-Z]+\d+:)/)){const m=cell.match(/^([A-Z]+)\d+:(.*)$/);if(m)cells[m[1]]=m[2]}
    const entries=Object.entries(cells),norm=require('./efd-phases').norm;
-   if(!columns){const plate=entries.find(([k,v])=>norm(v)==='VEICULO'),vehicle=entries.find(([k,v])=>norm(v).includes('ORDEM'));if(plate&&vehicle)columns={plate:plate[0],vehicle:vehicle[0],route:entries.find(([k,v])=>norm(v)==='NOME ROTA')?.[0],arrival:entries.find(([k,v])=>norm(v).includes('PREV. CHEG'))?.[0]};continue}
+   if(!columns){const plate=entries.find(([k,v])=>norm(v)==='VEICULO'),vehicle=entries.find(([k,v])=>norm(v).includes('ORDEM'));const explicitPlate=entries.find(([k,v])=>['PLACA','PLACA VEICULO','PLACA DO VEICULO'].includes(norm(v)));const numericVehicle=vehicle||entries.find(([k,v])=>['VEICULO','CODIGO VEICULO','COD. VEICULO'].includes(norm(v)));if((explicitPlate||plate)&&numericVehicle&&(explicitPlate||plate)[0]!==numericVehicle[0])columns={plate:(explicitPlate||plate)[0],vehicle:numericVehicle[0],route:entries.find(([k,v])=>norm(v)==='NOME ROTA')?.[0],arrival:entries.find(([k,v])=>norm(v).includes('PREV. CHEG'))?.[0]};continue}
    const vehicle=String(cells[columns.vehicle]||'').trim(),plate=String(cells[columns.plate]||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
    if(!/^\d+$/.test(vehicle)||plate.length<5)continue;
    rows.push({reference_date:date,vehicle:String(Number(vehicle)),plate,route_name:cells[columns.route]||'',expected_arrival:cells[columns.arrival]||'',source_file:file.relative_path});
@@ -88,12 +88,12 @@ function operationalDay(timestamp){
 }
 function shouldScan(config,now=Date.now()){
  const last=Date.parse(config.last_scan_at||'');
- return !!config.diagnostic_requested||!Number.isFinite(last)||operationalDay(last)!==operationalDay(now);
+ return !!config.diagnostic_requested||!Number.isFinite(last)||operationalDay(last)!==operationalDay(now)||now-last>=15*60*1000;
 }
 async function sync(api,log){
  const now=Date.now();if(now-lastCheck<30000)return;lastCheck=now;
  let config;try{const r=await call(api,'agent_status');config=r.config}catch(e){if(/reservada/.test(e.message))return;throw e}
- const state=loadState();if(state.pcdParserVersion!==2){state.pcd={};state.pcdParserVersion=2}let phaseResult;
+ const state=loadState();if(state.pcdParserVersion!==3){state.pcd={};state.pcdParserVersion=3}let phaseResult;
  try{phaseResult=await phases(api,state,log)}catch(e){if(config.pcd_enabled!==false)await call(api,'agent_diagnostic',{diagnostic:{phase_error:e.message},error:e.message});throw e}
  if(config.pcd_enabled===false){if(phaseResult.files)await call(api,'agent_reconcile');return}
  if(!shouldScan(config,now)&&Object.keys(state.pcd).length){if(phaseResult.files)await call(api,'agent_reconcile');return}
@@ -101,15 +101,16 @@ async function sync(api,log){
  try{
   const result=inventory(config.root_path),january=result.files.filter(f=>/janeiro|(^|[\\/])0?1([ ._\\/-]|$)/i.test(f.relative_path));
   const changed=result.files.filter(file=>/^PCD.*\.xlsx$/i.test(file.name)&&state.pcd[file.relative_path]!==file.size+':'+file.modified_at),routes=new Map();
-  for(const file of changed)for(const row of pcdRows(config.root_path,file))routes.set(row.reference_date+'|'+row.vehicle+'|'+row.plate,row);
+  const emptyFiles=[];for(const file of changed){const parsed=pcdRows(config.root_path,file);if(!parsed.length)emptyFiles.push(file.relative_path);for(const row of parsed)routes.set(row.reference_date+'|'+row.vehicle+'|'+row.plate,row);}
   await importBatches(api,'agent_pcd_import',[...routes.values()],'PCD 2026');
-  for(const file of changed)state.pcd[file.relative_path]=file.size+':'+file.modified_at;saveState(state);
+  for(const file of changed.filter(f=>!emptyFiles.includes(f.relative_path)))state.pcd[file.relative_path]=file.size+':'+file.modified_at;saveState(state);
   const reconciliation=await call(api,'agent_reconcile');
   const samples=(january.length?january:result.files).filter(f=>!/\.xls$/i.test(f.name)).sort((a,b)=>Number(/^PCD/i.test(b.name))-Number(/^PCD/i.test(a.name))).slice(0,3).map(f=>preview(config.root_path,f));
   const downloadDirectory=path.join(__dirname,'..','downloads');
   const csvSamples=fs.existsSync(downloadDirectory)?fs.readdirSync(downloadDirectory).filter(name=>/^031120_normal_edge_\d+\.csv\.inf$/.test(name)).map(name=>({name,modified:fs.statSync(path.join(downloadDirectory,name)).mtimeMs})).sort((a,b)=>b.modified-a.modified).slice(0,3).map(file=>{const raw=fs.readFileSync(path.join(downloadDirectory,file.name));let text=raw.toString('utf8');if((text.match(/�/g)||[]).length>3)text=raw.toString('latin1');return{file:file.name,size:raw.length,lines:text.split(/\r?\n/).slice(0,40)}}):[];
   const augustSamples=result.files.filter(f=>/agosto|(^|[\\/])0?8([ ._\\/-]|$)/i.test(f.relative_path)&&/^PCD/i.test(f.name)).slice(0,3).map(f=>preview(config.root_path,f));
-  const diagnostic={august_samples:augustSamples,pcd_files:result.files.filter(f=>/^PCD/i.test(f.name)).map(f=>({name:f.name,relative_path:f.relative_path})),incorporation:{phase_files:phaseResult.files,phase_maps:phaseResult.maps,pcd_files:changed.length,pcd_routes:routes.size,updated_maps:reconciliation.updated_maps},csv_samples:csvSamples,files_count:result.files.length,directories:result.directories.slice(0,120),files:result.files.slice(0,150),samples,errors:result.errors.slice(0,10),truncated:result.files.length>=5000};
+  const latestSamples=result.files.filter(f=>/^PCD.*\.xlsx$/i.test(f.name)).sort((a,b)=>{const date=f=>{const m=f.name.match(/(\d{2})[.](\d{2})[.](\d{4}|\d{2})/);return m?(m[3].length===2?'20'+m[3]:m[3])+'-'+m[2]+'-'+m[1]:''};return date(b).localeCompare(date(a))}).slice(0,3).map(f=>({file:f.relative_path,sheets:xlsxPreview(fs.readFileSync(path.join(config.root_path,f.relative_path)),20)}));
+  const diagnostic={latest_pcd_samples:latestSamples,empty_pcd_files:emptyFiles,august_samples:augustSamples,pcd_files:result.files.filter(f=>/^PCD/i.test(f.name)).map(f=>({name:f.name,relative_path:f.relative_path})),incorporation:{phase_files:phaseResult.files,phase_maps:phaseResult.maps,pcd_files:changed.length,pcd_routes:routes.size,updated_maps:reconciliation.updated_maps},csv_samples:csvSamples,files_count:result.files.length,directories:result.directories.slice(0,120),files:result.files.slice(0,150),samples,errors:result.errors.slice(0,10),truncated:result.files.length>=5000};
   await call(api,'agent_diagnostic',{diagnostic,error:result.errors.length?result.errors.slice(0,3).join(' | '):null});
   if(log)log('EFD: diagnóstico PCD enviado, '+result.files.length+' arquivo(s).');
  }catch(e){await call(api,'agent_diagnostic',{diagnostic:{files_count:0},error:e.message});if(log)log('EFD: '+e.message,true)}
