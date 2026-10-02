@@ -12,6 +12,7 @@ function referenceMonths(current=currentReferenceMonth()){
   return rows;
 }
 const initialReferenceMonth=currentReferenceMonth();
+const MONTHS=referenceMonths(initialReferenceMonth);
 const AREAS = ['Regulador','Picking','Câmara Fria','Marketplace'];
 const COLD_ROOM_SKUS = new Set(['827','828','838']);
 
@@ -85,9 +86,10 @@ async function refreshMarketplaceBase() {
 function monthInfo(month){ return state.months.find(m=>m.reference_month?.startsWith(month)); }
 function renderMonths(){
   const current=currentReferenceMonth();
+  MONTHS.splice(0,MONTHS.length,...referenceMonths(current));
   if(localStorage.getItem(CALENDAR_MONTH_KEY)!==current){state.currentMonth=current;localStorage.setItem(CALENDAR_MONTH_KEY,current);localStorage.setItem(LAST_MONTH_KEY,current);}
   const strip=$('monthStrip'), select=$('monthFilter'), imp=$('importMonth'); strip.innerHTML=''; select.innerHTML=''; imp.innerHTML='';
-  for(const [key,label] of referenceMonths(current)){ const info=monthInfo(key); const imported=info?.status==='imported';
+  for(const [key,label] of MONTHS){ const info=monthInfo(key); const imported=info?.status==='imported';
     const btn=document.createElement('button'); btn.className=`month-pill ${imported?'imported':'pending'} ${key===state.currentMonth?'active':''}`; btn.innerHTML=`<strong>${label}</strong><small>${imported?'Atualizado':'Pendente'}</small>`; btn.onclick=()=>{state.currentMonth=key;localStorage.setItem(LAST_MONTH_KEY,state.currentMonth); select.value=key; renderMonths();loadCurve();}; strip.appendChild(btn);
     const op=new Option(`${label}/${key.slice(0,4)}${imported?' •':''}`,key); select.add(op); imp.add(new Option(`${label}/${key.slice(0,4)}`,key));
   }
