@@ -308,10 +308,16 @@ async function validatedForExport(body:any){
 }
 
 async function issuePins(rows:any[]){
-  const issued=await Promise.all(rows.map(async row=>{const pin=randomPin();return{row,pin,record:await pinRecord(pin)};}));
+  const issued=await Promise.all(rows.map(async row=>{
+    const pin=randomPin(),record=await pinRecord(pin);
+    if(!(await verifyPinRecord(pin,record)).valid)throw new Error("Falha ao preparar PIN. Nenhum código foi entregue.");
+    return{row,pin,record};
+  }));
   for(const entry of issued){
-    const {error}=await db.from("bo_conferencers").update({...entry.record,pin_admin_value:null}).eq("id",entry.row.id);if(error)throw error;
-    await db.from("bo_conferencer_sessions").delete().eq("conferencer_id",entry.row.id);
+    const {data:saved,error}=await db.from("bo_conferencers").update({...entry.record,pin_admin_value:null}).eq("id",entry.row.id).select("id,pin_salt,pin_hash").single();
+    if(error)throw error;
+    if(!saved||!(await verifyPinRecord(entry.pin,saved)).valid)throw new Error("Não foi possível confirmar o PIN salvo. Recarregue o cadastro antes de entregar o código.");
+    const {error:sessionError}=await db.from("bo_conferencer_sessions").delete().eq("conferencer_id",entry.row.id);if(sessionError)throw sessionError;
   }
   return issued.map(x=>({id:x.row.id,display_name:x.row.display_name,pin:x.pin}));
 }
