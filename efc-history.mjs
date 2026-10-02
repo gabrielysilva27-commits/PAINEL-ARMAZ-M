@@ -1,4 +1,4 @@
-import {calculate,people,ratio,norm,loading,priorities} from './efc-core.mjs?v=20261001-native-3';
+import {calculate,people,ratio,norm,loading,priorities} from './efc-core.mjs?v=20261002-map-replacements-1';
 import {selectPeriod,sum,weekStart} from './efc-analytics.mjs?v=20261001-native-3';
 const mean=xs=>xs.length?xs.reduce((a,x)=>a+x,0)/xs.length:null;
 export function historicalWeek(date){const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-d.getUTCDay());return d.toISOString().slice(0,10);}

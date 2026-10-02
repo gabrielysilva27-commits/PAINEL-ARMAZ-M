@@ -22,3 +22,5 @@ test('completed EFC target performs no API or filesystem work on repeated runs a
  const previous=globalThis.fetch;globalThis.fetch=()=>{throw Error('Closed EFC must not call the API');};
  try{for(const state of [{efcClosedTarget:'2026-10-03',efcPending:[]},JSON.parse(JSON.stringify({efcClosedTarget:'2026-10-03',efcPending:[]}))])await nightSync({}, {root_path:'/does-not-exist'},state,()=>{},Date.parse('2026-10-03T11:00:00Z'));}finally{globalThis.fetch=previous;}
 });
+
+test('night completion supports unique replacement map and ignores REC',()=>{const plans=[{map:'1',plate:'ABC1234',date:'2026-10-03'},{map:'2',plate:'REC0001',date:'2026-10-03'}];const replacement={...event('99'),plate:'ABC1234',emission:'2026-10-03'};assert.equal(cycleResult('2026-10-03',plans,[replacement]).planned,1);assert.equal(cycleResult('2026-10-03',plans,[replacement]).status,'completed');assert.equal(cycleResult('2026-10-03',plans,[replacement,{...replacement,map:'100'}]).status,'running');});

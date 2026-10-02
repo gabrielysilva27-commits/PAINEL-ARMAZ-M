@@ -1,6 +1,6 @@
-import {calculate,norm} from './efc-core.mjs?v=20261001-native-3';
+import {calculate,norm} from './efc-core.mjs?v=20261002-map-replacements-1';
 import {selectPeriod,weekStart} from './efc-analytics.mjs?v=20261002-fleet-fixed-1';
-import {calculatePeriod,periodKey} from './efc-history.mjs?v=20261001-native-3';
+import {calculatePeriod,periodKey} from './efc-history.mjs?v=20261002-map-replacements-1';
 import {visuals} from './efc-dashboard.mjs?v=20261002-fleet-fixed-1';
 const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/efc-api';
 const S={month:new Date().toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'}).slice(0,7),day:'',week:'',member:'',tab:'management',data:null,page:0,query:'',loaded:false};
