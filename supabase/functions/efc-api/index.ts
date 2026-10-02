@@ -23,7 +23,7 @@ async function reconcileCycle(date:string){
  const {error:ue}=await db.from('efc_night_cycles').update(patch).eq('reference_date',date).in('status',['waiting','running']);check(ue);return{...cycle,...patch};
 }
 Deno.serve(async req=>{
- if(req.method==='OPTIONS')return reply({ok:true});if(req.method==='GET')return reply({service:'efc-api',version:'2026-10-02-night-cycle-1'});if(req.method!=='POST')return reply({error:'Método inválido'},405);
+ if(req.method==='OPTIONS')return reply({ok:true});if(req.method==='GET')return reply({service:'efc-api',version:'2026-10-02-fleet-fixed-1'});if(req.method!=='POST')return reply({error:'Método inválido'},405);
  try{
  const b=await req.json();
  if(['agent_efc_status','agent_efc_cycle'].includes(b.action)){
@@ -39,7 +39,7 @@ Deno.serve(async req=>{
   const date=String(b.reference_date||''),source=String(b.source_file||'');
   if(!/^2026-\d{2}-\d{2}$/.test(date)||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date||!/(^|[\\/])MAPAS[^\\/]*\.xlsx$/i.test(source)||source.length>500||!Array.isArray(b.rows)||!b.rows.length||b.rows.length>5000||JSON.stringify(b.rows).length>2000000)return reply({error:'Planilha MAPAS inválida'},400);
   const active=await activeCycles();if(!active.some(c=>c.reference_date===date))return reply({error:'Este ciclo EFC ainda não começou ou já foi encerrado.'},409);
-  const rows=b.rows.map((r:any,i:number)=>{const plate=String(r.plate||'').toUpperCase().replace(/[^A-Z0-9]/g,''),vehicle=String(r.vehicle||'');if(!/^\d{1,12}$/.test(vehicle)||!/^\w{5,12}$/.test(plate))throw Error('Veículo MAPAS inválido');return{...r,id:'maps-agent:'+date+'|'+i,date,plate,vehicle,eligible:r.eligible!==false,source:'MAPAS agente',agent_source:source};});
+  const rows=b.rows.map((r:any,i:number)=>{const plate=String(r.plate||'').toUpperCase().replace(/[^A-Z0-9]/g,''),vehicle=String(r.vehicle||'');if(!/^\d{1,12}$/.test(vehicle)||!/^\w{5,12}$/.test(plate))throw Error('Veículo MAPAS inválido');return{...r,id:'maps-agent:'+date+'|'+i,date,plate,vehicle,fleet:'FF',eligible:r.eligible!==false,source:'MAPAS agente',agent_source:source};});
   const {error:ie}=await db.from('efc_agent_map_files').upsert({reference_date:date,source_file:source,rows,agent_node_id:node.id,updated_at:new Date().toISOString()},{onConflict:'reference_date'});check(ie);return reply({ok:true,imported:rows.length});
  }
  if(b.action==='agent_events'){

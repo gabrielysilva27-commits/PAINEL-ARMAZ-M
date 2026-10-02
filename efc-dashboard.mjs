@@ -1,5 +1,5 @@
 import {norm} from './efc-core.mjs?v=20261001-native-3';
-import {dailySeries,hours,categories,loadProfile,ranking,periods,sum} from './efc-analytics.mjs?v=20261001-native-3';
+import {dailySeries,hours,categories,loadProfile,ranking,periods,sum} from './efc-analytics.mjs?v=20261002-fleet-fixed-1';
 import {historyRanking} from './efc-history.mjs?v=20261001-native-3';
 import {escape as e,format as n,seriesChart,donutChart,horizontalBars,chartPanel as baseChartPanel,metric} from './efc-charts.mjs?v=20261001-native-3';
 const chartPanel=(title,description,body,controls)=>baseChartPanel(title,'',body,controls);
