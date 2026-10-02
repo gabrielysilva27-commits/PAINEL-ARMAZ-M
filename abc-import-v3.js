@@ -84,6 +84,7 @@
   };
 
   openImport=async function(){
+    renderMonths();
     $('importModal').classList.remove('hidden');$('importMonth').value=state.currentMonth;$('importError').textContent='';$('importChecks').innerHTML='';state.reports={sales:null,picking:null,catalog:null,marketplace:null};
     for(const id of ['reportSales','reportPicking','reportCatalog','reportMarketplace'])$(id).value='';for(const kind of ['sales','picking','catalog','marketplace'])$(reportUi(kind).slot).classList.remove('loaded','invalid');
     $('nameSales').textContent='Volume de venda por produto';$('namePicking').textContent='Movimentação / separação';$('nameCatalog').textContent='Consultando status da base...';$('nameMarketplace').textContent='Opcional se a base já estiver salva';

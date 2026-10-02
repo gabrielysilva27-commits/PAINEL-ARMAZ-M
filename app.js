@@ -1,7 +1,17 @@
 const API_URL = 'https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/painel-api';
-const MONTHS = [
-  ['2026-01','Jan'],['2026-02','Fev'],['2026-03','Mar'],['2026-04','Abr'],['2026-05','Mai'],['2026-06','Jun'],['2026-07','Jul'],['2026-08','Ago'],['2026-09','Set']
-];
+const MONTH_LABELS=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const CALENDAR_MONTH_KEY='pa_reference_calendar_month';
+function currentReferenceMonth(now=new Date()){
+  return new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit'}).format(now);
+}
+function referenceMonths(current=currentReferenceMonth()){
+  const [year,month]=current.split('-').map(Number),rows=[];
+  for(let y=2026;y<=year;y++)for(let m=1;m<=(y===year?month:12);m++){
+    rows.push([`${y}-${String(m).padStart(2,'0')}`,MONTH_LABELS[m-1]]);
+  }
+  return rows;
+}
+const initialReferenceMonth=currentReferenceMonth();
 const AREAS = ['Regulador','Picking','Câmara Fria','Marketplace'];
 const COLD_ROOM_SKUS = new Set(['827','828','838']);
 
@@ -14,7 +24,7 @@ const state = {
   token: localStorage.getItem('pa_session') || '',
   user: null,
   months: [],
-  currentMonth: /^2026-(0[1-9]|1[0-2])$/.test(savedMonth||'') ? savedMonth : '2026-06',
+  currentMonth: localStorage.getItem(CALENDAR_MONTH_KEY)===initialReferenceMonth && referenceMonths().some(([key])=>key===savedMonth) ? savedMonth : initialReferenceMonth,
   currentArea: AREAS.includes(savedArea) ? savedArea : 'Regulador',
   currentItems: [],
   reports: { sales:null, picking:null, catalog:null, marketplace:null },
@@ -74,10 +84,12 @@ async function refreshMarketplaceBase() {
 
 function monthInfo(month){ return state.months.find(m=>m.reference_month?.startsWith(month)); }
 function renderMonths(){
+  const current=currentReferenceMonth();
+  if(localStorage.getItem(CALENDAR_MONTH_KEY)!==current){state.currentMonth=current;localStorage.setItem(CALENDAR_MONTH_KEY,current);localStorage.setItem(LAST_MONTH_KEY,current);}
   const strip=$('monthStrip'), select=$('monthFilter'), imp=$('importMonth'); strip.innerHTML=''; select.innerHTML=''; imp.innerHTML='';
-  for(const [key,label] of MONTHS){ const info=monthInfo(key); const imported=info?.status==='imported';
+  for(const [key,label] of referenceMonths(current)){ const info=monthInfo(key); const imported=info?.status==='imported';
     const btn=document.createElement('button'); btn.className=`month-pill ${imported?'imported':'pending'} ${key===state.currentMonth?'active':''}`; btn.innerHTML=`<strong>${label}</strong><small>${imported?'Atualizado':'Pendente'}</small>`; btn.onclick=()=>{state.currentMonth=key;localStorage.setItem(LAST_MONTH_KEY,state.currentMonth); select.value=key; renderMonths();loadCurve();}; strip.appendChild(btn);
-    const op=new Option(`${label}/2026${imported?' •':''}`,key); select.add(op); imp.add(new Option(`${label}/2026`,key));
+    const op=new Option(`${label}/${key.slice(0,4)}${imported?' •':''}`,key); select.add(op); imp.add(new Option(`${label}/${key.slice(0,4)}`,key));
   }
   select.value=state.currentMonth; imp.value=state.currentMonth;
 }
@@ -239,6 +251,7 @@ async function handleReport(kind,file){
 }
 
 async function openImport(){
+  renderMonths();
   $('importModal').classList.remove('hidden');$('importMonth').value=state.currentMonth;$('importError').textContent='';$('importChecks').innerHTML='';state.reports={sales:null,picking:null,catalog:null,marketplace:null};
   for(const id of ['reportSales','reportPicking','reportCatalog','reportMarketplace'])$(id).value='';
   for(const kind of ['sales','picking','catalog','marketplace']){$(reportUi(kind).slot).classList.remove('loaded','invalid');}
