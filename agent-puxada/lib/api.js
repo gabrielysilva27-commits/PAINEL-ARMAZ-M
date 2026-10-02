@@ -78,6 +78,10 @@ class AgentApi {
     return this.call("agent_031120_import", payload);
   }
 
+  report031120Import(payload) {
+    return this.call("agent_report_031120_import", payload);
+  }
+
   pull031120State(payload) {
     return this.call("agent_031120_state", payload);
   }

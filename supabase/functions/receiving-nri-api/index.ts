@@ -528,16 +528,14 @@ async function agentPull031120Status(node:any){
   if(forceState){const {data:forcedNode}=await db.from("receiving_pull_agent_nodes").select("slot_code").eq("id",forceState.agent_node_id).eq("active",true).maybeSingle();if(forcedNode)preferred=forcedNode.slot_code;}
   const start="2026-01-01",today=todayBr();
   if(!forceRun){
-    const {data:recentRun,error:recentError}=await db.from("receiving_pull_031120_state").select("started_at").in("status",["running","completed","error"]).order("started_at",{ascending:false,nullsFirst:false}).limit(1).maybeSingle();
+    const {data:recentRun,error:recentError}=await db.from("receiving_pull_031120_state").select("started_at,status").in("status",["running","completed","error"]).order("started_at",{ascending:false,nullsFirst:false}).limit(1).maybeSingle();
     if(recentError)throw recentError;
-    if(recentRun?.started_at&&Date.now()-Date.parse(recentRun.started_at)<120*60000)return{enabled:true,preferred_node:preferred,complete:true,date_from:null,date_to:today,force_run:false};
+    if(recentRun?.started_at&&Date.now()-Date.parse(recentRun.started_at)<(recentRun.status==="error"?5:15)*60000)return{enabled:true,preferred_node:preferred,complete:true,date_from:null,date_to:today,force_run:false};
   }
   if(!preferred||node.slot_code!==preferred)return{enabled:false,preferred_node:preferred||null,complete:false,force_run:forceRun};
-  const {data:last,error}=await db.from("receiving_pull_daily")
-    .select("pull_date").gte("pull_date",start).like("source_file","agent_031120_%")
-    .order("pull_date",{ascending:false}).limit(1).maybeSingle();
-  if(error)throw error;
-  const nextFrom=last?.pull_date?nextIsoDay(last.pull_date):start;
+  const {data:sharedLast,error:sharedError}=await db.from("report_031120_imports").select("date_to").eq("status","completed").order("date_to",{ascending:false}).limit(1).maybeSingle();
+  if(sharedError)throw sharedError;
+  const nextFrom=sharedLast?.date_to?nextIsoDay(sharedLast.date_to):today.slice(0,7)+"-01";
   const rollingFrom=new Date(Date.parse(today+"T12:00:00Z")-6*86400000).toISOString().slice(0,10);
   const lowerBound=rollingFrom<start?start:rollingFrom;
   const dateFrom=forceState?.date_from||(nextFrom>lowerBound?lowerBound:nextFrom);
@@ -569,6 +567,38 @@ async function agentPull031120Import(node:any,b:any){
   return{days:upserts.length,days_with_data:byDate.size,truck_count:truckTotal,pallets_pulled:palletTotal,source_file:source};
 }
 
+async function agentReport031120Import(node:any,b:any){
+ const phase=String(b.phase||"");
+ if(phase==="start"){
+  const preferred=await agentPull031120PreferredNode();
+  if(preferred!==node.slot_code)throw new Error("A carga 03.11.20 pertence a outro computador.");
+  const from=isoDate(b.date_from),to=isoDate(b.date_to),expected=Number(b.expected_rows);
+  if(!from||!to||from>to||Date.parse(to)-Date.parse(from)>365*86400000||!Number.isInteger(expected)||expected<1||expected>1000000)throw new Error("Carga 03.11.20 inválida.");
+  if(!Array.isArray(b.headers)||b.headers.length>200)throw new Error("Cabeçalho inválido.");
+  const {data,error}=await db.from("report_031120_imports").insert({agent_node_id:node.id,date_from:from,date_to:to,source_file:clean(b.source_file,180),headers:b.headers,expected_rows:expected}).select("id").single();
+  if(error)throw error;return{import_id:data.id};
+ }
+ const {data:imp,error:ie}=await db.from("report_031120_imports").select("id,status,date_from,date_to,expected_rows").eq("id",String(b.import_id||"")).eq("agent_node_id",node.id).maybeSingle();
+ if(ie)throw ie;if(!imp)throw new Error("Importação não encontrada.");
+ if(phase==="complete"){const {data,error}=await db.rpc("complete_report_031120",{p_import_id:imp.id,p_node_id:node.id});if(error)throw error;return data;}
+ if(phase!=="batch"||imp.status!=="uploading")throw new Error("Etapa de importação inválida.");
+ if(!Array.isArray(b.records)||!b.records.length||b.records.length>250)throw new Error("Lote inválido.");
+ const records=b.records.map((r:any)=>{
+  const no=Number(r.row_no),date=r.reference_date?isoDate(r.reference_date):null;
+  if(!Number.isInteger(no)||no<1||!Array.isArray(r.raw_values)||r.raw_values.length>200||(date&&(date<imp.date_from||date>imp.date_to)))throw new Error("Linha 03.11.20 inválida.");
+  const entrada=r.raw_values.some((v:any)=>String(v??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim().toUpperCase()==="ENTRADA CDD");
+  return{import_id:imp.id,row_no:no,reference_date:date,vehicle:clean(r.vehicle,40)||null,map_number:clean(r.map_number,60)||null,movement:entrada?"ENTRADA CDD":clean(r.movement,120)||null,is_entrada_cdd:entrada,raw_values:r.raw_values};
+ });
+ const {error}=await db.from("report_031120_rows").upsert(records,{onConflict:"import_id,row_no"});if(error)throw error;return{rows:records.length};
+}
+async function shared031120Report(b:any){
+ const from=isoDate(b.date_from),to=isoDate(b.date_to);if(!from||!to||from>to)throw new Error("Informe o período.");
+ const offset=Math.max(0,Math.floor(Number(b.offset)||0)),limit=Math.min(500,Math.max(1,Math.floor(Number(b.limit)||250)));
+ let q=db.from("report_031120_current").select("*",{count:"exact"}).gte("reference_date",from).lte("reference_date",to).order("reference_date").order("row_no");
+ if(b.vehicle)q=q.eq("vehicle",clean(b.vehicle,40));if(b.entrada_cdd===true)q=q.eq("is_entrada_cdd",true);
+ const {data,error,count}=await q.range(offset,offset+limit-1);if(error)throw error;return{rows:data||[],count,offset,limit};
+}
+
 async function agentPull031120State(node:any,b:any){
   const allowed=["idle","running","completed","error","skipped"],status=clean(b.status,20);
   if(!allowed.includes(status))throw new Error("Status 03.11.20 inválido.");
@@ -598,7 +628,7 @@ Deno.serve(async(req:Request)=>{
  if(req.method==="OPTIONS")return new Response("ok",{headers:headers(req)});if(req.method!=="POST")return json(req,{error:"Método não permitido."},405);
  try{
   const b=await body(req),a=clean(b.action,60);
-  if(["agent_poll","agent_ping","agent_heartbeat","agent_complete","agent_fail","agent_update_manifest","agent_update_state","agent_update_file","agent_oor_status","agent_oor_scan_state","agent_oor_diagnostic","agent_oor_import","agent_031120_status","agent_031120_import","agent_031120_state"].includes(a)){
+  if(["agent_poll","agent_ping","agent_heartbeat","agent_complete","agent_fail","agent_update_manifest","agent_update_state","agent_update_file","agent_oor_status","agent_oor_scan_state","agent_oor_diagnostic","agent_oor_import","agent_031120_status","agent_031120_import","agent_031120_state","agent_report_031120_import"].includes(a)){
     const node=await pullAgentAuth(req);if(!node)return json(req,{error:"Agente Puxada não autorizado."},401);
     if(a==="agent_ping"){const updated=await touchAgentNode(node,b);return json(req,{node:{id:updated.id,slot_code:updated.slot_code,display_name:updated.display_name,hostname:updated.hostname,status:updated.status,calibration_ready:updated.calibration_ready},agent:await getAgentStatus()})}
     if(a==="agent_poll")return json(req,{job:await claimAgentJob(node,b),agent:await getAgentStatus()});
@@ -613,6 +643,7 @@ Deno.serve(async(req:Request)=>{
     if(a==="agent_oor_diagnostic")return json(req,{result:await agentOorDiagnostic(node,b)});
     if(a==="agent_oor_import")return json(req,{result:await agentOorImport(node,b)});
     if(a==="agent_031120_status")return json(req,{pull031120:await agentPull031120Status(node)});
+    if(a==="agent_report_031120_import")return json(req,{result:await agentReport031120Import(node,b)});
     if(a==="agent_031120_import")return json(req,{result:await agentPull031120Import(node,b)});
     if(a==="agent_031120_state")return json(req,{result:await agentPull031120State(node,b)});
   }
@@ -721,6 +752,7 @@ Deno.serve(async(req:Request)=>{
     return json(req,{issued:{id:old.id,display_name:old.display_name,pin}});
   }
   if(a==="system_020501_import")return json(req,{import:await import020501(u,b)});
+  if(a==="report_031120")return json(req,await shared031120Report(b));
   if(a==="system_020501_status")return json(req,{status:await system020501Status()});
   if(a==="pull_auto_compare"){const id=Number(b.id);if(!Number.isInteger(id)||id<=0)throw new Error("Recebimento inválido.");return json(req,{comparison:await autoComparePull(id,u)})}
 

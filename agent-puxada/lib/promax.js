@@ -1887,23 +1887,29 @@ async function export031120(job, config, rootDir, validateCsv) {
   // Se a tela 03.11.20 já estiver aberta (como no uso normal da operação),
   // aproveite-a diretamente. Isso evita voltar ao Atalho e também torna o
   // backfill mais confiável quando o usuário já deixou o relatório pronto.
+  async function reportAction(stage,values){
+    for(let attempt=0;attempt<3;attempt++){
+      try{return existingEdge.act(stage,values)}
+      catch(error){if(attempt===2||!/window-not-foreground/.test(String(error.message||error)))throw error;await sleep(1000);}
+    }
+  }
   let formReady = false;
   try {
-    existingEdge.act("filters031120", vals);
+    await reportAction("filters031120", vals);
     formReady = true;
   } catch (error) {
     const message = String(error && error.message || error);
     if (!/window-not-found/.test(message)) throw error;
   }
   if (!formReady) {
-    existingEdge.act("shortcut031120");
+    await reportAction("shortcut031120");
     await sleep(1800);
-    existingEdge.act("filters031120", vals);
+    await reportAction("filters031120", vals);
   }
   await sleep(2200);
 
   await waitUntil(async function () {
-    try { existingEdge.act("csv031120"); return true; }
+    try { await reportAction("csv031120"); return true; }
     catch (error) { if (/csv-not-found/.test(String(error.message))) return false; throw error; }
   }, 60000, 1000).catch(function (error) {
     if (/Tempo esgotado/.test(String(error.message))) throw new Error("031120_CSV_NOT_FOUND");

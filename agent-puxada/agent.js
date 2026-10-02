@@ -179,7 +179,7 @@ async function main() {
       const state = await api.pull031120Status();
       task = state && state.pull031120;
       if (!task || !task.enabled || task.complete || !task.date_from) return;
-      if (!force && !task.force_run && Date.now()-last031120Run<2*60*60*1000) return;
+      if (!force && !task.force_run && Date.now()-last031120Run<15*60*1000) return;
       if (!task.force_run) {
         const unlocked = existingEdge.desktopUnlocked();
         const idle = existingEdge.idleMilliseconds();
@@ -194,6 +194,7 @@ async function main() {
       const coverage=await backfill031120.run({api,promax,config,root:ROOT,parse:parse031120,log,task});
       log("03.11.20 concluído: "+coverage.months.length+" mês(es) com registros; "+coverage.unavailable.length+" mês(es) a verificar.");
     } catch (e) {
+      last031120Run = Date.now()-10*60*1000; // retry transient window failures after five minutes
       const message = e && e.message ? e.message : String(e);
       await api.pull031120State({
         status:"error",stage:"failed",date_from:task&&task.date_from||null,date_to:task&&task.date_to||null,error:message

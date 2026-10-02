@@ -74,6 +74,8 @@ function parse031120(file) {
   // - a mesma carreta em outro mapa é uma nova puxada;
   // - cada puxada representa exatamente 28 paletes.
   const days = new Map();
+  const records = [];
+  const headers = matrix[headerRow];
   let rawRows = 0;
   let entranceRows = 0;
 
@@ -83,17 +85,19 @@ function parse031120(file) {
     const vehicleDigits = String(row[cols.vehicle] || "").replace(/\D/g, "");
     const vehicle = vehicleDigits ? String(Number(vehicleDigits)) : "";
     const mapRaw = String(row[cols.map] || "").trim();
+    const entrada = row.some(cell => norm(cell) === "ENTRADA CDD");
+    const mapDigits = mapRaw.replace(/\D/g, "");
+    const map = mapDigits ? String(Number(mapDigits)) : norm(mapRaw);
+    records.push({row_no:r-headerRow,reference_date:d||null,vehicle:vehicle||null,map_number:map||null,
+      movement:entrada?"ENTRADA CDD":null,is_entrada_cdd:entrada,raw_values:row});
     if (!d || !vehicle || !mapRaw) continue;
     rawRows++;
 
-    const rowText = norm(row.join(" | "));
-    if (!rowText.includes("ENTRADA CDD")) continue;
+    if (!entrada) continue;
     entranceRows++;
     if (!TRAILER_NUMBERS.has(vehicle)) continue;
 
     // Normaliza "01", "1", "000001" para o mesmo mapa sem perder textos não numéricos.
-    const mapDigits = mapRaw.replace(/\D/g, "");
-    const map = mapDigits ? String(Number(mapDigits)) : norm(mapRaw);
     const tripKey = vehicle + "|" + map;
 
     if (!days.has(d)) days.set(d, { trips: new Set(), vehicle_maps: {} });
@@ -104,8 +108,7 @@ function parse031120(file) {
     x.vehicle_maps[vehicle].add(map);
   }
 
-  if (!rawRows) throw new Error("031120_NO_DATA: nenhuma linha válida com Data/Veículo/Mapa foi reconhecida.");
-  if (!entranceRows) throw new Error("031120_ENTRADA_CDD_NOT_FOUND: nenhuma linha ENTRADA CDD foi encontrada.");
+  if (!records.length || !records.some(r=>r.reference_date)) throw new Error("031120_NO_DATA: nenhuma linha com data foi reconhecida.");
 
   const rows = [...days.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([pull_date, x]) => {
     const vehicle_counts = {};
@@ -120,7 +123,8 @@ function parse031120(file) {
   });
 
   return {
-    raw_rows: rawRows,
+    headers, records,
+    raw_rows: records.length,
     entrada_cdd_rows: entranceRows,
     days: rows.length,
     trailers: [...TRAILER_NUMBERS],
