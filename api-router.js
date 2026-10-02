@@ -200,7 +200,7 @@
       submenu.className = 'module-submenu';
       group.append(toggle, submenu);
       toggle.onclick = () => group.classList.toggle('open');
-      const anchor = document.querySelector('.nav-link[data-view="abc"]') || nav.firstElementChild;
+      const anchor = document.querySelector('.control-nav-group') || document.querySelector('.nav-link[data-view="abc"]') || nav.firstElementChild;
       if (anchor?.parentElement === nav) anchor.insertAdjacentElement('afterend', group);
       else nav.appendChild(group);
     }
@@ -237,11 +237,7 @@
 
   function installPuxadaMenu() {
     ensurePuxadaGroup();
-    moveExistingToPuxada('layout', '⌗', 'Layout');
     moveExistingToPuxada('stock-base', '▦', 'Físico × Sistema');
-    moveExistingToPuxada('replenishment', '↻', 'Reabastecimento');
-    moveExistingToPuxada('pull-pedforme', '▤', 'Pedforme');
-    moveExistingToPuxada('temperature', '°', 'Temperatura');
 
     const oor = createPuxadaButton('pull-oor', '⊙', 'OOR');
     if (oor) oor.onclick = async event => {
@@ -268,6 +264,63 @@
     };
   }
 
+  // Reconcile existing buttons without replacing their module click handlers.
+  // Child-list changes also cover modules that mount after the initial page load.
+  function reconcileMenu() {
+    installPuxadaMenu();
+    const nav = document.querySelector('.sidebar nav');
+    const group = document.querySelector('.pull-nav-group');
+    const submenu = group?.querySelector('.module-submenu');
+    if (!nav || !submenu) return;
+
+    for (const view of ['layout', 'replenishment']) {
+      const button = submenu.querySelector(`[data-view="${view}"]`);
+      if (!button) continue;
+      button.classList.remove('module-sub-link');
+      nav.insertBefore(button, group);
+    }
+
+    let previous = null;
+    for (const view of ['stock-base', 'pull-oor', 'pull-policy', 'pull-pedforme']) {
+      const button = document.querySelector(`.nav-link[data-view="${view}"]`);
+      if (!button) continue;
+      button.classList.add('module-sub-link');
+      const expected = previous ? previous.nextElementSibling : submenu.firstElementChild;
+      if (expected !== button) submenu.insertBefore(button, expected);
+      previous = button;
+    }
+
+    const control = document.querySelector('.control-nav-group');
+    if (control?.parentElement === nav && control.nextElementSibling !== group) {
+      control.insertAdjacentElement('afterend', group);
+    }
+    previous = group;
+    for (const view of ['temperature', 'productivity', 'repack', 'efc']) {
+      const button = document.querySelector(`.nav-link[data-view="${view}"]`);
+      if (!button) continue;
+      button.classList.remove('module-sub-link');
+      if (previous.nextElementSibling !== button || button.parentElement !== nav) {
+        previous.insertAdjacentElement('afterend', button);
+      }
+      previous = button;
+    }
+  }
+
+  let menuObserver = null;
+  function watchMenu() {
+    if (menuObserver) return;
+    const nav = document.querySelector('.sidebar nav');
+    if (!nav) return;
+    menuObserver = new MutationObserver(records => {
+      // Ignore text/icon changes: only module insertions/removals need reconciliation.
+      if (records.some(record => [...record.addedNodes, ...record.removedNodes]
+        .some(node => node.nodeType === 1 && node.matches?.('.nav-link, .module-nav-group, .control-nav-group')))) {
+        reconcileMenu();
+      }
+    });
+    menuObserver.observe(nav, { childList: true, subtree: true });
+  }
+
   function boot() {
     const nav = document.querySelector('.sidebar nav');
     const main = document.querySelector('main');
@@ -283,17 +336,19 @@
     document.getElementById('placeholderView')?.remove();
     installLayout();
     installBlitz();
-    installPuxadaMenu();
+    reconcileMenu();
+    watchMenu();
     installAreaRules();
     booted = true;
-    document.documentElement.dataset.abcAreaRules = '2026-10-01-puxada-menu-2';
+    document.documentElement.dataset.abcAreaRules = '2026-10-02-menu-reference-1';
     document.documentElement.dataset.blitzVersion = '2026-10-01-dia-2';
   }
 
-  boot();
-  setTimeout(installPuxadaMenu, 250);
-  setTimeout(installPuxadaMenu, 900);
-  setTimeout(installPuxadaMenu, 2200);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
+  else boot();
+  setTimeout(reconcileMenu, 250);
+  setTimeout(reconcileMenu, 900);
+  setTimeout(reconcileMenu, 2200);
   setTimeout(installAreaRules, 250);
   setTimeout(installAreaRules, 1200);
   setTimeout(() => { if (!booted) boot(); }, 1200);
