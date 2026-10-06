@@ -8,6 +8,7 @@ const { parse020501 } = require("./lib/csv020501");
 const { parse031120 } = require("./lib/pull031120");
 const oorSync = require("./lib/oor-sync");
 const efdSync = require("./lib/efd-sync");
+const outlookSegmentations = require("./lib/outlook-segmentations");
 const promax = require("./lib/promax");
 const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
@@ -215,6 +216,7 @@ async function main() {
   if (await maybeUpdate(true)) return;
 
   log("Agente Puxada iniciado em " + os.hostname() + ".");
+  outlookSegmentations.kick(api,log);
   await efdSync.sync(api,log).catch(e=>log("EFD: "+e.message,true));
   await maybeSync031120(true);
   let stopping = false;
@@ -230,6 +232,7 @@ async function main() {
         await api.ping(await info()).catch(e=>log("Estado do agente: "+e.message,true));
       }
       if (await maybeUpdate(false)) return;
+      outlookSegmentations.kick(api,log);
       await efdSync.sync(api,log).catch(e=>log("EFD: "+e.message,true));
       await maybeSync031120(false);
       await maybeSyncOor(false);

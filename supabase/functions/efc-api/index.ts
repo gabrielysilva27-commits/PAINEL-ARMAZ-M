@@ -26,6 +26,22 @@ Deno.serve(async req=>{
  if(req.method==='OPTIONS')return reply({ok:true});if(req.method==='GET')return reply({service:'efc-api',version:'2026-10-02-fleet-fixed-1'});if(req.method!=='POST')return reply({error:'Método inválido'},405);
  try{
  const b=await req.json();
+ if(['agent_segmentations_status','agent_segmentations_import','agent_segmentations_scan'].includes(b.action)){
+  const node=await agentNode(req);if(!node)return reply({enabled:false},b.action==='agent_segmentations_status'?200:403);
+  if(b.action==='agent_segmentations_status')return reply({enabled:true,account:'gabrielypi@imperio1973.com'});
+  if(b.action==='agent_segmentations_scan'){
+   const clean=(v:any)=>Number.isInteger(v)&&v>=0&&v<=10000?v:0;
+   const {error}=await db.from('efc_segmentation_scans').upsert({agent_node_id:node.id,messages:clean(b.messages),review:clean(b.review),errors:clean(b.errors),last_error:b.error?String(b.error).slice(0,400):null,updated_at:new Date().toISOString()});check(error);return reply({ok:true});
+  }
+  if(!Array.isArray(b.messages)||b.messages.length>50||JSON.stringify(b.messages).length>1000000)return reply({error:'Lote inválido'},400);
+  const emails=b.messages.map((m:any)=>{
+   const date=String(m.date||'');if(!/^[a-f0-9]{64}$/.test(m.id)||!/^2026-\d{2}-\d{2}$/.test(date)||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date||!['parsed','review'].includes(m.status)||!Array.isArray(m.rows)||m.rows.length>2000||!Number.isFinite(Date.parse(m.received_at)))throw Error('E-mail inválido');
+   const rows=m.rows.map((r:any)=>{for(const key of ['map','vehicle','customer'])if(!/^\d{1,12}$/.test(String(r[key])))throw Error('Segmentação inválida');return {map:String(r.map),vehicle:String(r.vehicle),customer:String(r.customer)};});
+   if(m.status==='parsed'&&!rows.length)throw Error('Tabela vazia');
+   return{id:m.id,reference_date:date,received_at:m.received_at,rows,status:m.status,issue:m.status==='review'?String(m.issue||'Revisar e-mail').slice(0,200):null,agent_node_id:node.id,updated_at:new Date().toISOString()};
+  });
+  if(emails.length){const {error}=await db.from('efc_segmentation_emails').upsert(emails,{onConflict:'id'});check(error);}return reply({ok:true,imported:emails.length});
+ }
  if(['agent_efc_status','agent_efc_cycle'].includes(b.action)){
   if(!await agentNode(req))return reply({error:'Agente ADM necessário'},403);
   const cycles=await activeCycles();
@@ -69,8 +85,10 @@ Deno.serve(async req=>{
  const from=month+'-01',next=new Date(Date.UTC(2026,Number(month.slice(5)),1)).toISOString().slice(0,10),before=new Date(Date.parse(from+'T12:00:00Z')-2*86400000).toISOString().slice(0,10);
  const [chunks,patches,events,pcd,agent,history,shared,cycles]=await Promise.all([all(()=>db.from('efc_archive').select('*').eq('month',month).order('kind').order('chunk')),all(()=>db.from('efc_adjustments').select('*').eq('month',month).order('record_id')),all(()=>db.from('efc_agent_events').select('id,payload').gte('reference_date',before).lt('reference_date',next).order('id')),all(()=>db.from('efc_agent_map_files').select('*').gte('reference_date',from).lt('reference_date',next).order('reference_date')),db.from('efd_agent_config').select('status,last_scan_at,last_error').eq('id',1).single(),db.from('efc_workbook_history').select('payload').eq('month',month).maybeSingle(),all(()=>db.from('report_031120_current').select('reference_date,headers,raw_values,source_file,completed_at').gte('reference_date',before).lt('reference_date',next).order('reference_date').order('row_no')),all(()=>db.from('efc_night_cycles').select('*').gte('reference_date',from).lt('reference_date',next).order('reference_date'))]);check(agent.error);check(history.error);
  const data:any={};for(const c of chunks){data[c.kind]??=[];data[c.kind].push(...c.payload);}for(const p of patches){const row=data[p.kind]?.find((x:any)=>x.id===p.record_id);if(row){Object.assign(row,p.patch);row.adjustment_reason=p.reason;}}
+ const [segmentationEmails,segmentationScans]=await Promise.all([all(()=>db.from('efc_segmentation_emails').select('id,reference_date,received_at,rows,status,issue').gte('reference_date',from).lt('reference_date',next).order('reference_date').order('id')),db.from('efc_segmentation_scans').select('messages,review,errors,last_error,updated_at').order('updated_at',{ascending:false}).limit(1).maybeSingle()]);check(segmentationScans.error);
+ data.segmentations=segmentationEmails;
  data.events=frozenEvents(mergeEvents(data.events||[],events,shared),cycles);
  const covered=new Set(pcd.map((r:any)=>r.reference_date)),planned=(data.pcd||[]).filter((p:any)=>!covered.has(p.date));for(const file of pcd){const snapshot=cycles.find((c:any)=>c.reference_date===file.reference_date);if(snapshot)planned.push(...snapshot.plans);else planned.push(...file.rows);}for(const p of planned){const matching=data.events.filter((e:any)=>e.emission===p.date&&e.plate===String(p.plate).replace(/[^A-Z0-9]/gi,'').toUpperCase());const fleets=[...new Set(matching.map((e:any)=>e.fleet).filter(Boolean))];if(!p.fleet&&fleets.length===1)p.fleet=fleets[0];}data.pcd=planned;
- return reply({month,data,history:history.data?.payload||null,agent:agent.data,sources:[...new Set([...chunks.map(c=>c.source),...shared.map((r:any)=>r.source_file),...pcd.map((r:any)=>r.source_file)])],routine:{start_hour:21,time_zone:'America/Sao_Paulo',cycles:cycles.map((c:any)=>({date:c.reference_date,status:c.status,planned:c.planned,matched:c.matched,completed_at:c.completed_at}))},coverage:{report_031120:{dates:[...new Set(shared.map((r:any)=>r.reference_date))],last_import_at:shared.map((r:any)=>r.completed_at).sort().at(-1)||null},maps:{dates:[...new Set(pcd.map((r:any)=>r.reference_date))],last_import_at:pcd.map((r:any)=>r.updated_at).sort().at(-1)||null}},adjustments:patches.length});
+ return reply({month,data,history:history.data?.payload||null,agent:agent.data,sources:[...new Set([...chunks.map(c=>c.source),...shared.map((r:any)=>r.source_file),...pcd.map((r:any)=>r.source_file)])],routine:{start_hour:21,time_zone:'America/Sao_Paulo',cycles:cycles.map((c:any)=>({date:c.reference_date,status:c.status,planned:c.planned,matched:c.matched,completed_at:c.completed_at}))},coverage:{segmentations:segmentationScans.data,report_031120:{dates:[...new Set(shared.map((r:any)=>r.reference_date))],last_import_at:shared.map((r:any)=>r.completed_at).sort().at(-1)||null},maps:{dates:[...new Set(pcd.map((r:any)=>r.reference_date))],last_import_at:pcd.map((r:any)=>r.updated_at).sort().at(-1)||null}},adjustments:patches.length});
  }catch(e){console.error('efc-api',e);return reply({error:'Não foi possível processar EFC. Confira os dados e tente novamente.'},400);}
 });
