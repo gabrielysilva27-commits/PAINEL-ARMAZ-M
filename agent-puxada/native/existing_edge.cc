@@ -468,7 +468,7 @@ static bool ClickNamedButton(HWND hwnd, const std::wstring& expected, bool downl
   return clicked;
 }
 
-struct VisibleControl { CONTROLTYPEID type; std::wstring name; RECT rect; };
+struct VisibleControl { CONTROLTYPEID type; std::wstring name; RECT rect; long legacyRole=0; };
 static std::vector<VisibleControl> Controls(HWND hwnd) {
   std::vector<VisibleControl> found;
   IUIAutomation* automation = nullptr;
@@ -503,7 +503,9 @@ static std::vector<VisibleControl> Controls(HWND hwnd) {
           std::transform(name.begin(), name.end(), name.begin(), towlower);
         }
         if (raw) SysFreeString(raw);
-        found.push_back({type, name, r});
+        VARIANT role;VariantInit(&role);long legacyRole=0;
+        if(SUCCEEDED(item->GetCurrentPropertyValue(UIA_LegacyIAccessibleRolePropertyId,&role)) && role.vt==VT_I4)legacyRole=role.lVal;
+        VariantClear(&role);found.push_back({type,name,r,legacyRole});
       }
       item->Release();
     }
@@ -834,7 +836,7 @@ static bool SelectOCPOption(const VisibleControl& control, bool selected) {
     }
   }
   if(element) {
-    if (control.type!=UIA_RadioButtonControlTypeId) {
+    if (control.type!=UIA_RadioButtonControlTypeId && control.legacyRole!=ROLE_SYSTEM_RADIOBUTTON) {
       IUIAutomationTogglePattern* pattern=nullptr;
       if (SUCCEEDED(element->GetCurrentPatternAs(UIA_TogglePatternId,IID_IUIAutomationTogglePattern,reinterpret_cast<void**>(&pattern))) && pattern) {
         ToggleState state; if (SUCCEEDED(pattern->get_CurrentToggleState(&state))) {
@@ -893,12 +895,32 @@ static bool FillOCP(HWND hwnd,const std::wstring* values) {
   // Select the full source, not a picking-only or pallet-only export. Require
   // readable option state; never invert checkboxes blindly.
   bool complete=false,route=false,all=false;int seenComplete=0,seenRoute=0,seenAll=0;
-  for(const auto& c:controls) {
-    if((c.type==UIA_CheckBoxControlTypeId||c.type==UIA_TreeItemControlTypeId) && Contains(c.name,L"todos")){++seenAll;all=SelectOCPOption(c,true);}
-    if(c.type==UIA_RadioButtonControlTypeId && Contains(c.name,L"completa")){++seenComplete;complete=SelectOCPOption(c,true);}
-    if(c.type==UIA_RadioButtonControlTypeId && Contains(c.name,L"rota")){++seenRoute;route=SelectOCPOption(c,true);}
+  auto radio=[](const VisibleControl& c){return c.type==UIA_RadioButtonControlTypeId || c.legacyRole==ROLE_SYSTEM_RADIOBUTTON;};
+  auto check=[](const VisibleControl& c){return c.type==UIA_CheckBoxControlTypeId || c.type==UIA_TreeItemControlTypeId || c.legacyRole==ROLE_SYSTEM_CHECKBUTTON;};
+  // Older IE pages leave input names blank and expose the label as a sibling.
+  // Bind only an exact option label to a matching input immediately to its left.
+  auto option=[&](const wchar_t* label,bool isRadio,int* seen){
+    for(const auto& c:controls){
+      if((isRadio?radio(c):check(c)) && Contains(c.name,label)){++*seen;if(SelectOCPOption(c,true))return true;}
+    }
+    for(const auto& text:controls){
+      if(text.name!=label || text.rect.top<window.top+160)continue;
+      const VisibleControl* input=nullptr;int nearest=61;
+      for(const auto& c:controls){
+        if(!(isRadio?radio(c):check(c)))continue;
+        int gap=text.rect.left-c.rect.right;
+        if(gap>=-4 && gap<nearest && abs((text.rect.top+text.rect.bottom)-(c.rect.top+c.rect.bottom))<=20){input=&c;nearest=gap;}
+      }
+      if(input){++*seen;if(SelectOCPOption(*input,true))return true;}
+    }
+    return false;
+  };
+  complete=option(L"completa",true,&seenComplete);route=option(L"rota",true,&seenRoute);all=option(L"todos",false,&seenAll);
+  if(!complete || !route || !all){
+    OCP_FILTER_ISSUE=L"options:complete="+std::to_wstring(complete?1:0)+L":route="+std::to_wstring(route?1:0)+L":all="+std::to_wstring(all?1:0)+L":found="+std::to_wstring(seenComplete)+L","+std::to_wstring(seenRoute)+L","+std::to_wstring(seenAll);
+    for(const auto& c:controls){if(Contains(c.name,L"completa")||Contains(c.name,L"rota")||Contains(c.name,L"todos"))OCP_FILTER_ISSUE+=L":label-type="+std::to_wstring(c.type)+L",role="+std::to_wstring(c.legacyRole);}
+    return false;
   }
-  if(!complete || !route || !all){OCP_FILTER_ISSUE=L"options:complete="+std::to_wstring(complete?1:0)+L":route="+std::to_wstring(route?1:0)+L":all="+std::to_wstring(all?1:0)+L":found="+std::to_wstring(seenComplete)+L","+std::to_wstring(seenRoute)+L","+std::to_wstring(seenAll);return false;}
   bool central=false;
   for(const auto& c:controls){
     if(c.type!=UIA_ComboBoxControlTypeId || c.rect.top<window.top+160)continue;
