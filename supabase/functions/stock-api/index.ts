@@ -1,5 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2.57.4";
 import { validateSnapshot, enrich } from "./stock-core.js";
+import { decorateIndicator, calculateLiveIndicator, aggregateIndicators, selectIndicatorConfig, indicatorFlags } from "./oor-indicators.mjs";
 
 const db = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -35,6 +36,28 @@ async function requireSession(req: Request) {
 
 const canEdit = (u: any) => u?.role === "admin";
 const todayBR = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+async function oorIndicators(dates: string[]) {
+  const [historyResult, configResult] = await Promise.all([
+    db.from("stock_oor_indicator_history").select("reference_date,payload").order("reference_date"),
+    db.from("stock_oor_indicator_configs").select("*").order("reference_month"),
+  ]);
+  if (historyResult.error) throw historyResult.error;
+  if (configResult.error) throw configResult.error;
+  const configs=configResult.data||[];
+  const allowed=new Set(dates);
+  const byDate=new Map<string,any>((historyResult.data||[]).filter((r:any)=>allowed.has(r.reference_date)).map((r:any)=>[r.reference_date,decorateIndicator(r.payload)]));
+  const missing=dates.filter(d=>!byDate.has(d));
+  const live=new Map<string,any[]>();
+  if(missing.length) for(let offset=0;;offset+=1000){
+    const {data,error}=await db.from("stock_oor_daily_detail").select("reference_date,sku_code,status,available_qty")
+      .in("reference_date",missing).order("reference_date").order("sku_code").range(offset,offset+999);
+    if(error)throw error;
+    for(const r of data||[]){const rows=live.get(r.reference_date)||[];rows.push(r);live.set(r.reference_date,rows);}
+    if(!data||data.length<1000)break;
+  }
+  for(const [date,rows] of live){const metric=calculateLiveIndicator(date,rows,selectIndicatorConfig(date,configs));if(metric)byDate.set(date,metric);}
+  return {byDate,configs};
+}
 const rowKey = (r: any) => String(r?.id || `${r?.area || ""}|${r?.address || ""}|${r?.sku_code || ""}`);
 const isFefoReady = (r: any) => ["Prioridade FEFO", "Aguardar lote anterior"].includes(String(r?.fefo_status || "")) && Number.isFinite(Number(r?.pallets)) && Number(r.pallets) > 0;
 
@@ -420,6 +443,15 @@ Deno.serve(async (req: Request) => {
       const daily = decorate(all.find((x: any) => x.reference_date === referenceDate));
       const month = referenceDate.slice(0, 7);
       const monthDaily = all.filter((x: any) => x.reference_date.slice(0, 7) === month);
+      const indicatorData=await oorIndicators(all.map((x:any)=>x.reference_date));
+      const indicatorRows=[...indicatorData.byDate.values()].sort((a:any,b:any)=>a.reference_date.localeCompare(b.reference_date));
+      const monthIndicatorRows=indicatorRows.filter((x:any)=>x.reference_date.slice(0,7)===month);
+      const indicators={
+        daily:indicatorData.byDate.get(referenceDate)||null,
+        accumulated:aggregateIndicators(monthIndicatorRows),
+        month_daily:monthIndicatorRows,
+        monthly:[...new Set(indicatorRows.map((x:any)=>x.reference_date.slice(0,7)))].map(m=>({month:m,...aggregateIndicators(indicatorRows.filter((x:any)=>x.reference_date.slice(0,7)===m))})),
+      };
 
       const { data: monthlyRows, error: monthlyError } = await db.from("stock_oor_monthly_summary")
         .select("reference_month,out_count,over_count,ok_count,total_count,source")
@@ -455,6 +487,7 @@ Deno.serve(async (req: Request) => {
         monthly,
         month_daily: monthDaily.map(decorate),
         policy,
+        indicators,
         formula: {
           daily: "O OOR usa todos os códigos presentes no 02.05.02 LIBERAÇÃO CHEIO. OUT só é permitido para SKU com puxada no 02.05.01 nos 30 dias anteriores à data; OVER continua pela faixa máxima da PE; demais ficam OK.",
           accumulated: "soma das classificações diárias / soma do total de códigos do 02.05.02 em cada dia",
@@ -477,6 +510,12 @@ Deno.serve(async (req: Request) => {
         .eq("reference_date", referenceDate).order("sku_code");
       if (detailError) throw detailError;
       const detailRows = detailRowsRaw || [];
+      const [historyIndicator, indicatorConfig] = await Promise.all([
+        db.from("stock_oor_indicator_history").select("payload").eq("reference_date",referenceDate).maybeSingle(),
+        db.from("stock_oor_indicator_configs").select("*").lte("reference_month",referenceDate).order("reference_month",{ascending:false}).limit(1).maybeSingle(),
+      ]);
+      if(historyIndicator.error)throw historyIndicator.error;
+      if(indicatorConfig.error)throw indicatorConfig.error;
 
       const skuCodes = [...new Set(detailRows.map((x: any) => String(x.sku_code)))];
       const skuMap = new Map<string, any>();
@@ -491,6 +530,7 @@ Deno.serve(async (req: Request) => {
         const m = skuMap.get(String(x.sku_code)) || {};
         return {
           ...x,
+          ...indicatorFlags(x,historyIndicator.data?.payload,indicatorConfig.data),
           sku_code: String(x.sku_code),
           sku_name: String(m.sku_name || ""),
           unit_code: m.unit_code || null,

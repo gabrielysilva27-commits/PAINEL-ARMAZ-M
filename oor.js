@@ -4,7 +4,7 @@
   const $=id=>document.getElementById(id);
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const nf=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2});
-  const pct=v=>nf.format(Number(v||0)*100)+'%';
+  const pct=v=>v==null?'—':nf.format(Number(v)*100)+'%';
   const dt=v=>v?String(v).slice(0,10).split('-').reverse().join('/'):'—';
   const monthLabel=v=>{if(!v)return'—';const [y,m]=v.split('-');return ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][Number(m)]+'/'+y;};
   function normHeader(v){return String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g,' ').toUpperCase().replace(/[.:]+$/g,'');}
@@ -65,12 +65,21 @@
   }
   function filteredDetail(){
     const q=S.query.trim().toLowerCase();
-    return (S.detail?.rows||[]).filter(x=>(!S.status||x.status===S.status)&&(!q||String(x.sku_code).includes(q)||String(x.sku_name||'').toLowerCase().includes(q)));
+    return (S.detail?.rows||[]).filter(x=>(!S.status||(S.status==='INNO'?x.is_innovation&&x.indicator_eligible:S.status==='INDISP'?x.is_unavailable&&x.indicator_eligible:x.status===S.status))&&(!q||String(x.sku_code).includes(q)||String(x.sku_name||'').toLowerCase().includes(q)));
+  }
+  function indicatorCards(x,interactive=false){
+    if(!x)return '<div class="oor-note"><strong>Sem base para os indicadores complementares nesta data.</strong></div>';
+    const card=(key,label,value,detail)=>'<button type="button" class="oor-kpi extra '+(interactive&&S.status===key?'active':'')+'" '+(interactive&&key?'data-status="'+key+'"':'disabled')+'><span><small>'+label+'</small><strong>'+pct(value)+'</strong></span><em>'+detail+'</em></button>';
+    return '<section class="oor-kpis oor-extra">'+card('','Ocupação de estoque',x.occupation_pct,nf.format(x.average_stock_qty??x.stock_qty)+' / '+nf.format(x.average_capacity_qty??x.capacity_qty)+' cx'+(x.days?' · média/dia':''))+card('INDISP','Indisponibilidade',x.unavailable_pct,nf.format(x.unavailable_count)+' de '+nf.format(x.product_count))+card('INNO','Inovação',x.innovation_pct,nf.format(x.innovation_count)+' de '+nf.format(x.product_count))+'</section>'+
+      '<div class="oor-indicator-source">Capacidade, INNO e malha: '+esc(x.config_month||'—')+' · '+(x.source==='AGENTE_020502'?'Estoque atualizado pelo agente':x.source==='MIXED'?'Histórico da planilha e agente':'Histórico da planilha')+(x.days?' · '+nf.format(x.days)+' dias com base':'')+'</div>';
+  }
+  function indicatorTable(rows,monthly=false){
+    return '<section class="oor-table compact oor-indicator-table"><table><thead><tr><th>'+(monthly?'Mês':'Data')+'</th><th>Ocupação</th><th>Indisponibilidade</th><th>Inovação</th><th>'+(monthly?'Dias com base':'Produtos')+'</th></tr></thead><tbody>'+rows.map(x=>'<tr><td><strong>'+(monthly?monthLabel(x.month):dt(x.reference_date))+'</strong></td><td>'+pct(x.occupation_pct)+'</td><td>'+pct(x.unavailable_pct)+'</td><td>'+pct(x.innovation_pct)+'</td><td>'+nf.format(monthly?x.days:x.product_count)+'</td></tr>').join('')+'</tbody></table></section>';
   }
   function dailyContent(){
     const d=S.dash?.daily, rows=filteredDetail(), has=S.detail?.detail_available;
-    return cards(d,true)+
-      '<div class="oor-detail-head"><div><strong>'+esc(S.status||'Todos')+'</strong><span>'+rows.length+' produto'+(rows.length===1?'':'s')+'</span></div><input id="oorSearch" placeholder="Buscar SKU ou produto" value="'+esc(S.query)+'"></div>'+
+    return cards(d,true)+indicatorCards(S.dash?.indicators?.daily,true)+
+      '<div class="oor-detail-head"><div><strong>'+esc(({INNO:'Inovação',INDISP:'Indisponibilidade'})[S.status]||S.status||'Todos')+'</strong><span>'+rows.length+' produto'+(rows.length===1?'':'s')+'</span></div><input id="oorSearch" placeholder="Buscar SKU ou produto" value="'+esc(S.query)+'"></div>'+
       (has?
         '<section class="oor-table"><table><thead><tr><th>SKU</th><th>Produto</th><th>Un.</th><th>Disponível</th><th>Média/dia</th><th>Mín.</th><th>Máx.</th><th>Dias real</th><th>Status</th></tr></thead><tbody>'+
         (rows.length?rows.map(x=>'<tr><td><strong>'+esc(x.sku_code)+'</strong></td><td class="oor-product">'+esc(x.sku_name||'')+'</td><td>'+esc(x.unit_code||'—')+'</td><td>'+fmt(x.available_qty)+'</td><td>'+fmt(x.avg_sales_qty)+'</td><td>'+fmt(x.min_days)+'</td><td>'+fmt(x.max_days)+'</td><td>'+fmt(x.real_days)+'</td><td><span class="oor-status '+String(x.status||'').toLowerCase()+'">'+esc(x.status||'—')+'</span></td></tr>').join(''):'<tr><td colspan="9" class="empty-row">Nenhum produto neste status.</td></tr>')+
@@ -80,7 +89,7 @@
   function fmt(v){return v==null||v===''?'—':nf.format(Number(v));}
   function accumulatedContent(){
     const a=S.dash?.accumulated, rows=S.dash?.month_daily||[];
-    return cards(a,false)+
+    return cards(a,false)+indicatorCards(S.dash?.indicators?.accumulated,false)+indicatorTable(S.dash?.indicators?.month_daily||[])+
       '<div class="oor-section-title"><strong>Acumulado · '+monthLabel(a?.month)+'</strong><span>'+nf.format(a?.total_count||0)+' observações</span></div>'+
       '<section class="oor-table compact"><table><thead><tr><th>Data</th><th>OUT</th><th>% OUT</th><th>OVER</th><th>% OVER</th><th>OK</th><th>% OK</th><th>Total</th></tr></thead><tbody>'+
       rows.map(x=>'<tr><td><strong>'+dt(x.reference_date)+'</strong></td><td>'+nf.format(x.out_count)+'</td><td class="out-text">'+pct(x.out_pct)+'</td><td>'+nf.format(x.over_count)+'</td><td class="over-text">'+pct(x.over_pct)+'</td><td>'+nf.format(x.ok_count)+'</td><td class="ok-text">'+pct(x.ok_pct)+'</td><td>'+nf.format(x.total_count)+'</td></tr>').join('')+
@@ -88,7 +97,7 @@
   }
   function monthlyContent(){
     const rows=S.dash?.monthly||[];
-    return '<div class="oor-section-title"><strong>Visão mensal</strong><span>Percentual acumulado de cada arquivo mensal</span></div>'+
+    return indicatorTable(S.dash?.indicators?.monthly||[],true)+'<div class="oor-section-title"><strong>OUT / OVER / OK por mês</strong></div>'+
       '<section class="oor-table compact"><table><thead><tr><th>Mês</th><th>OUT</th><th>% OUT</th><th>OVER</th><th>% OVER</th><th>OK</th><th>% OK</th><th>Total</th></tr></thead><tbody>'+
       rows.map(x=>'<tr><td><strong>'+monthLabel(x.month)+'</strong></td><td>'+nf.format(x.out_count)+'</td><td class="out-text">'+pct(x.out_pct)+'</td><td>'+nf.format(x.over_count)+'</td><td class="over-text">'+pct(x.over_pct)+'</td><td>'+nf.format(x.ok_count)+'</td><td class="ok-text">'+pct(x.ok_pct)+'</td><td>'+nf.format(x.total_count)+'</td></tr>').join('')+
       '</tbody></table></section>';
@@ -136,7 +145,7 @@
   }
   function install(){
     view();
-    if(!$('stockOorCss')){const l=document.createElement('link');l.id='stockOorCss';l.rel='stylesheet';l.href='oor.css?v=20260923-4';document.head.appendChild(l);}
+    if(!$('stockOorCss')){const l=document.createElement('link');l.id='stockOorCss';l.rel='stylesheet';l.href='oor.css?v=20261005-indicators';document.head.appendChild(l);}
     window.__stockOor={open,reload:load};
   }
   install();
