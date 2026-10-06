@@ -1,4 +1,4 @@
-import {ocpDay,ocpJob} from './ocp-source.mjs';
+import {ocpDay,ocpJob,ocpHeadersValid,ocpNumber} from './ocp-source.mjs';
 import {wmsDay} from './wms-adherence.mjs';
 import {cycleTarget,cycleResult,frozenEvents} from './efc-cycle.mjs';
 import {mergeEvents,sharedEvents} from './shared-031120.mjs';
@@ -49,7 +49,7 @@ async function ocpState(){
  const latest=new Map();for(const file of imports)for(const r of file.maps)latest.set(r.map,r);const available=[...latest.values()],days=[];
  for(const f of inventory){const result=ocpDay(f.rows,available),row={reference_date:f.reference_date,...result,completed_at:result.status==='completed'?new Date().toISOString():null,updated_at:new Date().toISOString()};days.push(row);}
  if(days.length){const {error:e}=await db.from('efc_ocp_days').upsert(days,{onConflict:'reference_date'});check(e);}
- const needsInventory=!config.last_inventory_date||config.last_inventory_date<through||!inventory.some(f=>f.reference_date===through);
+ const needsInventory=!config.last_inventory_at||Date.parse(config.last_inventory_at)<Date.parse(target+'T21:00:00-03:00')||!config.last_inventory_date||config.last_inventory_date<through||!inventory.some(f=>f.reference_date===through);
  const pending=days.filter(d=>d.status!=='completed').length+(needsInventory?1:0);
  if(!pending&&config.backfill_through){const {error:e}=await db.from('efc_ocp_config').update({backfill_through:null}).eq('id',1);check(e);}
  return{enabled:true,pending,force_run:Boolean(config.backfill_through),inventory_through:through,job:ocpJob(inventory,days,through),days,start_hour:21,time_zone:'America/Sao_Paulo'};
@@ -66,9 +66,9 @@ Deno.serve(async req=>{
    const rows=b.rows.map((r:any)=>{const map=String(r.map),plate=String(r.plate||'');if(!/^\d{1,12}$/.test(map)||!/^\w{5,12}$/.test(plate)||Number(map)<Number(b.map_from)||Number(map)>Number(b.map_to))throw Error('Mapa inválido');return{map,plate,eligible:r.eligible!==false};});
    const {error}=await db.from('efc_ocp_inventory').upsert({reference_date:date,source_file:String(b.source_file||''),signature:String(b.signature||'').slice(0,100),map_from:Number(b.map_from),map_to:Number(b.map_to),rows,updated_at:new Date().toISOString()});check(error);return reply({ok:true});
   }
-  if(b.action==='agent_ocp_inventory_end'){if(!/^20[2-9]\d-\d{2}-\d{2}$/.test(b.date))return reply({error:'Data inválida'},400);const {error}=await db.from('efc_ocp_config').update({last_inventory_date:b.date}).eq('id',1);check(error);return reply({ok:true});}
+  if(b.action==='agent_ocp_inventory_end'){if(!/^20[2-9]\d-\d{2}-\d{2}$/.test(b.date))return reply({error:'Data inválida'},400);const {error}=await db.from('efc_ocp_config').update({last_inventory_date:b.date,last_inventory_at:new Date().toISOString()}).eq('id',1);check(error);return reply({ok:true});}
   if(b.action==='agent_ocp_begin'){
-   if(!/^[a-f0-9-]{36}$/.test(b.id)||!Array.isArray(b.headers)||b.headers.length!==34||!Number.isInteger(b.row_count)||b.row_count<1||b.row_count>200000||!/^\d{1,12}$/.test(b.map_from)||!/^\d{1,12}$/.test(b.map_to)||!Number.isSafeInteger(Number(b.map_from))||!Number.isSafeInteger(Number(b.map_to))||! /^[a-f0-9]{64}$/.test(b.sha256))return reply({error:'Importação OCP inválida'},400);
+   if(!/^[a-f0-9-]{36}$/.test(b.id)||!ocpHeadersValid(b.headers)||!Number.isInteger(b.row_count)||b.row_count<1||b.row_count>200000||!/^\d{1,12}$/.test(b.map_from)||!/^\d{1,12}$/.test(b.map_to)||!Number.isSafeInteger(Number(b.map_from))||!Number.isSafeInteger(Number(b.map_to))||! /^[a-f0-9]{64}$/.test(b.sha256))return reply({error:'Importação OCP inválida'},400);
    const {error}=await db.from('efc_ocp_imports').insert({id:b.id,agent_node_id:node.id,headers:b.headers,row_count:b.row_count,sha256:b.sha256,source_file:String(b.source_file||'').slice(0,180),map_from:Number(b.map_from),map_to:Number(b.map_to)});check(error);return reply({ok:true});
   }
   const id=String(b.id||'');if(b.action==='agent_ocp_error'){
@@ -81,7 +81,8 @@ Deno.serve(async req=>{
    const rows=b.rows.map((r:any,i:number)=>{
     const raw=r.raw_values;if(!Array.isArray(raw)||raw.length!==34||raw.some((v:any)=>typeof v!=='string'||v.length>2000)||r.row_no!==b.chunk*200+i+1||r.row_no>run.row_count||!/^\d{1,12}$/.test(raw[0])||!/^\d{1,12}$/.test(raw[19])||Number(raw[0])<run.map_from||Number(raw[0])>run.map_to)throw Error('Linha OCP inválida');
     const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw[1]);if(!m)throw Error('Data OCP inválida');const date=m[3]+'-'+m[2]+'-'+m[1];if(new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date)throw Error('Data OCP inválida');
-    return{row_no:r.row_no,date,map:String(Number(raw[0])),plate:raw[6].toUpperCase().replace(/[^A-Z0-9]/g,''),product:String(Number(raw[19])),pallet:raw[18],closed:raw[28].normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase()==='SIM',raw_values:raw};
+    for(const n of [...Array.from({length:11},(_,n)=>n+7),25,26,27,29,30])ocpNumber(raw[n]);if(!['SIM','NAO'].includes(raw[28].normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase()))throw Error('Flag pallet inválida');
+    return{row_no:r.row_no,date,boxes:ocpNumber(raw[26]),units:ocpNumber(raw[27]),map:String(Number(raw[0])),plate:raw[6].toUpperCase().replace(/[^A-Z0-9]/g,''),product:String(Number(raw[19])),pallet:raw[18],closed:raw[28].normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase()==='SIM',raw_values:raw};
    });const {error:e}=await db.from('efc_ocp_chunks').upsert({import_id:id,chunk:b.chunk,rows},{onConflict:'import_id,chunk'});check(e);return reply({ok:true,imported:rows.length});
   }
   if(b.action==='agent_ocp_finish'){const {error:e}=await db.rpc('efc_ocp_finish',{p_id:id,p_node:node.id});check(e);const {error:ce}=await db.from('efc_ocp_config').update({last_error:null,last_scan_at:new Date().toISOString()}).eq('id',1);check(ce);return reply({ok:true,...await ocpState()});}
