@@ -39,7 +39,7 @@ async function run(api,log){
    try{
     child=spawn(host,['//B','//nologo',script,output],{cwd:path.join(__dirname,'..'),windowsHide:true,stdio:'ignore',timeout:180000});
     child.once('error',fail);
-    child.once('exit',(code,signal)=>code===0?resolve():reject(Error('Leitura Outlook: código '+String(code)+' sinal '+String(signal||'nenhum'))));
+    child.once('exit',(code,signal)=>code===0?resolve():reject(Error('Leitura Outlook: código '+String(code)+' sinal '+String(signal||'nenhum')+'; etapa: '+(fs.existsSync(output+'.stage')?fs.readFileSync(output+'.stage','utf8'):'sem retorno'))));
    }catch(e){fail(e);}
   });
   const result=JSON.parse(fs.readFileSync(output,'utf8').replace(/^\uFEFF/,''));if(result.error)throw Error(result.error);
@@ -47,7 +47,7 @@ async function run(api,log){
   for(let i=0;i<messages.length;i+=50){await call(api,'agent_segmentations_import',{messages:messages.slice(i,i+50)});imported+=Math.min(50,messages.length-i);}
   await call(api,'agent_segmentations_scan',{messages:imported,review:messages.filter(x=>x.status==='review').length,errors:(result.errors||[]).length});
   log('EFC: '+imported+' e-mails de segmentação lidos; '+messages.filter(x=>x.status==='review').length+' pendentes de revisão.');
- }finally{try{fs.unlinkSync(output)}catch{}}
+ }finally{for(const file of [output,output+'.stage']){try{fs.unlinkSync(file)}catch{}}}
 }
 function kick(api,log){if(process.platform!=='win32'||busy||Date.now()<next)return;busy=true;next=Date.now()+30*60000;run(api,log).catch(async e=>{log('Segmentações Outlook: '+e.message,true);await call(api,'agent_segmentations_scan',{error:e.message}).catch(()=>{});next=Date.now()+5*60000;}).finally(()=>{busy=false;});}
 module.exports={parse,kick};

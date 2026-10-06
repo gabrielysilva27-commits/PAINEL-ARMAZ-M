@@ -16,6 +16,15 @@ Function IsoUtc(value)
  ' Date conversion is performed by Outlook PropertyAccessor in UTC.
  IsoUtc = Year(value) & "-" & Right("0" & Month(value),2) & "-" & Right("0" & Day(value),2) & "T" & Right("0" & Hour(value),2) & ":" & Right("0" & Minute(value),2) & ":" & Right("0" & Second(value),2) & "Z"
 End Function
+Sub Stage(value)
+ On Error Resume Next
+ Dim file, sys
+ Set sys = CreateObject("Scripting.FileSystemObject")
+ Set file = sys.CreateTextFile(outputPath & ".stage", True)
+ file.Write value & "; mensagens=" & CStr(total)
+ file.Close
+ Err.Clear
+End Sub
 Sub AddError(value)
  If errors <> "" Then errors = errors & ","
  errors = errors & Json(value)
@@ -25,13 +34,20 @@ Sub Visit(folder, depth)
  Dim items, mail, child, i, subject, sender, received, utc, entry, html, folderName
  If depth > 12 Or total >= 3000 Then Exit Sub
  If folder.DefaultItemType = 0 Then
-  Set items = folder.Items
+  Stage "filtrando pasta"
+  Set items = folder.Items.Restrict("@SQL=" & Chr(34) & "urn:schemas:httpmail:subject" & Chr(34) & " like '%EMPILHADEIRA%'")
+  If Err.Number <> 0 Then
+   Err.Clear
+   Set items = folder.Items
+  End If
+  Stage "ordenando pasta"
   items.Sort "[ReceivedTime]", True
   If Err.Number <> 0 Then
    AddError "Nao foi possivel acessar uma pasta de e-mails."
    Err.Clear
   Else
    For i = 1 To items.Count
+    Stage "lendo mensagem " & CStr(i) & "/" & CStr(items.Count)
     Set mail = items.Item(i)
     If Err.Number = 0 Then
      If mail.Class = 43 Then
@@ -42,6 +58,7 @@ Sub Visit(folder, depth)
        sender = UCase(CStr(mail.SenderName))
        If InStr(sender,"LUCIANO") > 0 And InStr(sender,"GOMES") > 0 Then
         entry = CStr(mail.EntryID)
+        Stage "lendo tabela de segmentacao"
         html = CStr(mail.HTMLBody)
         utc = mail.PropertyAccessor.LocalTimeToUTC(received)
         If Err.Number = 0 Then
@@ -69,13 +86,16 @@ Sub Visit(folder, depth)
  Err.Clear
 End Sub
 On Error Resume Next
+Stage "conectando ao Outlook classico"
 Set outlook = GetObject(, "Outlook.Application")
 If Err.Number <> 0 Then
  fatal = "Outlook classico nao disponivel para o usuario do agente (" & CStr(Err.Number) & ")."
  Err.Clear
 Else
+ Stage "acessando caixa MAPI"
  Set ns = outlook.GetNamespace("MAPI")
  Set root = Nothing
+ Stage "localizando conta"
  For Each account In ns.Accounts
   If LCase(CStr(account.SmtpAddress)) = "gabrielypi@imperio1973.com" Then Set root = account.DeliveryStore.GetRootFolder() : Exit For
  Next
@@ -87,6 +107,7 @@ Else
  If root Is Nothing Then
   fatal = "A caixa gabrielypi@imperio1973.com nao esta disponivel no Outlook classico deste usuario."
  Else
+  Stage "buscando pastas"
   Visit root, 0
  End If
 End If
@@ -95,6 +116,7 @@ result = "{" & Json("messages") & ":[" & messages & "]," & Json("errors") & ":["
 If fatal <> "" Then result = result & "," & Json("error") & ":" & Json(fatal)
 result = result & "}"
 Err.Clear
+Stage "salvando resultado"
 Set stream = CreateObject("ADODB.Stream")
 stream.Type = 2 : stream.Charset = "utf-8" : stream.Open
 stream.WriteText result

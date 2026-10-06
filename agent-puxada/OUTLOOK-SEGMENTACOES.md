@@ -1,6 +1,6 @@
 # Segmentações do EFC
 
-Versão 3.2.129. O agente ADM consulta o Outlook clássico já aberto, no mesmo usuário Windows, usando o objeto COM existente. Não cria perfil, não solicita senha, não altera a política de execução, não envia mensagens nem marca e-mails como lidos. O agente PUXADA não coleta e-mails.
+Versão 3.2.134. O agente ADM consulta o Outlook clássico já aberto, no mesmo usuário Windows, usando o objeto COM existente pelo Windows Script Host (cscript). Não cria perfil, não solicita senha, não altera a política de execução, não envia mensagens nem marca e-mails como lidos. O agente PUXADA não coleta e-mails.
 
 Escopo: caixa `gabrielypi@imperio1973.com`, remetente com nome Luciano Gomes, assunto segmentação de clientes com empilhadeira, ano operacional 2026. A primeira leitura reúne o histórico disponível nas pastas da caixa; novas leituras ocorrem a cada 30 minutos. Se o Outlook estiver indisponível, tenta novamente após cinco minutos. A coleta roda em segundo plano e tem limite de três minutos por tentativa.
 
