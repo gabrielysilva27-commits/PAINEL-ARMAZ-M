@@ -14,7 +14,7 @@
 // Read-only discovery of IE-mode document surfaces. No URL, page content,
 // cookie, credential, or window title is returned to JavaScript.
 struct Surface { bool promax; bool accessible; bool edgeWindow; };
-struct Scan { std::vector<Surface> surfaces; std::vector<std::wstring> layout; bool edgeWindow; int reportWindows; int homeWindows; int shortcutControls; int uiaElements; int csvControls; int visualizeControls; };
+struct Scan { std::vector<Surface> surfaces; std::vector<std::wstring> layout; std::vector<std::wstring> windows; bool edgeWindow; int reportWindows; int homeWindows; int shortcutControls; int uiaElements; int csvControls; int visualizeControls; };
 
 static void ProbeAccessibility(HWND hwnd, Scan* scan, const std::wstring& windowIndex) {
   RECT windowRect = {};
@@ -161,6 +161,12 @@ static BOOL CALLBACK VisitWindow(HWND hwnd, LPARAM state) {
     ++scan->reportWindows;
     ProbeAccessibility(hwnd, scan, std::to_wstring(scan->reportWindows));
   }
+  RECT bounds={};
+  if(IsWindowVisible(hwnd)&&GetWindowRect(hwnd,&bounds)&&bounds.right-bounds.left>500&&scan->windows.size()<20){
+    const std::wstring kind=title.find(L"ocp carregamento")!=std::wstring::npos?L"OCP":title.find(L"promaxweb")!=std::wstring::npos?L"HOME":title.find(L"movimenta")!=std::wstring::npos?L"STOCK":L"OTHER";
+    HWND owner=GetAncestor(hwnd,GA_ROOTOWNER);
+    scan->windows.push_back(kind+L":enabled="+std::to_wstring(IsWindowEnabled(hwnd)?1:0)+L":foreground="+std::to_wstring(GetAncestor(GetForegroundWindow(),GA_ROOT)==hwnd?1:0)+L":owner_enabled="+std::to_wstring(IsWindowEnabled(owner)?1:0));
+  }
   const size_t before = scan->surfaces.size();
   const bool prior = scan->edgeWindow;
   scan->edgeWindow = true;
@@ -198,6 +204,9 @@ static void SetLayout(napi_env env, napi_value out, const Scan& scan) {
     napi_set_element(env, array, static_cast<uint32_t>(i), value);
   }
   napi_set_named_property(env, out, "layout", array);
+  napi_value windows; napi_create_array_with_length(env,scan.windows.size(),&windows);
+  for(size_t i=0;i<scan.windows.size();++i){napi_value v;napi_create_string_utf16(env,reinterpret_cast<const char16_t*>(scan.windows[i].c_str()),scan.windows[i].size(),&v);napi_set_element(env,windows,static_cast<uint32_t>(i),v);}
+  napi_set_named_property(env,out,"windows",windows);
 }
 
 static napi_value Probe(napi_env env, napi_callback_info info) {
@@ -1213,12 +1222,16 @@ static napi_value Act(napi_env env, napi_callback_info info) {
       } else {
         EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&target));
       }
+      if(stage==L"shortcut03023601" && target.hwnd && !IsWindowEnabled(target.hwnd)){
+        target.hwnd=nullptr;
+        for(HWND candidate:target.candidates){if(IsWindow(candidate)&&IsWindowEnabled(candidate)){target.hwnd=candidate;if(HasForeground(candidate))break;}}
+      }
       RECT r = {};
       if (!target.hwnd || !GetWindowRect(target.hwnd, &r)) result = L"window-not-found";
       else {
         if (!FocusWindow(target.hwnd)) {
           result=L"window-not-foreground";
-          if(ocpStage)result+=L":enabled="+std::to_wstring(IsWindowEnabled(target.hwnd)?1:0)+L":popup="+std::to_wstring(GetLastActivePopup(target.hwnd)!=target.hwnd?1:0);
+          if(ocpStage)result+=L":exists="+std::to_wstring(IsWindow(target.hwnd)?1:0)+L":enabled="+std::to_wstring(IsWindowEnabled(target.hwnd)?1:0)+L":popup="+std::to_wstring(GetLastActivePopup(target.hwnd)!=target.hwnd?1:0);
         }
         else if (stage == L"shortcut" || stage == L"shortcut031120" || stage == L"shortcut03023601") {
           result = L"shortcut-controls-not-found";

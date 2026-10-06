@@ -16,6 +16,7 @@ function probe() {
       uiaElements: Math.max(0, Number(result.uiaElements) || 0),
       csvControls: Math.max(0, Number(result.csvControls) || 0),
       visualizeControls: Math.max(0, Number(result.visualizeControls) || 0),
+      windows:Array.isArray(result.windows)?result.windows.filter(x=>/^(?:OCP|HOME|STOCK|OTHER):enabled=[01]:foreground=[01]:owner_enabled=[01]$/.test(x)).slice(0,20):[],
       layout: Array.isArray(result.layout) ? result.layout.filter(x => /^(?:H)?\d+:[ECKB]:-?\d+:-?\d+:\d+:\d+$/.test(x)).slice(0, 90) : []
     };
   } catch (_) {
