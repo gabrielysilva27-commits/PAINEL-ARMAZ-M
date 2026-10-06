@@ -811,10 +811,29 @@ static bool Fill031120Control(const VisibleControl& control, const std::wstring&
 }
 static bool SelectOCPOption(const VisibleControl& control, bool selected) {
   IUIAutomation* automation=nullptr; IUIAutomationElement* element=nullptr;
-  POINT point={(control.rect.left+control.rect.right)/2,(control.rect.top+control.rect.bottom)/2};
+  // Point lookup can return the text child inside a checkbox/radio. Resolve
+  // the semantic control itself by type and rectangle in the active window.
+  IUIAutomationElement* root=nullptr; IUIAutomationCondition* condition=nullptr;
+  IUIAutomationElementArray* elements=nullptr;
   bool ok=false;
   if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation,nullptr,CLSCTX_INPROC_SERVER,IID_IUIAutomation,reinterpret_cast<void**>(&automation))) && automation &&
-      SUCCEEDED(automation->ElementFromPoint(point,&element)) && element) {
+      SUCCEEDED(automation->ElementFromHandle(GetForegroundWindow(),&root)) && root) {
+    VARIANT type; VariantInit(&type);type.vt=VT_I4;type.lVal=control.type;
+    if(SUCCEEDED(automation->CreatePropertyCondition(UIA_ControlTypePropertyId,type,&condition)) && condition &&
+       SUCCEEDED(root->FindAll(TreeScope_Descendants,condition,&elements)) && elements){
+      int count=0;elements->get_Length(&count);
+      for(int i=0;i<count && i<2000;++i){
+        IUIAutomationElement* candidate=nullptr;RECT rect={};
+        if(SUCCEEDED(elements->GetElement(i,&candidate)) && candidate){
+          if(SUCCEEDED(candidate->get_CurrentBoundingRectangle(&rect)) &&
+             abs(rect.left-control.rect.left)<=2 && abs(rect.top-control.rect.top)<=2 &&
+             abs(rect.right-control.rect.right)<=2 && abs(rect.bottom-control.rect.bottom)<=2){element=candidate;break;}
+          candidate->Release();
+        }
+      }
+    }
+  }
+  if(element) {
     if (control.type!=UIA_RadioButtonControlTypeId) {
       IUIAutomationTogglePattern* pattern=nullptr;
       if (SUCCEEDED(element->GetCurrentPatternAs(UIA_TogglePatternId,IID_IUIAutomationTogglePattern,reinterpret_cast<void**>(&pattern))) && pattern) {
@@ -844,6 +863,7 @@ static bool SelectOCPOption(const VisibleControl& control, bool selected) {
       ok=checked(&state)&&state==selected;
     }
   }
+  if(elements)elements->Release();if(condition)condition->Release();if(root)root->Release();
   if(element)element->Release(); if(automation)automation->Release(); return ok;
 }
 static thread_local std::wstring OCP_FILTER_ISSUE;
@@ -872,13 +892,13 @@ static bool FillOCP(HWND hwnd,const std::wstring* values) {
   if(maps.size()!=2){OCP_FILTER_ISSUE=L"map-fields:"+std::to_wstring(edits.size());return false;}
   // Select the full source, not a picking-only or pallet-only export. Require
   // readable option state; never invert checkboxes blindly.
-  bool complete=false,route=false,all=false;
+  bool complete=false,route=false,all=false;int seenComplete=0,seenRoute=0,seenAll=0;
   for(const auto& c:controls) {
-    if((c.type==UIA_CheckBoxControlTypeId||c.type==UIA_TreeItemControlTypeId) && Contains(c.name,L"todos"))all=SelectOCPOption(c,true);
-    if(c.type==UIA_RadioButtonControlTypeId && Contains(c.name,L"completa"))complete=SelectOCPOption(c,true);
-    if(c.type==UIA_RadioButtonControlTypeId && Contains(c.name,L"rota"))route=SelectOCPOption(c,true);
+    if((c.type==UIA_CheckBoxControlTypeId||c.type==UIA_TreeItemControlTypeId) && Contains(c.name,L"todos")){++seenAll;all=SelectOCPOption(c,true);}
+    if(c.type==UIA_RadioButtonControlTypeId && Contains(c.name,L"completa")){++seenComplete;complete=SelectOCPOption(c,true);}
+    if(c.type==UIA_RadioButtonControlTypeId && Contains(c.name,L"rota")){++seenRoute;route=SelectOCPOption(c,true);}
   }
-  if(!complete || !route || !all){OCP_FILTER_ISSUE=L"options:complete="+std::to_wstring(complete?1:0)+L":route="+std::to_wstring(route?1:0)+L":all="+std::to_wstring(all?1:0);return false;}
+  if(!complete || !route || !all){OCP_FILTER_ISSUE=L"options:complete="+std::to_wstring(complete?1:0)+L":route="+std::to_wstring(route?1:0)+L":all="+std::to_wstring(all?1:0)+L":found="+std::to_wstring(seenComplete)+L","+std::to_wstring(seenRoute)+L","+std::to_wstring(seenAll);return false;}
   bool central=false;
   for(const auto& c:controls){
     if(c.type!=UIA_ComboBoxControlTypeId || c.rect.top<window.top+160)continue;
