@@ -1,5 +1,7 @@
 Option Explicit
-Dim outputPath, outlook, ns, root, account, store, messages, errors, total, fatal
+Dim outputPath, outlook, ns, root, account, store, messages, errors, total, fatal, targets
+targets = ""
+If WScript.Arguments.Count > 1 Then targets = WScript.Arguments(1)
 outputPath = WScript.Arguments(0)
 messages = "" : errors = "" : total = 0 : fatal = ""
 Function Json(value)
@@ -29,6 +31,17 @@ Sub AddError(value)
  If errors <> "" Then errors = errors & ","
  errors = errors & Json(value)
 End Sub
+Function Wanted(subject)
+ Dim regex, matches, item, date
+ Wanted = False
+ Set regex = New RegExp
+ regex.Pattern = "([0-9]{2})[/.-]([0-9]{2})[/.-](2026)"
+ Set matches = regex.Execute(subject)
+ If matches.Count = 0 Then Exit Function
+ Set item = matches(0)
+ date = item.SubMatches(2) & "-" & item.SubMatches(1) & "-" & item.SubMatches(0)
+ Wanted = InStr("," & targets & ",", "," & date & ",") > 0
+End Function
 Sub Visit(folder, depth)
  On Error Resume Next
  Dim items, mail, child, i, subject, sender, received, utc, entry, html, folderName
@@ -54,7 +67,7 @@ Sub Visit(folder, depth)
       received = mail.ReceivedTime
       If received < DateSerial(2026,1,1) Then Exit For
       subject = UCase(CStr(mail.Subject))
-      If InStr(subject,"SEGMENTA") > 0 And InStr(subject,"CLIENTES") > 0 And InStr(subject,"EMPILHADEIRA") > 0 Then
+      If Wanted(subject) And InStr(subject,"SEGMENTA") > 0 And InStr(subject,"CLIENTES") > 0 And InStr(subject,"EMPILHADEIRA") > 0 Then
        sender = UCase(CStr(mail.SenderName))
        If InStr(sender,"LUCIANO") > 0 And InStr(sender,"GOMES") > 0 Then
         entry = CStr(mail.EntryID)

@@ -28,3 +28,9 @@ test('handles encoded accented headers and plural map headers',()=>{
  const result=parse({subject:'SEGMENTAÇÃO DE CLIENTES COM EMPILHADEIRA DIA 06/10/2026',html:table.replace('Mapa','Mapas').replace('Veículo','Ve&iacute;culo')});
  assert.equal(result.status,'parsed');assert.equal(result.rows.length,2);
 });
+
+test('completed Outlook cycle waits for next 21h opening in Brazil',()=>{
+ const {nextOpening}=require('../agent-puxada/lib/outlook-segmentations');
+ assert.equal(new Date(nextOpening(new Date('2026-10-06T14:00:00Z'))).toISOString(),'2026-10-07T00:00:00.000Z');
+ assert.equal(new Date(nextOpening(new Date('2026-10-07T00:30:00Z'))).toISOString(),'2026-10-08T00:00:00.000Z');
+});

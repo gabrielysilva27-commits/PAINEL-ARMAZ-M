@@ -1,3 +1,4 @@
+import {wmsAdherence} from './efc-wms.mjs?v=20261006-night-wms-1';
 import {calculate,people,ratio,norm,loading,priorities} from './efc-core.mjs?v=20261002-map-replacements-1';
 import {selectPeriod,sum,weekStart} from './efc-analytics.mjs?v=20261001-native-3';
 const mean=xs=>xs.length?xs.reduce((a,x)=>a+x,0)/xs.length:null;
@@ -25,6 +26,7 @@ export function calculatePeriod(data,month,day='',week='',history=null){
   if(c.loads.some(x=>x.status==='fleet_unknown'))c.summary.efc=null;
   c.helpers=c.helpers.map(x=>({...x,efm_score:x.efm,efm:x.duration>0&&x.standard>0&&x.pallets>0&&x.boxes>0?x.duration/(x.standard*x.pallets):null}));c.people=people(c.helpers);const valid=c.helpers.filter(x=>x.efm!=null);c.summary.efm=ratio(sum(valid,'duration'),valid.reduce((a,x)=>a+x.standard*x.pallets,0));const supply=c.supply.filter(x=>x.capacity!=null);c.summary.estimated_pallets=supply.length?sum(supply,'estimated_pallets'):null;c.summary.boxes=c.helpers.some(x=>x.boxes!=null)?c.summary.boxes:null;c.summary.resupply_rate=null;c.summary.resupply_wms=null;c.summary.replenishment_done=null;
  }
+ c.wmsEstimate=wmsAdherence(c.loads,filtered.segmentations||[]);
  return c;
 }
 export function historyRanking(c){if(!c.history||!c.fullMonth)return null;return c.history.ranking.map(x=>({...x,average_minutes:x.average_time==null?null:x.average_time*1440,legacy_pay:x.payment,days:null,minutes:null,activities:null,error_quantity:null,missing:null})).sort((a,b)=>b.pallets-a.pallets);}

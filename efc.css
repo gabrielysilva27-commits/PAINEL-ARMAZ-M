@@ -14,3 +14,6 @@
 @media(max-width:1150px){.efc-vmetrics{gap:9px}.efc-vmetric{padding:14px}.efc-vmetric strong{font-size:23px}.efc-visual-panel{padding:16px}.efc-profile-grid{grid-template-columns:1fr}.efc-donut-layout{justify-content:center}.efc-donut-legend{max-width:250px}.efc-calculation-list p{grid-template-columns:110px 1fr;gap:10px}}
 @media(max-width:760px){.efc-dashboard-heading{align-items:flex-start}.efc-dashboard-heading h1{font-size:15px}.efc-dashboard-heading p{max-width:240px}.efc-mode-note{display:block}.efc-mode-note a{display:block;margin-top:5px}.efc-vmetrics{grid-template-columns:repeat(2,minmax(0,1fr))}.efc-visual-grid{grid-template-columns:1fr}.efc-tabs button{padding:10px;font-size:10px!important}.efc-toolbar select{min-width:120px;max-width:170px}.efc-chart-heading{flex-wrap:wrap}.efc-panel{padding:14px}.efc-panel .efc-toolbar label{margin-left:0}.efc-cards{grid-template-columns:1fr 1fr}.efc-axis[data-compact-hide=true]{display:none}.efc-calculation-list p{grid-template-columns:1fr;gap:3px}}
 .efc-chart-value{fill:#85868c;font-size:11px}.efc-mode-note small{display:block;font-size:9px;margin-top:4px;color:#ad856b}
+
+.efc-wms-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:760px){.efc-wms-metrics{grid-template-columns:1fr}}

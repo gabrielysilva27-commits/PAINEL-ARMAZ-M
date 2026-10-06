@@ -1,3 +1,4 @@
+import {wmsDay} from './wms-adherence.mjs';
 import {cycleTarget,cycleResult,frozenEvents} from './efc-cycle.mjs';
 import {mergeEvents,sharedEvents} from './shared-031120.mjs';
 import {createClient} from 'jsr:@supabase/supabase-js@2.57.4';
@@ -22,19 +23,37 @@ async function reconcileCycle(date:string){
  const result=cycleResult(date,file.rows,sharedEvents(records)),now=new Date().toISOString(),patch={...result,plans:file.rows,source_file:file.source_file,map_import_at:file.updated_at,report_import_at:records.map((r:any)=>r.completed_at).sort().at(-1)||null,updated_at:now,completed_at:result.status==='completed'?now:null};
  const {error:ue}=await db.from('efc_night_cycles').update(patch).eq('reference_date',date).in('status',['waiting','running']);check(ue);return{...cycle,...patch};
 }
+async function segmentationCycles(){
+ const target=cycleTarget(),startDate='2026-10-06';
+ const {data:latest,error}=await db.from('efc_segmentation_night_cycles').select('reference_date').order('reference_date',{ascending:false}).limit(1).maybeSingle();check(error);
+ const start=latest?.reference_date?new Date(Date.parse(latest.reference_date+'T12:00:00Z')+86400000).toISOString().slice(0,10):startDate;
+ for(let date=start;date<=target&&date<'2027-01-01';date=new Date(Date.parse(date+'T12:00:00Z')+86400000).toISOString().slice(0,10)){const {error:ie}=await db.from('efc_segmentation_night_cycles').upsert({reference_date:date,status:'waiting'},{onConflict:'reference_date',ignoreDuplicates:true});check(ie);}
+ const waiting=await all(()=>db.from('efc_segmentation_night_cycles').select('*').eq('status','waiting').order('reference_date'));
+ const {data:scan,error:scanError}=await db.from('efc_segmentation_scans').select('updated_at,errors,last_error').order('updated_at',{ascending:false}).limit(1).maybeSingle();check(scanError);
+ if(!scan||scan.last_error||scan.errors)return waiting;
+ for(const cycle of waiting){
+  const date=cycle.reference_date;
+  const [file,emails]=await Promise.all([db.from('efc_agent_map_files').select('rows').eq('reference_date',date).maybeSingle(),all(()=>db.from('efc_segmentation_emails').select('*').eq('reference_date',date).order('received_at'))]);check(file.error);
+  if(emails.some((m:any)=>m.updated_at>scan.updated_at))continue;
+  const result=wmsDay(date,file.data?.rows||[],emails);
+  if(result.rate!==null){const {error:ue}=await db.from('efc_segmentation_night_cycles').update({status:'completed',email_id:result.email_id,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('reference_date',date).eq('status','waiting');check(ue);cycle.status='completed';}
+ }
+ return waiting.filter(c=>c.status==='waiting');
+}
 Deno.serve(async req=>{
  if(req.method==='OPTIONS')return reply({ok:true});if(req.method==='GET')return reply({service:'efc-api',version:'2026-10-02-fleet-fixed-1'});if(req.method!=='POST')return reply({error:'Método inválido'},405);
  try{
  const b=await req.json();
  if(['agent_segmentations_status','agent_segmentations_import','agent_segmentations_scan'].includes(b.action)){
   const node=await agentNode(req);if(!node)return reply({enabled:false},b.action==='agent_segmentations_status'?200:403);
-  if(b.action==='agent_segmentations_status')return reply({enabled:true,account:'gabrielypi@imperio1973.com'});
+  if(b.action==='agent_segmentations_status'){const cycles=await segmentationCycles();return reply({enabled:true,account:'gabrielypi@imperio1973.com',targets:cycles.map(c=>c.reference_date),start_hour:21,time_zone:'America/Sao_Paulo'});}
   if(b.action==='agent_segmentations_scan'){
    const clean=(v:any)=>Number.isInteger(v)&&v>=0&&v<=10000?v:0;
-   const {error}=await db.from('efc_segmentation_scans').upsert({agent_node_id:node.id,messages:clean(b.messages),review:clean(b.review),errors:clean(b.errors),last_error:b.error?String(b.error).slice(0,400):null,updated_at:new Date().toISOString()});check(error);return reply({ok:true});
+   const {error}=await db.from('efc_segmentation_scans').upsert({agent_node_id:node.id,messages:clean(b.messages),review:clean(b.review),errors:clean(b.errors),last_error:b.error?String(b.error).slice(0,400):null,updated_at:new Date().toISOString()});check(error);const cycles=b.error?null:await segmentationCycles();return reply({ok:true,targets:cycles?.map(c=>c.reference_date)||[]});
   }
   if(!Array.isArray(b.messages)||b.messages.length>50||JSON.stringify(b.messages).length>1000000)return reply({error:'Lote inválido'},400);
-  const emails=b.messages.map((m:any)=>{
+  const pending=new Set((await all(()=>db.from('efc_segmentation_night_cycles').select('reference_date').eq('status','waiting').order('reference_date'))).map(c=>c.reference_date));
+  const emails=b.messages.filter((m:any)=>pending.has(String(m.date||''))).map((m:any)=>{
    const date=String(m.date||'');if(!/^[a-f0-9]{64}$/.test(m.id)||!/^2026-\d{2}-\d{2}$/.test(date)||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date||!['parsed','review'].includes(m.status)||!Array.isArray(m.rows)||m.rows.length>2000||!Number.isFinite(Date.parse(m.received_at)))throw Error('E-mail inválido');
    const rows=m.rows.map((r:any)=>{for(const key of ['map','vehicle','customer'])if(!/^\d{1,12}$/.test(String(r[key])))throw Error('Segmentação inválida');return {map:String(r.map),vehicle:String(r.vehicle),customer:String(r.customer)};});
    if(m.status==='parsed'&&!rows.length)throw Error('Tabela vazia');
@@ -86,7 +105,7 @@ Deno.serve(async req=>{
  const [chunks,patches,events,pcd,agent,history,shared,cycles]=await Promise.all([all(()=>db.from('efc_archive').select('*').eq('month',month).order('kind').order('chunk')),all(()=>db.from('efc_adjustments').select('*').eq('month',month).order('record_id')),all(()=>db.from('efc_agent_events').select('id,payload').gte('reference_date',before).lt('reference_date',next).order('id')),all(()=>db.from('efc_agent_map_files').select('*').gte('reference_date',from).lt('reference_date',next).order('reference_date')),db.from('efd_agent_config').select('status,last_scan_at,last_error').eq('id',1).single(),db.from('efc_workbook_history').select('payload').eq('month',month).maybeSingle(),all(()=>db.from('report_031120_current').select('reference_date,headers,raw_values,source_file,completed_at').gte('reference_date',before).lt('reference_date',next).order('reference_date').order('row_no')),all(()=>db.from('efc_night_cycles').select('*').gte('reference_date',from).lt('reference_date',next).order('reference_date'))]);check(agent.error);check(history.error);
  const data:any={};for(const c of chunks){data[c.kind]??=[];data[c.kind].push(...c.payload);}for(const p of patches){const row=data[p.kind]?.find((x:any)=>x.id===p.record_id);if(row){Object.assign(row,p.patch);row.adjustment_reason=p.reason;}}
  const [segmentationEmails,segmentationScans]=await Promise.all([all(()=>db.from('efc_segmentation_emails').select('id,reference_date,received_at,rows,status,issue').gte('reference_date',from).lt('reference_date',next).order('reference_date').order('id')),db.from('efc_segmentation_scans').select('messages,review,errors,last_error,updated_at').order('updated_at',{ascending:false}).limit(1).maybeSingle()]);check(segmentationScans.error);
- data.segmentations=segmentationEmails;
+ data.segmentations=segmentationEmails.map((m:any)=>({...m,date:m.reference_date}));
  data.events=frozenEvents(mergeEvents(data.events||[],events,shared),cycles);
  const covered=new Set(pcd.map((r:any)=>r.reference_date)),planned=(data.pcd||[]).filter((p:any)=>!covered.has(p.date));for(const file of pcd){const snapshot=cycles.find((c:any)=>c.reference_date===file.reference_date);if(snapshot)planned.push(...snapshot.plans);else planned.push(...file.rows);}for(const p of planned){const matching=data.events.filter((e:any)=>e.emission===p.date&&e.plate===String(p.plate).replace(/[^A-Z0-9]/gi,'').toUpperCase());const fleets=[...new Set(matching.map((e:any)=>e.fleet).filter(Boolean))];if(!p.fleet&&fleets.length===1)p.fleet=fleets[0];}data.pcd=planned;
  return reply({month,data,history:history.data?.payload||null,agent:agent.data,sources:[...new Set([...chunks.map(c=>c.source),...shared.map((r:any)=>r.source_file),...pcd.map((r:any)=>r.source_file)])],routine:{start_hour:21,time_zone:'America/Sao_Paulo',cycles:cycles.map((c:any)=>({date:c.reference_date,status:c.status,planned:c.planned,matched:c.matched,completed_at:c.completed_at}))},coverage:{segmentations:segmentationScans.data,report_031120:{dates:[...new Set(shared.map((r:any)=>r.reference_date))],last_import_at:shared.map((r:any)=>r.completed_at).sort().at(-1)||null},maps:{dates:[...new Set(pcd.map((r:any)=>r.reference_date))],last_import_at:pcd.map((r:any)=>r.updated_at).sort().at(-1)||null}},adjustments:patches.length});

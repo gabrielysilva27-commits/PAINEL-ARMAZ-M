@@ -39,8 +39,15 @@ function parse(message){
 }
 async function call(api,action,payload){const r=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json','x-agent-token':api.token},body:JSON.stringify({action,...payload}),signal:AbortSignal.timeout(30000)});const d=await r.json();if(!r.ok)throw Error(d.error||'Erro na coleta de segmentações');return d;}
 let busy=false,next=0;
+function nextOpening(now=new Date()){
+ const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(now).map(x=>[x.type,x.value]));
+ let date=parts.year+'-'+parts.month+'-'+parts.day;
+ if(Number(parts.hour)>=21)date=new Date(Date.parse(date+'T12:00:00Z')+86400000).toISOString().slice(0,10);
+ return Date.parse(date+'T21:00:00-03:00');
+}
 async function run(api,log){
- const allowed=await call(api,'agent_segmentations_status',{});if(!allowed.enabled)return;
+ const allowed=await call(api,'agent_segmentations_status',{});if(!allowed.enabled||!Array.isArray(allowed.targets)||!allowed.targets.length){next=nextOpening();return;}
+ const targets=new Set(allowed.targets);
  const output=path.join(__dirname,'..','data','outlook-segmentations-'+process.pid+'.json');fs.mkdirSync(path.dirname(output),{recursive:true});
  try{
   const host=path.join(process.env.SystemRoot||'C:\\Windows','System32','cscript.exe');
@@ -49,17 +56,18 @@ async function run(api,log){
    let child;
    const fail=e=>reject(Error('Inicialização Outlook: '+String(e.code||e.message||'falha')+'; host=cscript; exe='+fs.existsSync(host)));
    try{
-    child=spawn(host,['//B','//nologo',script,output],{cwd:path.join(__dirname,'..'),windowsHide:true,stdio:'ignore',timeout:180000});
+    child=spawn(host,['//B','//nologo',script,output,[...targets].join(',')],{cwd:path.join(__dirname,'..'),windowsHide:true,stdio:'ignore',timeout:180000});
     child.once('error',fail);
     child.once('exit',(code,signal)=>code===0?resolve():reject(Error('Leitura Outlook: código '+String(code)+' sinal '+String(signal||'nenhum')+'; etapa: '+(fs.existsSync(output+'.stage')?fs.readFileSync(output+'.stage','utf8'):'sem retorno'))));
    }catch(e){fail(e);}
   });
   const result=JSON.parse(fs.readFileSync(output,'utf8').replace(/^\uFEFF/,''));if(result.error)throw Error(result.error);
-  const messages=(result.messages||[]).map(parse).filter(Boolean);let imported=0;
+  const messages=(result.messages||[]).map(parse).filter(x=>x&&targets.has(x.date));let imported=0;
   for(let i=0;i<messages.length;i+=50){await call(api,'agent_segmentations_import',{messages:messages.slice(i,i+50)});imported+=Math.min(50,messages.length-i);}
-  await call(api,'agent_segmentations_scan',{messages:imported,review:messages.filter(x=>x.status==='review').length,errors:(result.errors||[]).length});
+  const completed=await call(api,'agent_segmentations_scan',{messages:imported,review:messages.filter(x=>x.status==='review').length,errors:(result.errors||[]).length});
+  if(Array.isArray(completed.targets)&&!completed.targets.length)next=nextOpening();
   log('EFC: '+imported+' e-mails de segmentação lidos; '+messages.filter(x=>x.status==='review').length+' pendentes de revisão.');
  }finally{for(const file of [output,output+'.stage']){try{fs.unlinkSync(file)}catch{}}}
 }
-function kick(api,log){if(process.platform!=='win32'||busy||Date.now()<next)return;busy=true;next=Date.now()+30*60000;run(api,log).catch(async e=>{log('Segmentações Outlook: '+e.message,true);await call(api,'agent_segmentations_scan',{error:e.message}).catch(()=>{});next=Date.now()+5*60000;}).finally(()=>{busy=false;});}
-module.exports={parse,kick};
+function kick(api,log){if(process.platform!=='win32'||busy||Date.now()<next)return;busy=true;next=Date.now()+60*1000;run(api,log).catch(async e=>{log('Segmentações Outlook: '+e.message,true);await call(api,'agent_segmentations_scan',{error:e.message}).catch(()=>{});next=Date.now()+60*1000;}).finally(()=>{busy=false;});}
+module.exports={parse,kick,nextOpening};
