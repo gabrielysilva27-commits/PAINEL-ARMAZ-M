@@ -9,6 +9,7 @@ const { parse031120 } = require("./lib/pull031120");
 const oorSync = require("./lib/oor-sync");
 const efdSync = require("./lib/efd-sync");
 const outlookSegmentations = require("./lib/outlook-segmentations");
+const ocpSync = require("./lib/ocp-sync");
 const promax = require("./lib/promax");
 const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
@@ -74,7 +75,7 @@ async function main() {
       await api.updateState({
         agent_version: VERSION,
         updater_version: updater.UPDATER_VERSION,
-        capabilities: ["EDGE_NORMAL_STATUS_" + promax.normalEdgeStatus(),"020501_SYNC","PROMAX_NORMAL_EDGE_ONLY","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","PROMAX_CSV_AUTHENTICATED_CAPTURE","PROMAX_EXCEL_COM_CAPTURE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1","OOR_020502_AUTO"],
+        capabilities: ["EDGE_NORMAL_STATUS_" + promax.normalEdgeStatus(),"020501_SYNC","03023601_OCP_SYNC","PROMAX_NORMAL_EDGE_ONLY","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","PROMAX_CSV_AUTHENTICATED_CAPTURE","PROMAX_EXCEL_COM_CAPTURE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1","OOR_020502_AUTO"],
         update_status: "current",
         update_target_version: VERSION
       }).catch(function(){});
@@ -84,7 +85,7 @@ async function main() {
       await api.updateState({
         agent_version: VERSION,
         updater_version: updater.UPDATER_VERSION,
-        capabilities: ["EDGE_NORMAL_STATUS_" + promax.normalEdgeStatus(),"020501_SYNC","PROMAX_NORMAL_EDGE_ONLY","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","PROMAX_CSV_AUTHENTICATED_CAPTURE","PROMAX_EXCEL_COM_CAPTURE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1","OOR_020502_AUTO"],
+        capabilities: ["EDGE_NORMAL_STATUS_" + promax.normalEdgeStatus(),"020501_SYNC","03023601_OCP_SYNC","PROMAX_NORMAL_EDGE_ONLY","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","PROMAX_CSV_AUTHENTICATED_CAPTURE","PROMAX_EXCEL_COM_CAPTURE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1","OOR_020502_AUTO"],
         update_status: "failed",
         update_target_version: VERSION,
         update_error: "Abrir Promax: " + message
@@ -117,7 +118,7 @@ async function main() {
       hostname: os.hostname(),
       agent_version: VERSION,
       updater_version: updater.UPDATER_VERSION,
-      capabilities: ["EDGE_NORMAL_STATUS_" + promax.normalEdgeStatus(),"020501_SYNC","PROMAX_NORMAL_EDGE_ONLY","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","PROMAX_CSV_AUTHENTICATED_CAPTURE","PROMAX_EXCEL_COM_CAPTURE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1","OOR_020502_AUTO","USER_IDLE_GATE", edgeProbe.available ? "EDGE_IE_SURFACES_" + Math.min(edgeProbe.ieModeSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_ACCESSIBLE_SURFACES_" + Math.min(edgeProbe.accessibleSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_REPORT_WINDOWS_" + Math.min(edgeProbe.reportWindows, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_HOME_WINDOWS_" + Math.min(edgeProbe.homeWindows, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_ATALHO_CONTROLS_" + Math.min(edgeProbe.shortcutControls, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_UIA_CONTROLS_" + Math.min(edgeProbe.uiaElements, 9999) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_CSV_CONTROLS_" + Math.min(edgeProbe.csvControls, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_VISUALIZAR_CONTROLS_" + Math.min(edgeProbe.visualizeControls, 99) : "EDGE_PROBE_UNAVAILABLE"].concat((edgeProbe.layout || []).map(x => "EDGE_LAYOUT_" + x)),
+      capabilities: ["EDGE_NORMAL_STATUS_" + promax.normalEdgeStatus(),"020501_SYNC","03023601_OCP_SYNC","PROMAX_NORMAL_EDGE_ONLY","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","PROMAX_CSV_AUTHENTICATED_CAPTURE","PROMAX_EXCEL_COM_CAPTURE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1","OOR_020502_AUTO","USER_IDLE_GATE", edgeProbe.available ? "EDGE_IE_SURFACES_" + Math.min(edgeProbe.ieModeSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_ACCESSIBLE_SURFACES_" + Math.min(edgeProbe.accessibleSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_REPORT_WINDOWS_" + Math.min(edgeProbe.reportWindows, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_HOME_WINDOWS_" + Math.min(edgeProbe.homeWindows, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_ATALHO_CONTROLS_" + Math.min(edgeProbe.shortcutControls, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_UIA_CONTROLS_" + Math.min(edgeProbe.uiaElements, 9999) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_CSV_CONTROLS_" + Math.min(edgeProbe.csvControls, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_VISUALIZAR_CONTROLS_" + Math.min(edgeProbe.visualizeControls, 99) : "EDGE_PROBE_UNAVAILABLE"].concat((edgeProbe.layout || []).map(x => "EDGE_LAYOUT_" + x)),
       calibration_ready: calibrationReady,
       readiness_error: readinessError
     };
@@ -236,6 +237,7 @@ async function main() {
       await efdSync.sync(api,log).catch(e=>log("EFD: "+e.message,true));
       await maybeSync031120(false);
       await maybeSyncOor(false);
+      await ocpSync.sync(api,promax,config,ROOT,log);
       // Keep the scheduler alive while the operator is using the computer.
       // Only browser interaction waits for an idle, unlocked desktop.
       if (!existingEdge.desktopUnlocked() || (existingEdge.idleMilliseconds() ?? 0) < IDLE_REQUIRED_MS) {

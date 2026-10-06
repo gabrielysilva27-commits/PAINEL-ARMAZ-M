@@ -1948,6 +1948,79 @@ async function export031120(job, config, rootDir, validateCsv) {
   return target;
 }
 
+async function export03023601(job, config, rootDir, validateCsv) {
+  // The report can already be open even when no home tab is discoverable.
+  // Let the native action locate the report first, then use the home shortcut.
+  if (process.platform !== "win32" || !existingEdge.probe().available) {
+    throw new Error("03023601_EDGE_NATIVE_UNAVAILABLE");
+  }
+  const vals = { mapFrom: String(job.map_from), mapTo: String(job.map_to) };
+  if (!/^\d{1,12}$/.test(vals.mapFrom) || !/^\d{1,12}$/.test(vals.mapTo) || Number(vals.mapFrom)>Number(vals.mapTo)) throw Error("03023601_FILTERS_UNSUPPORTED");
+  const since = Date.now();
+  // Se a tela 03.11.20 já estiver aberta (como no uso normal da operação),
+  // aproveite-a diretamente. Isso evita voltar ao Atalho e também torna o
+  // backfill mais confiável quando o usuário já deixou o relatório pronto.
+  async function reportAction(stage,values){
+    for(let attempt=0;attempt<3;attempt++){
+      try{return existingEdge.act(stage,values)}
+      catch(error){if(attempt===2||!/window-not-foreground/.test(String(error.message||error)))throw error;await sleep(1000);}
+    }
+  }
+  let formReady = false;
+  try {
+    await reportAction("filters03023601", vals);
+    formReady = true;
+  } catch (error) {
+    const message = String(error && error.message || error);
+    if (!/window-not-found/.test(message)) throw error;
+  }
+  if (!formReady) {
+    await reportAction("shortcut03023601");
+    await sleep(1800);
+    await reportAction("filters03023601", vals);
+  }
+  await sleep(2200);
+
+  await waitUntil(async function () {
+    try { await reportAction("csv03023601"); return true; }
+    catch (error) { if (/csv-not-found/.test(String(error.message))) return false; throw error; }
+  }, 60000, 1000).catch(function (error) {
+    if (/Tempo esgotado/.test(String(error.message))) throw new Error("03023601_CSV_NOT_FOUND");
+    throw error;
+  });
+
+  await sleep(1200);
+  const dialogTarget = path.join(rootDir, "downloads", "03023601_edge_" + Date.now() + ".csv.inf");
+  fs.mkdirSync(path.dirname(dialogTarget), { recursive: true });
+  let saveStatus = "automatic";
+  if (!newestCandidate(since)) {
+    try { saveStatus = existingEdge.saveDialog(dialogTarget); }
+    catch (error) {
+      if (!/save-dialog-not-found/.test(String(error.message))) throw error;
+      saveStatus = "sem diálogo Salvar como; aguardando download automático";
+    }
+  }
+
+  let prior = null, stable = 0;
+  const candidate = await waitUntil(async function () {
+    const current = fs.existsSync(dialogTarget)
+      ? { path: dialogTarget, size: fs.statSync(dialogTarget).size, mtimeMs: fs.statSync(dialogTarget).mtimeMs }
+      : newestCandidate(since);
+    if (!current) return null;
+    stable = prior && prior.path === current.path && prior.size === current.size ? stable + 1 : 0;
+    prior = current;
+    return stable >= 2 ? current : null;
+  }, 30000, 700).catch(error => {
+    if (/Tempo esgotado/.test(String(error.message))) throw new Error("03023601_DOWNLOAD_TIMEOUT: " + saveStatus);
+    throw error;
+  });
+
+  const target = path.join(rootDir, "downloads", "03023601_normal_edge_" + Date.now() + ".csv.inf");
+  fs.copyFileSync(candidate.path, target);
+  if (typeof validateCsv === "function") validateCsv(target);
+  return target;
+}
+
 async function export020501(job, config, rootDir, validateCsv) {
   try {
     const file = await exportInNormalEdge(job, config, rootDir, validateCsv);
@@ -1978,4 +2051,4 @@ async function openCalibrationBrowser(config, rootDir) {
   }
 }
 
-module.exports = { isConfigured, readinessError, missingSelectors, openCalibrationBrowser, export020501, export031120, normalEdgeStatus: () => LAST_NORMAL_EDGE_STATUS };
+module.exports = { isConfigured, readinessError, missingSelectors, openCalibrationBrowser, export020501, export031120, export03023601, normalEdgeStatus: () => LAST_NORMAL_EDGE_STATUS };

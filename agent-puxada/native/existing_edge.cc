@@ -605,6 +605,16 @@ static BOOL CALLBACK Find031120Window(HWND hwnd, LPARAM raw) {
   return TRUE;
 }
 
+static BOOL CALLBACK FindOCPWindow(HWND hwnd, LPARAM raw) {
+  if (!IsWindowVisible(hwnd) || ClassName(hwnd) != L"Chrome_WidgetWin_1") return TRUE;
+  wchar_t title[512] = {}; GetWindowTextW(hwnd,title,512);
+  std::wstring name(title); std::transform(name.begin(),name.end(),name.begin(),towlower);
+  if (name.find(L"ocp carregamento") != std::wstring::npos || name.find(L"03.02.36.01") != std::wstring::npos) {
+    *reinterpret_cast<HWND*>(raw)=hwnd; return FALSE;
+  }
+  return TRUE;
+}
+
 static bool FillReport(HWND hwnd, const std::wstring* values) {
   auto controls = Controls(hwnd);
   std::vector<VisibleControl> edits;
@@ -788,6 +798,57 @@ static bool Fill031120Control(const VisibleControl& control, const std::wstring&
   }
   return false;
 }
+static bool SelectOCPOption(const VisibleControl& control, bool selected) {
+  IUIAutomation* automation=nullptr; IUIAutomationElement* element=nullptr;
+  POINT point={(control.rect.left+control.rect.right)/2,(control.rect.top+control.rect.bottom)/2};
+  bool ok=false;
+  if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation,nullptr,CLSCTX_INPROC_SERVER,IID_IUIAutomation,reinterpret_cast<void**>(&automation))) && automation &&
+      SUCCEEDED(automation->ElementFromPoint(point,&element)) && element) {
+    if (control.type==UIA_CheckBoxControlTypeId) {
+      IUIAutomationTogglePattern* pattern=nullptr;
+      if (SUCCEEDED(element->GetCurrentPatternAs(UIA_TogglePatternId,IID_IUIAutomationTogglePattern,reinterpret_cast<void**>(&pattern))) && pattern) {
+        ToggleState state; if (SUCCEEDED(pattern->get_CurrentToggleState(&state))) {
+          if ((state==ToggleState_On)!=selected) pattern->Toggle();
+          Sleep(120); ok=SUCCEEDED(pattern->get_CurrentToggleState(&state)) && (state==ToggleState_On)==selected;
+        } pattern->Release();
+      }
+    } else {
+      IUIAutomationSelectionItemPattern* pattern=nullptr;
+      if (SUCCEEDED(element->GetCurrentPatternAs(UIA_SelectionItemPatternId,IID_IUIAutomationSelectionItemPattern,reinterpret_cast<void**>(&pattern))) && pattern) {
+        if (selected) pattern->Select(); BOOL state=FALSE; Sleep(120);
+        ok=SUCCEEDED(pattern->get_CurrentIsSelected(&state)) && !!state==selected; pattern->Release();
+      }
+    }
+  }
+  if(element)element->Release(); if(automation)automation->Release(); return ok;
+}
+static bool FillOCP(HWND hwnd,const std::wstring* values) {
+  RECT window={}; if(!GetWindowRect(hwnd,&window))return false;
+  auto controls=Controls(hwnd); std::vector<VisibleControl> edits;
+  bool csv=false;
+  for(const auto& c:controls) {
+    if(c.type==UIA_ButtonControlTypeId && Contains(c.name,L"csv"))csv=true;
+    if(c.type==UIA_EditControlTypeId && c.rect.top>window.top+160 &&
+       c.rect.left>window.left+(window.right-window.left)/2 &&
+       c.rect.right-c.rect.left<200)edits.push_back(c);
+  }
+  if(!csv)return false;
+  std::sort(edits.begin(),edits.end(),[](const VisibleControl&a,const VisibleControl&b){
+    if(abs(a.rect.top-b.rect.top)>8)return a.rect.top<b.rect.top; return a.rect.left<b.rect.left;
+  });
+  if(edits.size()<2 || abs(edits[0].rect.top-edits[1].rect.top)>8)return false;
+  // Select the full source, not a picking-only or pallet-only export. Require
+  // readable option state; never invert checkboxes blindly.
+  bool complete=false,route=false,all=false;
+  for(const auto& c:controls) {
+    if(c.type==UIA_CheckBoxControlTypeId && c.name==L"todos")all=SelectOCPOption(c,true);
+    if(c.type==UIA_RadioButtonControlTypeId && c.name==L"completa")complete=SelectOCPOption(c,true);
+    if(c.type==UIA_RadioButtonControlTypeId && c.name==L"rota")route=SelectOCPOption(c,true);
+  }
+  if(!complete || !route || !all)return false;
+  return Fill031120Control(edits[0],values[0]) && Fill031120Control(edits[1],values[1]);
+}
+
 static bool Select031120Mapa(const VisibleControl& control) {
   if (!ClickControl(control) || !Key(VK_HOME) || !Key(VK_HOME,true) ||
       !Key('M') || !Key('M',true) || !Key(VK_RETURN) || !Key(VK_RETURN,true)) return false;
@@ -1053,7 +1114,9 @@ static BOOL CALLBACK FindReportForDownload(HWND hwnd, LPARAM raw) {
   std::transform(name.begin(), name.end(), name.begin(), towlower);
   if ((name.find(L"movimenta") != std::wstring::npos && name.find(L"estoque") != std::wstring::npos) ||
       name.find(L"planilha de acompanhamento") != std::wstring::npos ||
-      name.find(L"03.11.20") != std::wstring::npos)
+      name.find(L"03.11.20") != std::wstring::npos ||
+      name.find(L"ocp carregamento") != std::wstring::npos ||
+      name.find(L"03.02.36.01") != std::wstring::npos)
     reinterpret_cast<std::vector<HWND>*>(raw)->push_back(hwnd);
   return TRUE;
 }
@@ -1099,6 +1162,9 @@ static napi_value Act(napi_env env, napi_callback_info info) {
     const char* names[] = {"dateFrom","dateTo","vehicleFrom","vehicleTo"};
     for (int i = 0; i < 4; ++i) valid = ReadString(env, argv[1], names[i], &values[i]) && valid;
   }
+  if (valid && stage == L"filters03023601") {
+    valid = ReadString(env,argv[1],"mapFrom",&values[0]) && ReadString(env,argv[1],"mapTo",&values[1]);
+  }
   std::wstring result = L"invalid-parameters";
   if (valid) {
     std::thread worker([&]() {
@@ -1110,8 +1176,10 @@ static napi_value Act(napi_env env, napi_callback_info info) {
         CoUninitialize();
         return;
       }
-      TargetWindow target = { nullptr, stage == L"shortcut" || stage == L"shortcut031120", -1, {} };
-      if (stage == L"filters031120" || stage == L"csv031120") {
+      TargetWindow target = { nullptr, stage == L"shortcut" || stage == L"shortcut031120" || stage == L"shortcut03023601", -1, {} };
+      if (stage == L"filters03023601" || stage == L"csv03023601") {
+        HWND report=nullptr; EnumWindows(FindOCPWindow,reinterpret_cast<LPARAM>(&report)); target.hwnd=report;
+      } else if (stage == L"filters031120" || stage == L"csv031120") {
         HWND report031120 = nullptr;
         EnumWindows(Find031120Window, reinterpret_cast<LPARAM>(&report031120));
         target.hwnd = report031120;
@@ -1122,9 +1190,9 @@ static napi_value Act(napi_env env, napi_callback_info info) {
       if (!target.hwnd || !GetWindowRect(target.hwnd, &r)) result = L"window-not-found";
       else {
         if (!FocusWindow(target.hwnd)) result = L"window-not-foreground";
-        else if (stage == L"shortcut" || stage == L"shortcut031120") {
+        else if (stage == L"shortcut" || stage == L"shortcut031120" || stage == L"shortcut03023601") {
           result = L"shortcut-controls-not-found";
-          const std::wstring reportCode = stage == L"shortcut031120" ? L"03.11.20" : L"02.05.01";
+          const std::wstring reportCode = stage == L"shortcut03023601" ? L"03.02.36.01" : stage == L"shortcut031120" ? L"03.11.20" : L"02.05.01";
           for (HWND candidate : target.candidates) {
             if (!FocusWindow(candidate) || !ActivatePromaxTab(candidate)) continue;
             Sleep(350);
@@ -1133,7 +1201,10 @@ static napi_value Act(napi_env env, napi_callback_info info) {
             result = L"shortcut-no-report-window";
             for (int i = 0; i < 30; ++i) {
               Sleep(200);
-              if (stage == L"shortcut031120") {
+              if (stage == L"shortcut03023601") {
+                HWND report=nullptr; EnumWindows(FindOCPWindow,reinterpret_cast<LPARAM>(&report));
+                if(report){result=L"ok";break;}
+              } else if (stage == L"shortcut031120") {
                 HWND report031120 = nullptr;
                 EnumWindows(Find031120Window, reinterpret_cast<LPARAM>(&report031120));
                 if (report031120) { result = L"ok"; break; }
@@ -1149,7 +1220,9 @@ static napi_value Act(napi_env env, napi_callback_info info) {
           result = FillReport(target.hwnd, values) ? L"ok" : L"filter-controls-not-found";
         } else if (stage == L"filters031120") {
           result = Fill031120(target.hwnd, values) ? L"ok" : L"031120-filter-controls-not-found";
-        } else if (stage == L"csv" || stage == L"csv031120") {
+        } else if (stage == L"filters03023601") {
+          result=FillOCP(target.hwnd,values)?L"ok":L"03023601-filter-controls-not-found";
+        } else if (stage == L"csv" || stage == L"csv031120" || stage == L"csv03023601") {
           result = ClickNamedButton(target.hwnd, L"csv", false, true) ? L"ok" : L"csv-not-found";
         } else result = L"unknown-stage";
       }
