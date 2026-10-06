@@ -1,7 +1,7 @@
 const fs=require('fs');
 const path=require('path');
 const crypto=require('crypto');
-const {execFile}=require('child_process');
+const {spawn}=require('child_process');
 const ENDPOINT='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/efc-api';
 const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
 function text(v){return String(v||'').replace(/<[^>]*>/g,' ').replace(/&#(\d+);/g,(_,x)=>String.fromCodePoint(Number(x))).replace(/&#x([a-f\d]+);/gi,(_,x)=>String.fromCodePoint(parseInt(x,16))).replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/\s+/g,' ').trim();}
@@ -34,7 +34,15 @@ async function run(api,log){
   const psExe=path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
   const quote=value=>"'"+String(value).replace(/'/g,"''")+"'";
   const command='& ([ScriptBlock]::Create([IO.File]::ReadAllText('+quote(path.join(__dirname,'outlook-segmentations.ps1'))+'))) -OutputPath '+quote(output);
-  await new Promise((resolve,reject)=>{try{execFile(psExe,['-NoProfile','-STA','-EncodedCommand',Buffer.from(command,'utf16le').toString('base64')],{windowsHide:true,timeout:180000,maxBuffer:1024*1024},e=>e?reject(Error('Leitura Outlook: '+String(e.code||'falha')+'. Deixe o Outlook clássico aberto no mesmo usuário do agente.')):resolve());}catch(e){reject(Error('Inicialização Outlook: '+String(e.code||'falha')+' errno '+String(e.errno||'')));}});
+  await new Promise((resolve,reject)=>{
+   let child;
+   const fail=e=>reject(Error('Inicialização Outlook: '+String(e.code||e.message||'falha')+'; exe='+fs.existsSync(psExe)+'; cwd='+fs.existsSync(path.join(__dirname,'..'))+'; arch='+process.arch));
+   try{
+    child=spawn(psExe,['-NoProfile','-STA','-EncodedCommand',Buffer.from(command,'utf16le').toString('base64')],{cwd:path.join(__dirname,'..'),windowsHide:true,stdio:'ignore',timeout:180000});
+    child.once('error',fail);
+    child.once('exit',(code,signal)=>code===0?resolve():reject(Error('Leitura Outlook: processo terminou com código '+String(code)+' sinal '+String(signal||'nenhum'))));
+   }catch(e){fail(e);}
+  });
   const result=JSON.parse(fs.readFileSync(output,'utf8').replace(/^\uFEFF/,''));if(result.error)throw Error(result.error);
   const messages=(result.messages||[]).map(parse).filter(Boolean);let imported=0;
   for(let i=0;i<messages.length;i+=50){await call(api,'agent_segmentations_import',{messages:messages.slice(i,i+50)});imported+=Math.min(50,messages.length-i);}
