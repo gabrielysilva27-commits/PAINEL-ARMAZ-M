@@ -1,4 +1,7 @@
 #define UNICODE
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #include <oleacc.h>
 #include <mshtml.h>
