@@ -2,7 +2,7 @@
   const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/repack-api';
   const PUB='sb_publishable_W8fSiZaa-n_tM1YhhsdVfQ_WErczC8K';
   const TIMER_URL='https://painel-armaz-m.gabrielysilva27.workers.dev/repack/';
-  const S={month:new Date().toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'}).slice(0,7),data:null,adminWorkers:null,pinIssue:null};
+  const S={month:new Date().toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'}).slice(0,7),data:null,adminWorkers:null,pinIssue:null,requestId:0,refreshing:false};
   const $=id=>document.getElementById(id);
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const nf=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1});
@@ -41,10 +41,27 @@
   }
   async function load(){
     try{
-      const d=await call('dashboard',{month:S.month});S.data=d.dashboard;
+      const month=S.month,requestId=++S.requestId;
+      const d=await call('dashboard',{month});if(requestId!==S.requestId||month!==S.month)return;S.data=d.dashboard;
       if(role()==='admin'){try{S.adminWorkers=(await call('admin_workers')).workers||[]}catch{S.adminWorkers=null}}
       render();
     }catch(e){ensureView().innerHTML='<div class="repack-empty"><strong>Não foi possível carregar o Repack</strong><span>'+esc(e.message)+'</span></div>'}
+  }
+  async function refreshLive(){
+    const root=$('repackView');
+    if(S.refreshing||!S.data||!root||root.classList.contains('hidden')||document.hidden)return;
+    // Leave an unfinished worker registration and open PIN issuance intact.
+    if($('repackWorkerName')?.value.trim()||root.contains(document.activeElement)&&document.activeElement?.matches('input,select'))return;
+    S.refreshing=true;const month=S.month,requestId=S.requestId;
+    try{
+      const d=await call('dashboard',{month});
+      if(month!==S.month||requestId!==S.requestId||root.classList.contains('hidden'))return;
+      if(JSON.stringify(S.data)!==JSON.stringify(d.dashboard)){
+        const opened=[...root.querySelectorAll('details')].map(x=>x.open),scroll=window.scrollY;
+        S.data=d.dashboard;render();root.querySelectorAll('details').forEach((x,i)=>x.open=opened[i]||false);window.scrollTo(0,scroll);
+      }
+    }catch(e){console.warn('Repack: atualização automática indisponível; os dados atuais foram preservados.');}
+    finally{S.refreshing=false;}
   }
   function aggBlank(){return{tasks:0,boxes:0,seconds:0,legacyDays:0,legacyDailySeconds:0,liveDailySeconds:0,dayKeys:new Set()}}
   const dayKey=v=>new Date(v).toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'});
@@ -147,5 +164,9 @@
     clearInterval(window.__repackTicker);window.__repackTicker=setInterval(()=>document.querySelectorAll('[data-repack-elapsed]').forEach(el=>el.textContent=elapsed(el.dataset.repackElapsed)),1000);
   }
   ensureAssets();ensureView();setTimeout(addNav,520);
+  clearInterval(window.__repackLiveRefresh);
+  window.__repackLiveRefresh=setInterval(refreshLive,15000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshLive()});
+  window.addEventListener('focus',refreshLive);
   window.__repack={open,load};
 })();
