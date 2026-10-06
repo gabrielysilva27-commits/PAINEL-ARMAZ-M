@@ -1,7 +1,7 @@
-import {calculate,norm} from './efc-core.mjs?v=20261006-clean-note';
-import {selectPeriod,weekStart,hourLoads} from './efc-analytics.mjs?v=20261006-clean-note';
-import {calculatePeriod,periodKey} from './efc-history.mjs?v=20261006-clean-note';
-import {visuals} from './efc-dashboard.mjs?v=20261006-clean-note';
+import {calculate,norm} from './efc-core.mjs?v=20261006-priority-1';
+import {selectPeriod,weekStart,hourLoads} from './efc-analytics.mjs?v=20261006-priority-1';
+import {calculatePeriod,periodKey} from './efc-history.mjs?v=20261006-priority-1';
+import {visuals} from './efc-dashboard.mjs?v=20261006-priority-1';
 const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/efc-api';
 const S={month:new Date().toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'}).slice(0,7),day:'',week:'',member:'',tab:'management',data:null,page:0,query:'',loaded:false};
 const tabs=[['management','Visão gerencial'],['loading','Carregamento'],['productivity','Produtividade'],['supply','Picking e abastecimento'],['quality','Qualidade'],['pay','Equipe e remuneração']];
