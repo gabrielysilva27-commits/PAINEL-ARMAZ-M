@@ -1,3 +1,4 @@
+import {pickingSupply} from './picking-supply.mjs';
 import {ocpRules,withoutIgnoredMaps} from './ocp-exceptions.mjs';
 import {withOcpInputs} from './ocp-inputs.mjs';
 import {ocpDay,ocpJob,ocpHeadersValid,ocpNumber} from './ocp-source.mjs';
@@ -161,6 +162,7 @@ Deno.serve(async req=>{
  data=withOcpInputs(data,month);
  const ocpExceptions=month>'2026-09'?await all(()=>db.from('efc_ocp_exceptions').select('*').gte('reference_date',from).lt('reference_date',next).order('reference_date').order('map')):[];
  for(const kind of ['helpers','checkers','priority','items','demand'])if(data[kind])data[kind]=withoutIgnoredMaps(data[kind],ocpExceptions);
+ if(month>'2026-09'){const supplySkus=[...new Set([...(data.capacity||[]).map((x:any)=>x.sku),...data.ocp.map((x:any)=>x.product)])];const [catalog,supplyDays]=await Promise.all([all(()=>db.from('product_catalog').select('sku_code,sku_name,boxes_per_pallet').in('sku_code',supplySkus).order('sku_code')),all(()=>db.from('efc_ocp_days').select('reference_date,status').gte('reference_date',from).lt('reference_date',next).order('reference_date'))]);const supply=pickingSupply(withoutIgnoredMaps(data.ocp,ocpExceptions),data.capacity||[],catalog,supplyDays);data.picking_rows=supply.rows;data.picking_days=supply.daily;}
  data.segmentations=segmentationEmails.map((m:any)=>({...m,date:m.reference_date}));
  data.events=frozenEvents(mergeEvents(data.events||[],events,shared),cycles);
  const covered=new Set(pcd.map((r:any)=>r.reference_date)),planned=(data.pcd||[]).filter((p:any)=>!covered.has(p.date));for(const file of pcd){const snapshot=cycles.find((c:any)=>c.reference_date===file.reference_date);if(snapshot)planned.push(...snapshot.plans);else planned.push(...file.rows);}for(const p of planned){const matching=data.events.filter((e:any)=>e.emission===p.date&&e.plate===String(p.plate).replace(/[^A-Z0-9]/gi,'').toUpperCase());const fleets=[...new Set(matching.map((e:any)=>e.fleet).filter(Boolean))];if(!p.fleet&&fleets.length===1)p.fleet=fleets[0];}data.pcd=withoutIgnoredMaps(planned,ocpExceptions);
