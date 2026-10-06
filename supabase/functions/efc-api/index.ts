@@ -52,7 +52,8 @@ async function ocpState(){
  const needsInventory=!config.last_inventory_at||Date.parse(config.last_inventory_at)<Date.parse(target+'T21:00:00-03:00')||!config.last_inventory_date||config.last_inventory_date<through||!inventory.some(f=>f.reference_date===through);
  const pending=days.filter(d=>d.status!=='completed').length+(needsInventory?1:0);
  if(!pending&&config.backfill_through){const {error:e}=await db.from('efc_ocp_config').update({backfill_through:null}).eq('id',1);check(e);}
- return{enabled:true,pending,force_run:Boolean(config.backfill_through),inventory_through:through,job:ocpJob(inventory,days,through),days,start_hour:21,time_zone:'America/Sao_Paulo'};
+ const manualRequest=config.manual_request_id&&!config.manual_claimed_at&&Date.parse(config.manual_until||'')>Date.now()?config.manual_request_id:null;
+ return{enabled:true,pending,manual_request_id:manualRequest,force_run:Boolean(config.backfill_through)||Boolean(manualRequest),inventory_through:through,job:ocpJob(inventory,days,through),days,start_hour:21,time_zone:'America/Sao_Paulo'};
 }
 Deno.serve(async req=>{
  if(req.method==='OPTIONS')return reply({ok:true});if(req.method==='GET')return reply({service:'efc-api',version:'2026-10-02-fleet-fixed-1'});if(req.method!=='POST')return reply({error:'Método inválido'},405);
@@ -61,6 +62,10 @@ Deno.serve(async req=>{
  if(String(b.action||'').startsWith('agent_ocp_')){
   const node=await agentNode(req);if(!node)return reply({enabled:false,error:'Agente ADM necessário'},b.action==='agent_ocp_status'?200:403);
   if(b.action==='agent_ocp_status')return reply(await ocpState());
+  if(b.action==='agent_ocp_manual_claim'){
+   if(!/^[a-f0-9-]{36}$/.test(String(b.request_id||'')))return reply({claimed:false});
+   const {data,error}=await db.from('efc_ocp_config').update({manual_claimed_at:new Date().toISOString()}).eq('id',1).eq('manual_request_id',b.request_id).is('manual_claimed_at',null).gt('manual_until',new Date().toISOString()).select('id').maybeSingle();check(error);return reply({claimed:Boolean(data)});
+  }
   if(b.action==='agent_ocp_inventory'){
    const date=String(b.date||'');if(!/^20[2-9]\d-\d{2}-\d{2}$/.test(date)||date<'2026-10-01'||!Array.isArray(b.rows)||b.rows.length>5000||!/^\d{1,12}$/.test(b.map_from)||!/^\d{1,12}$/.test(b.map_to)||Number(b.map_from)>Number(b.map_to)||String(b.source_file||'').length>500)return reply({error:'MAPAS OCP inválidos'},400);
    const rows=b.rows.map((r:any)=>{const map=String(r.map),plate=String(r.plate||'');if(!/^\d{1,12}$/.test(map)||!/^\w{5,12}$/.test(plate)||Number(map)<Number(b.map_from)||Number(map)>Number(b.map_to))throw Error('Mapa inválido');return{map,plate,eligible:r.eligible!==false};});

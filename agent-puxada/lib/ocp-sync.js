@@ -10,7 +10,10 @@ let next=0;
 async function sync(api,promax,config,root,log){if(process.platform!=='win32'||Date.now()<next)return;next=Date.now()+60000;let id=null;try{
  const state=await call(api,'agent_ocp_status');if(!state.enabled){next=Date.now()+3600000;return;}if(!state.pending&&!state.force_run){next=nextOpening();return;}
  // All browser work remains sequential inside the main agent loop.
- if(!edge.desktopUnlocked()||(edge.idleMilliseconds()??0)<30000)return;
+ if(!edge.desktopUnlocked())return;
+ const manual=Boolean(state.manual_request_id);
+ if(!manual&&(edge.idleMilliseconds()??0)<30000)return;
+ if(manual){const claimed=await call(api,'agent_ocp_manual_claim',{request_id:state.manual_request_id});if(!claimed.claimed)return;log('OCP: execução manual autorizada, abrindo Promax para exportação.');}
  const r=await fetch('https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/efd-api',{method:'POST',headers:{'Content-Type':'application/json','x-agent-token':api.token},body:JSON.stringify({action:'agent_status'}),signal:AbortSignal.timeout(30000)});const c=await r.json();if(!r.ok||!c.config?.root_path)throw Error('OCP_MAPAS_PATH_UNAVAILABLE');
  const files=inventory(c.config.root_path,state.inventory_through);for(const file of files)await call(api,'agent_ocp_inventory',file);
  await call(api,'agent_ocp_inventory_end',{date:state.inventory_through});
