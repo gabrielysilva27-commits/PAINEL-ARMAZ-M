@@ -1957,7 +1957,7 @@ async function export03023601(job, config, rootDir, validateCsv) {
   const vals = { mapFrom: String(job.map_from), mapTo: String(job.map_to) };
   if (!/^\d{1,12}$/.test(vals.mapFrom) || !/^\d{1,12}$/.test(vals.mapTo) || Number(vals.mapFrom)>Number(vals.mapTo)) throw Error("03023601_FILTERS_UNSUPPORTED");
   const since = Date.now();
-  // Se a tela 03.11.20 já estiver aberta (como no uso normal da operação),
+  // Reutilize a OCP disponível; uma janela antiga desabilitada precisa ser reaberta.
   // aproveite-a diretamente. Isso evita voltar ao Atalho e também torna o
   // backfill mais confiável quando o usuário já deixou o relatório pronto.
   async function reportAction(stage,values){
@@ -1972,7 +1972,7 @@ async function export03023601(job, config, rootDir, validateCsv) {
     formReady = true;
   } catch (error) {
     const message = String(error && error.message || error);
-    if (!/window-not-found/.test(message)) throw error;
+    if (!/window-not-found/.test(message) && !/window-not-foreground:enabled=0/.test(message)) throw error;
   }
   if (!formReady) {
     await reportAction("shortcut03023601");
