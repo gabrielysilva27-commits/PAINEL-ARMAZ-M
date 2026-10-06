@@ -27,7 +27,7 @@ export function standardHours(dates,employee={}){
 }
 export function individualRows(dashboard,efc,from,to,basis='activity'){
  const team=dashboard.team||[],byId=new Map(team.map(x=>[x.id,x])),byName=new Map(team.map(x=>[personKey(x.display_name),x]));
- const auto=efcActivities(efc);
+ const auto=[...efcActivities(efc),...(dashboard.warehouse_activities||[])];
  const activities=[...(dashboard.activities||[]).map(x=>({...x,employee_name:byId.get(x.employee_id)?.display_name,unit:AREAS[x.area]?.unit||'unid.',activity_label:AREAS[x.area]?.label||x.area})),...auto].filter(x=>x.employee_name&&x.reference_date>=from&&x.reference_date<=to&&positive(x.quantity));
  const automaticKeys=new Set(activities.filter(x=>x.source!=='manual').map(x=>`${personKey(x.employee_name)}|${x.reference_date}|${x.area==='carregamento'?'montagem_c':x.area}`));
  const groups=new Map(),seen=new Set();
@@ -38,7 +38,7 @@ export function individualRows(dashboard,efc,from,to,basis='activity'){
   const employee=byId.get(x.employee_id)||byName.get(name);
   let g=groups.get(key);
   if(!g){g={key,person_key:name,employee_id:employee?.id,display_name:employee?.display_name||personName(x.employee_name),job_title:employee?.job_title||'Ajudante / conferente',shift:employee?.shift||x.shift||'—',area:x.area,activity_label:x.activity_label,unit:x.unit,quantity:0,task_minutes:0,missing_time:0,dates:new Set(),sources:new Set(),entries:[],employee};groups.set(key,g);}
-  g.quantity+=Number(x.quantity);if(positive(x.duration_minutes))g.task_minutes+=Number(x.duration_minutes);else g.missing_time++;g.dates.add(x.reference_date);g.sources.add(x.source);g.entries.push(x);
+  g.quantity+=Number(x.quantity);if(positive(x.duration_minutes))g.task_minutes+=Number(x.duration_minutes);else g.missing_time++;g.dates.add(x.reference_date);g.sources.add(x.source);g.entries.push(x);if(x.allocation)g.allocation_count=x.allocation_count;if(x.source_partial)g.source_partial=true;
  }
  return [...groups.values()].map(g=>{
   const att=(dashboard.attendance||[]).filter(x=>x.employee_id===g.employee_id&&(x.area===g.area||x.area==='carregamento'&&g.area==='montagem_c')&&x.reference_date>=from&&x.reference_date<=to);
