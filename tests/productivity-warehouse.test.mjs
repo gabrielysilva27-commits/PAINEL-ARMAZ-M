@@ -28,3 +28,18 @@ test('EFD atribui a Vanderson apenas retornos válidos concluídos, sem inventar
  const summary=individualRows({team:t,warehouse_activities:rows},[],'2026-10-02','2026-10-02');assert.equal(summary[0].quantity,2);assert.equal(summary[0].productivity,null);
 });
 test('não atribui EFD a outro conferente se Vanderson estiver ausente do cadastro',()=>assert.deepEqual(efdActivities(team,[{maps:[{valid:true,physical_at:'2026-10-02T20:00:00'}]}]),[]));
+test('reabastecimento dos empilhadores usa só cheio A e conserva volume em atividade própria',()=>{
+ const forklift=(id,area,shift='A',active=true)=>({id,display_name:id,job_title:'Operador de Empilhadeira',area,shift,active});
+ const t=[...team,forklift('e1','descarga_cheio'),forklift('e2','descarga_cheio'),forklift('b','descarga_cheio','B'),forklift('v','descarga_vazio'),forklift('off','descarga_cheio','A',false)];
+ const rows=warehouseActivities(t,[efc],[blitz]);const r=rows.filter(x=>x.area==='reabastecimento_empilhadeira');
+ assert.deepEqual(r.map(x=>x.employee_id),['e1','e2']);assert.equal(r.reduce((s,x)=>s+x.quantity,0),1000);assert.ok(r.every(x=>x.quantity===500&&x.allocation_count===2&&x.duration_minutes===null));
+ assert.equal(rows.filter(x=>x.area==='reabastecimento').reduce((s,x)=>s+x.quantity,0),1000);
+});
+test('descarga EFD divide retornos entre empilhadores do vazio mesmo sem Vanderson',()=>{
+ const t=['a','b','c'].map(id=>({id,display_name:id,active:true,job_title:'Operador de Empilhadeira',area:'descarga_vazio',shift:'B'}));
+ t.push({id:'cheio',display_name:'cheio',active:true,job_title:'Operador de Empilhadeira',area:'descarga_cheio'});
+ const m={vehicle:'1',reference_date:'2026-10-02',valid:true,physical_at:'2026-10-02T14:00:00'};
+ const rows=efdActivities(t,[{maps:[m,m,{...m,vehicle:'2'},{...m,physical_at:null}]}]);
+ assert.equal(rows.length,3);assert.ok(rows.every(x=>x.area==='descarga_retorno_efd'&&x.allocation_count===3&&x.duration_minutes===null));assert.equal(rows.reduce((s,x)=>s+x.quantity,0),2);
+ const withChecker=efdActivities([...t,{id:'vd',display_name:'VANDERSON MARQUES',active:true}],[{maps:[m]}]);assert.equal(withChecker.filter(x=>x.area==='conferencia_retorno_efd').length,1);assert.equal(withChecker.filter(x=>x.area==='descarga_retorno_efd').reduce((s,x)=>s+x.quantity,0),1);
+});
