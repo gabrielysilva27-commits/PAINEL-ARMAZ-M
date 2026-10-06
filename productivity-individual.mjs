@@ -63,3 +63,19 @@ export function periodMonths(from,to){
  const out=[],end=to.slice(0,7),d=new Date(from.slice(0,7)+'-01T12:00:00Z');
  while(d.toISOString().slice(0,7)<=end){out.push(d.toISOString().slice(0,7));d.setUTCMonth(d.getUTCMonth()+1);}return out;
 }
+// Monthly results remain references. They never become current activity entries.
+export function historicalReferences(team,months,before){
+ const sorted=[...months].filter(m=>m.reference_month.slice(0,7)<before.slice(0,7)).sort((a,b)=>b.reference_month.localeCompare(a.reference_month));
+ return team.filter(e=>e.active).map(employee=>{
+  const key=personKey(employee.display_name);let incomplete=null;
+  for(const month of sorted){
+   const candidates=(month.payload?.records||month.records||[]).filter(r=>r.applicable!==false&&r.display_name&&personKey(r.display_name)===key);
+   for(const row of candidates){
+    const complete=row.quantity!=null&&Number.isFinite(Number(row.quantity))&&Number(row.quantity)>=0&&positive(row.estimated_hours)&&row.estimated_productivity!=null&&Number.isFinite(Number(row.estimated_productivity));
+    const result={...row,display_name:employee.display_name,person_key:key,employee_id:employee.id,reference_month:month.reference_month,reference_only:true,complete,area:row.activity_id||row.area,activity_label:row.activity_label||employee.job_title};
+    if(complete)return result;if(!incomplete)incomplete=result;
+   }
+  }
+  return incomplete||{display_name:employee.display_name,person_key:key,employee_id:employee.id,activity_label:employee.job_title,area:employee.area,reference_only:true,complete:false};
+ });
+}

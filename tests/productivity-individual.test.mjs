@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {individualRows,standardHours,dailySeries,periodMonths} from '../productivity-individual.mjs';
+import {individualRows,standardHours,dailySeries,periodMonths,historicalReferences} from '../productivity-individual.mjs';
 const employee={id:'a',display_name:'FÁBIO LUCAS DOS SANTOS QUINTANILHA',job_title:'Ajudante',shift:'C'};
 const task={id:'h1',name:'F.LUCAS',date:'2026-10-01',map:'001',pallets:3,start:'23:00:00',end:'00:30:00'};
 test('EFC mantém paletes nominais, vira a meia-noite e concilia o nome da equipe',()=>{
@@ -38,4 +38,15 @@ test('série diária soma produção e horas, sem média simples de produtividad
 });
 test('intervalos atravessam os meses e rejeitam períodos excessivos',()=>{
  assert.deepEqual(periodMonths('2026-09-30','2026-10-02'),['2026-09','2026-10']);assert.throws(()=>periodMonths('2026-01-01','2026-10-06'));
+});
+test('referência busca o último mês válido e mantém a autoria nominal',()=>{
+ const record={display_name:employee.display_name,activity_id:'montagem_c',quantity:100,estimated_hours:50,estimated_productivity:2};
+ const months=[{reference_month:'2026-10-01',records:[{...record,estimated_productivity:10}]},{reference_month:'2026-09-01',records:[{...record,estimated_hours:null,estimated_productivity:null}]},{reference_month:'2026-08-01',records:[record]}];
+ const refs=historicalReferences([{...employee,active:true}],months,'2026-10-06');
+ assert.equal(refs[0].reference_month,'2026-08-01');assert.equal(refs[0].estimated_productivity,2);assert.equal(refs[0].reference_only,true);assert.equal(refs[0].complete,true);
+});
+test('pessoa sem produção histórica mantém horas conhecidas, sem copiar taxa de colega',()=>{
+ const other={id:'b',display_name:'OUTRO COLABORADOR',active:true};
+ const months=[{reference_month:'2026-09-01',records:[{display_name:employee.display_name,quantity:100,estimated_hours:50,estimated_productivity:2},{display_name:other.display_name,quantity:null,estimated_hours:189,estimated_productivity:null}]}];
+ const ref=historicalReferences([other],months,'2026-10-01')[0];assert.equal(ref.estimated_hours,189);assert.equal(ref.estimated_productivity,null);assert.equal(ref.complete,false);
 });
