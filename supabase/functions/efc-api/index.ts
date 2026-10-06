@@ -59,7 +59,7 @@ Deno.serve(async req=>{
  try{
  const b=await req.json();
  if(String(b.action||'').startsWith('agent_ocp_')){
-  const node=await agentNode(req);if(!node)return reply({enabled:false,error:'Agente ADM necessário'},403);
+  const node=await agentNode(req);if(!node)return reply({enabled:false,error:'Agente ADM necessário'},b.action==='agent_ocp_status'?200:403);
   if(b.action==='agent_ocp_status')return reply(await ocpState());
   if(b.action==='agent_ocp_inventory'){
    const date=String(b.date||'');if(!/^20[2-9]\d-\d{2}-\d{2}$/.test(date)||date<'2026-10-01'||!Array.isArray(b.rows)||b.rows.length>5000||!/^\d{1,12}$/.test(b.map_from)||!/^\d{1,12}$/.test(b.map_to)||Number(b.map_from)>Number(b.map_to)||String(b.source_file||'').length>500)return reply({error:'MAPAS OCP inválidos'},400);
