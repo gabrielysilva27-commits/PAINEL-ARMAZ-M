@@ -846,9 +846,14 @@ static bool SelectOCPOption(const VisibleControl& control, bool selected) {
   }
   if(element)element->Release(); if(automation)automation->Release(); return ok;
 }
+static thread_local std::wstring OCP_FILTER_ISSUE;
 static bool FillOCP(HWND hwnd,const std::wstring* values) {
+  OCP_FILTER_ISSUE=L"window-rectangle";
   RECT window={}; if(!GetWindowRect(hwnd,&window))return false;
   auto controls=Controls(hwnd); std::vector<VisibleControl> edits;
+  bool hasCsv=false;const VisibleControl* back=nullptr;
+  for(const auto& c:controls){if(c.type==UIA_ButtonControlTypeId&&Contains(c.name,L"csv"))hasCsv=true;if(c.type==UIA_ButtonControlTypeId&&c.name==L"voltar")back=&c;}
+  if(!hasCsv&&back){if(!ClickControl(*back)){OCP_FILTER_ISSUE=L"back-button";return false;}Sleep(1400);controls=Controls(hwnd);}
   bool csv=false;
   for(const auto& c:controls) {
     if(c.type==UIA_ButtonControlTypeId && Contains(c.name,L"csv"))csv=true;
@@ -856,7 +861,7 @@ static bool FillOCP(HWND hwnd,const std::wstring* values) {
        c.rect.left>window.left+(window.right-window.left)/2 &&
        c.rect.right-c.rect.left<200)edits.push_back(c);
   }
-  if(!csv)return false;
+  if(!csv){OCP_FILTER_ISSUE=L"csv-button";return false;}
   std::sort(edits.begin(),edits.end(),[](const VisibleControl&a,const VisibleControl&b){
     if(abs(a.rect.top-b.rect.top)>8)return a.rect.top<b.rect.top; return a.rect.left<b.rect.left;
   });
@@ -864,22 +869,23 @@ static bool FillOCP(HWND hwnd,const std::wstring* values) {
   for(size_t i=0;i+1<edits.size();++i){
     if(abs(edits[i].rect.top-edits[i+1].rect.top)<=8){maps={edits[i],edits[i+1]};break;}
   }
-  if(maps.size()!=2)return false;
+  if(maps.size()!=2){OCP_FILTER_ISSUE=L"map-fields:"+std::to_wstring(edits.size());return false;}
   // Select the full source, not a picking-only or pallet-only export. Require
   // readable option state; never invert checkboxes blindly.
   bool complete=false,route=false,all=false;
   for(const auto& c:controls) {
-    if((c.type==UIA_CheckBoxControlTypeId||c.type==UIA_TreeItemControlTypeId) && c.name==L"todos")all=SelectOCPOption(c,true);
+    if((c.type==UIA_CheckBoxControlTypeId||c.type==UIA_TreeItemControlTypeId) && Contains(c.name,L"todos"))all=SelectOCPOption(c,true);
     if(c.type==UIA_RadioButtonControlTypeId && Contains(c.name,L"completa"))complete=SelectOCPOption(c,true);
     if(c.type==UIA_RadioButtonControlTypeId && Contains(c.name,L"rota"))route=SelectOCPOption(c,true);
   }
-  if(!complete || !route || !all)return false;
+  if(!complete || !route || !all){OCP_FILTER_ISSUE=L"options:complete="+std::to_wstring(complete?1:0)+L":route="+std::to_wstring(route?1:0)+L":all="+std::to_wstring(all?1:0);return false;}
   bool central=false;
   for(const auto& c:controls){
     if(c.type!=UIA_ComboBoxControlTypeId || c.rect.top<window.top+160)continue;
     if(Contains(Read031120Value(c),L"Central")||Contains(Read031120Value(c),L"central")){central=true;break;}
   }
-  if(!central)return false;
+  if(!central){OCP_FILTER_ISSUE=L"warehouse";return false;}
+  OCP_FILTER_ISSUE=L"map-value-readback";
   return Fill031120Control(maps[0],values[0]) && Fill031120Control(maps[1],values[1]);
 }
 
@@ -1264,7 +1270,7 @@ static napi_value Act(napi_env env, napi_callback_info info) {
         } else if (stage == L"filters031120") {
           result = Fill031120(target.hwnd, values) ? L"ok" : L"031120-filter-controls-not-found";
         } else if (stage == L"filters03023601") {
-          result=FillOCP(target.hwnd,values)?L"ok":L"03023601-filter-controls-not-found";
+          result=FillOCP(target.hwnd,values)?L"ok":L"03023601-filter-controls-not-found:"+OCP_FILTER_ISSUE;
         } else if (stage == L"csv" || stage == L"csv031120" || stage == L"csv03023601") {
           result = ClickNamedButton(target.hwnd, L"csv", false, true) ? L"ok" : L"csv-not-found";
         } else result = L"unknown-stage";
