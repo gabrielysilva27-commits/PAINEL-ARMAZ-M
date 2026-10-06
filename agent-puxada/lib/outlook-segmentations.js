@@ -31,9 +31,10 @@ async function run(api,log){
  const allowed=await call(api,'agent_segmentations_status',{});if(!allowed.enabled)return;
  const output=path.join(__dirname,'..','data','outlook-segmentations-'+process.pid+'.json');fs.mkdirSync(path.dirname(output),{recursive:true});
  try{
-  const script=fs.readFileSync(path.join(__dirname,'outlook-segmentations.ps1'),'utf8').replace(/^param[^\n]*\n/, '$OutputPath=$env:EFC_SEGMENTATIONS_OUTPUT\n');
   const psExe=path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
-  await new Promise((resolve,reject)=>execFile(psExe,['-NoProfile','-STA','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{windowsHide:true,timeout:180000,maxBuffer:1024*1024,env:{...process.env,EFC_SEGMENTATIONS_OUTPUT:output}},(e)=>e?reject(Error('Leitura Outlook: '+String(e.code||'falha')+'. Deixe o Outlook clássico aberto no mesmo usuário do agente.')):resolve()));
+  const quote=value=>"'"+String(value).replace(/'/g,"''")+"'";
+  const command='& ([ScriptBlock]::Create([IO.File]::ReadAllText('+quote(path.join(__dirname,'outlook-segmentations.ps1'))+'))) -OutputPath '+quote(output);
+  await new Promise((resolve,reject)=>{try{execFile(psExe,['-NoProfile','-STA','-EncodedCommand',Buffer.from(command,'utf16le').toString('base64')],{windowsHide:true,timeout:180000,maxBuffer:1024*1024},e=>e?reject(Error('Leitura Outlook: '+String(e.code||'falha')+'. Deixe o Outlook clássico aberto no mesmo usuário do agente.')):resolve());}catch(e){reject(Error('Inicialização Outlook: '+String(e.code||'falha')+' errno '+String(e.errno||'')));}});
   const result=JSON.parse(fs.readFileSync(output,'utf8').replace(/^\uFEFF/,''));if(result.error)throw Error(result.error);
   const messages=(result.messages||[]).map(parse).filter(Boolean);let imported=0;
   for(let i=0;i<messages.length;i+=50){await call(api,'agent_segmentations_import',{messages:messages.slice(i,i+50)});imported+=Math.min(50,messages.length-i);}
