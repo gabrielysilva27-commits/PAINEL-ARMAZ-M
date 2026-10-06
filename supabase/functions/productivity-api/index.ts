@@ -1,3 +1,6 @@
+import {sourceFrames} from './workstation-source.ts';
+import {workstationIdentity,ownEmployee,selfProductivity} from './workstation-self.mjs';
+import {periodMonths} from './productivity-individual.mjs';
 import {createClient} from 'jsr:@supabase/supabase-js@2.57.4';
 import {AREAS,summarize,repackActivities,simulate} from './core.mjs';
 const db=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false}});
@@ -35,7 +38,20 @@ async function save(table:string,row:any,conflict?:string){const q=conflict?db.f
 async function employee(id:unknown){const {data,error}=await db.from('wlp_employees').select('id,job_title').eq('id',text(id,40)).eq('active',true).maybeSingle();if(error)throw error;if(!data)throw Error('Colaborador inválido ou inativo.');return data.id}
 async function overtimeAllowed(id:string,hours:number){if(hours<=0)return;const {data,error}=await db.from('wlp_employees').select('job_title').eq('id',id).single();if(error)throw error;if(/empilhadeira|empilhador/i.test(data.job_title))throw Error('Empilhadores não recebem horas extras.');}
 Deno.serve(async req=>{
- if(req.method==='OPTIONS')return reply({ok:true});if(req.method==='GET')return reply({service:'productivity-api',version:'2026-10-06-team-1'});if(req.method!=='POST')return reply({error:'Método inválido.'},405);
+ if(req.method==='GET'&&new URL(req.url).pathname.endsWith('/workstation')){
+ try{
+  const identity=await workstationIdentity(req.headers.get('x-workstation-session'));
+  if(!identity)return reply({error:'Sessão inválida ou expirada.'},401);
+  const url=new URL(req.url),from=date(url.searchParams.get('from')),to=date(url.searchParams.get('to')),basis=url.searchParams.get('basis')||'activity';
+  if(from!==to)return reply({error:'Selecione um único dia.'},400);
+  if(!['activity','standard','attendance'].includes(basis))return reply({error:'Base de horas inválida.'},400);
+  const periods=periodMonths(from,to),team=await employees(),own=ownEmployee(team,identity);
+  if(!own)return reply({error:'Seu cadastro ainda não está vinculado a um colaborador ativo do armazém.'},404);
+  const [d,frames]=await Promise.all([dashboard(from,to),sourceFrames(db,all,periods,from,to)]);
+  return reply(selfProductivity(own,d,frames,[],from,to,basis));
+ }catch{return reply({error:'Não foi possível consultar a produtividade. Tente novamente.'},503);}
+ }
+ if(req.method==='OPTIONS')return reply({ok:true});if(req.method==='GET')return reply({service:'productivity-api',version:'2026-10-06-workstation-1'});if(req.method!=='POST')return reply({error:'Método inválido.'},405);
  try{const u=await session(req);if(!u)return reply({error:'Sessão inválida ou expirada.'},401);const b=await req.json();
  if(b.action==='historical')return reply({months:await all(()=>db.from('wlp_monthly_archive').select('reference_month,payload,imported_at').order('reference_month')),rules:{daily_hours:7+20/60,monthly_overtime:13,forklift_overtime:0,shift_pattern:'6x1'}});
  if(b.action==='dashboard')return reply({dashboard:await dashboard(date(b.from),date(b.to))});
