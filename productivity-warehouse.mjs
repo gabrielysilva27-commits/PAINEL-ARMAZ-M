@@ -1,4 +1,4 @@
-import {personKey} from './productivity-individual.mjs?v=20261006-warehouse-1';
+import {personKey} from './productivity-individual.mjs?v=20261006-vanderson-1';
 const num=v=>Number.isFinite(Number(v))?Number(v):0;
 export function fullWarehouseHelpers(team){return team.filter(e=>e.active&&e.shift!=='C'&&/ajudante/i.test(e.job_title||'')&&['repack','cheio_b','picking','cheio'].includes(e.area));}
 export function splitDailyVolume(daily,employees,area,label,unit,source){
@@ -45,4 +45,17 @@ export function warehouseActivities(team,efcFrames,blitzFrames){
   if(num(r.packages_checked)>0)out.push({employee_id:e.id,employee_name:e.display_name,reference_date:r.reference_date,area:'blitz_conferencia',activity_label:'Conferência de Blitz',unit:'vasilhames',quantity:num(r.packages_checked),duration_minutes:null,source:'blitz',source_id:r.check_key||[r.reference_date,r.trailer,r.check_time,r.checker].join('|')});
  }
  return out;
+}
+export function efdActivities(team,frames){
+ const employee=team.find(e=>e.active&&personKey(e.display_name)==='VANDERSON MARQUES');
+ if(!employee)return [];
+ const trips=new Map();
+ for(const frame of frames)for(const row of frame.maps||[]){
+  if(row.valid!==true||!row.reference_date||!row.vehicle||!row.physical_at||!Number.isFinite(Date.parse(row.physical_at)))continue;
+  // The same vehicle may return twice. Deduplicate an operation, not a day.
+  const key=[row.reference_date,String(row.vehicle),row.arrival_at||'',row.physical_at].join('|');
+  if(trips.has(key))continue;
+  trips.set(key,{employee_id:employee.id,employee_name:employee.display_name,reference_date:row.reference_date,area:'conferencia_retorno_efd',activity_label:'Conferência de retorno · EFD',unit:'carros',quantity:1,duration_minutes:null,source:'efd',source_id:key,map:row.map_id,vehicle:row.vehicle,responsible_assignment:true,reference:`Carro ${row.vehicle} · mapa ${row.map_id}`});
+ }
+ return [...trips.values()];
 }
