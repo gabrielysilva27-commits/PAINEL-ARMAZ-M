@@ -32,7 +32,8 @@ async function run(api,log){
  const output=path.join(__dirname,'..','data','outlook-segmentations-'+process.pid+'.json');fs.mkdirSync(path.dirname(output),{recursive:true});
  try{
   const script=fs.readFileSync(path.join(__dirname,'outlook-segmentations.ps1'),'utf8').replace(/^param[^\n]*\n/, '$OutputPath=$env:EFC_SEGMENTATIONS_OUTPUT\n');
-  await new Promise((resolve,reject)=>execFile('powershell.exe',['-NoProfile','-STA','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{windowsHide:true,timeout:180000,maxBuffer:1024*1024,env:{...process.env,EFC_SEGMENTATIONS_OUTPUT:output}},(e)=>e?reject(Error('Não foi possível ler o Outlook clássico conectado. Deixe-o aberto no mesmo usuário do agente.')):resolve()));
+  const psExe=path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
+  await new Promise((resolve,reject)=>execFile(psExe,['-NoProfile','-STA','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{windowsHide:true,timeout:180000,maxBuffer:1024*1024,env:{...process.env,EFC_SEGMENTATIONS_OUTPUT:output}},(e)=>e?reject(Error('Leitura Outlook: '+String(e.code||'falha')+'. Deixe o Outlook clássico aberto no mesmo usuário do agente.')):resolve()));
   const result=JSON.parse(fs.readFileSync(output,'utf8').replace(/^\uFEFF/,''));if(result.error)throw Error(result.error);
   const messages=(result.messages||[]).map(parse).filter(Boolean);let imported=0;
   for(let i=0;i<messages.length;i+=50){await call(api,'agent_segmentations_import',{messages:messages.slice(i,i+50)});imported+=Math.min(50,messages.length-i);}
