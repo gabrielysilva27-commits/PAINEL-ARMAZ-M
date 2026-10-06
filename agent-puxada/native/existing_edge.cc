@@ -610,7 +610,9 @@ static BOOL CALLBACK FindOCPWindow(HWND hwnd, LPARAM raw) {
   wchar_t title[512] = {}; GetWindowTextW(hwnd,title,512);
   std::wstring name(title); std::transform(name.begin(),name.end(),name.begin(),towlower);
   if (name.find(L"ocp carregamento") != std::wstring::npos || name.find(L"03.02.36.01") != std::wstring::npos) {
-    *reinterpret_cast<HWND*>(raw)=hwnd; return FALSE;
+    HWND* chosen=reinterpret_cast<HWND*>(raw);
+    if(!*chosen || HasForeground(hwnd) || (!IsWindowEnabled(*chosen)&&IsWindowEnabled(hwnd))) *chosen=hwnd;
+    if(HasForeground(hwnd))return FALSE;
   }
   return TRUE;
 }
@@ -804,7 +806,7 @@ static bool SelectOCPOption(const VisibleControl& control, bool selected) {
   bool ok=false;
   if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation,nullptr,CLSCTX_INPROC_SERVER,IID_IUIAutomation,reinterpret_cast<void**>(&automation))) && automation &&
       SUCCEEDED(automation->ElementFromPoint(point,&element)) && element) {
-    if (control.type==UIA_CheckBoxControlTypeId) {
+    if (control.type!=UIA_RadioButtonControlTypeId) {
       IUIAutomationTogglePattern* pattern=nullptr;
       if (SUCCEEDED(element->GetCurrentPatternAs(UIA_TogglePatternId,IID_IUIAutomationTogglePattern,reinterpret_cast<void**>(&pattern))) && pattern) {
         ToggleState state; if (SUCCEEDED(pattern->get_CurrentToggleState(&state))) {
@@ -818,6 +820,19 @@ static bool SelectOCPOption(const VisibleControl& control, bool selected) {
         if (selected) pattern->Select(); BOOL state=FALSE; Sleep(120);
         ok=SUCCEEDED(pattern->get_CurrentIsSelected(&state)) && !!state==selected; pattern->Release();
       }
+    }
+  }
+  if(!ok && element) {
+    auto checked=[&](bool* state){
+      VARIANT v;VariantInit(&v);bool readable=false;
+      if(SUCCEEDED(element->GetCurrentPropertyValue(UIA_LegacyIAccessibleStatePropertyId,&v)) && v.vt==VT_I4){
+        *state=(v.lVal & STATE_SYSTEM_CHECKED)!=0;readable=true;
+      }VariantClear(&v);return readable;
+    };
+    bool state=false;
+    if(checked(&state)){
+      if(state!=selected){ClickControl(control);Sleep(200);}
+      ok=checked(&state)&&state==selected;
     }
   }
   if(element)element->Release(); if(automation)automation->Release(); return ok;
@@ -836,17 +851,27 @@ static bool FillOCP(HWND hwnd,const std::wstring* values) {
   std::sort(edits.begin(),edits.end(),[](const VisibleControl&a,const VisibleControl&b){
     if(abs(a.rect.top-b.rect.top)>8)return a.rect.top<b.rect.top; return a.rect.left<b.rect.left;
   });
-  if(edits.size()<2 || abs(edits[0].rect.top-edits[1].rect.top)>8)return false;
+  std::vector<VisibleControl> maps;
+  for(size_t i=0;i+1<edits.size();++i){
+    if(abs(edits[i].rect.top-edits[i+1].rect.top)<=8){maps={edits[i],edits[i+1]};break;}
+  }
+  if(maps.size()!=2)return false;
   // Select the full source, not a picking-only or pallet-only export. Require
   // readable option state; never invert checkboxes blindly.
   bool complete=false,route=false,all=false;
   for(const auto& c:controls) {
-    if(c.type==UIA_CheckBoxControlTypeId && c.name==L"todos")all=SelectOCPOption(c,true);
-    if(c.type==UIA_RadioButtonControlTypeId && c.name==L"completa")complete=SelectOCPOption(c,true);
-    if(c.type==UIA_RadioButtonControlTypeId && c.name==L"rota")route=SelectOCPOption(c,true);
+    if((c.type==UIA_CheckBoxControlTypeId||c.type==UIA_TreeItemControlTypeId) && c.name==L"todos")all=SelectOCPOption(c,true);
+    if(c.type==UIA_RadioButtonControlTypeId && Contains(c.name,L"completa"))complete=SelectOCPOption(c,true);
+    if(c.type==UIA_RadioButtonControlTypeId && Contains(c.name,L"rota"))route=SelectOCPOption(c,true);
   }
   if(!complete || !route || !all)return false;
-  return Fill031120Control(edits[0],values[0]) && Fill031120Control(edits[1],values[1]);
+  bool central=false;
+  for(const auto& c:controls){
+    if(c.type!=UIA_ComboBoxControlTypeId || c.rect.top<window.top+160)continue;
+    if(Contains(Read031120Value(c),L"Central")||Contains(Read031120Value(c),L"central")){central=true;break;}
+  }
+  if(!central)return false;
+  return Fill031120Control(maps[0],values[0]) && Fill031120Control(maps[1],values[1]);
 }
 
 static bool Select031120Mapa(const VisibleControl& control) {
@@ -1171,6 +1196,8 @@ static napi_value Act(napi_env env, napi_callback_info info) {
       const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
       if (FAILED(initialized)) { result = L"com-unavailable"; return; }
       SetProcessDPIAware();
+      const bool ocpStage=stage==L"shortcut03023601"||stage==L"filters03023601"||stage==L"csv03023601";
+      if(ocpStage){MSG message={};PeekMessageW(&message,nullptr,0,0,PM_NOREMOVE);}
       if (stage == L"save") {
         result = SaveDialog(savePath);
         CoUninitialize();
@@ -1189,7 +1216,10 @@ static napi_value Act(napi_env env, napi_callback_info info) {
       RECT r = {};
       if (!target.hwnd || !GetWindowRect(target.hwnd, &r)) result = L"window-not-found";
       else {
-        if (!FocusWindow(target.hwnd)) result = L"window-not-foreground";
+        if (!FocusWindow(target.hwnd)) {
+          result=L"window-not-foreground";
+          if(ocpStage)result+=L":enabled="+std::to_wstring(IsWindowEnabled(target.hwnd)?1:0)+L":popup="+std::to_wstring(GetLastActivePopup(target.hwnd)!=target.hwnd?1:0);
+        }
         else if (stage == L"shortcut" || stage == L"shortcut031120" || stage == L"shortcut03023601") {
           result = L"shortcut-controls-not-found";
           const std::wstring reportCode = stage == L"shortcut03023601" ? L"03.02.36.01" : stage == L"shortcut031120" ? L"03.11.20" : L"02.05.01";
