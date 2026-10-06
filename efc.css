@@ -17,3 +17,17 @@
 
 .efc-wms-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media(max-width:760px){.efc-wms-metrics{grid-template-columns:1fr}}
+
+/* Compact EFC review */
+#efcView .efc-visual-panel{padding:18px;border-radius:14px;box-shadow:0 3px 12px #30313604}
+#efcView .efc-visual-panel svg{max-height:250px}
+#efcView .efc-inline-status{margin:0 0 12px;padding:8px 12px;border-left:3px solid #e8ac70;font-size:11px;color:#806348;background:#fff9f2;border-radius:5px}
+#efcView .efc-tabs{overflow:visible;flex-wrap:wrap;border:0;gap:6px}
+#efcView .efc-tabs button{border:1px solid #e5e6e8;border-radius:8px;background:white;padding:10px 14px}
+#efcView .efc-tabs button[aria-selected=true]{background:#fff2e8;border-color:#efc9ae}
+.efc-wms-card{display:grid;grid-template-columns:210px 1fr;gap:22px;background:white;border:1px solid #e5e6e8;border-radius:14px;padding:20px;margin:0 0 18px;align-items:center}
+.efc-wms-overview>span{font-size:13px;font-weight:700;display:block}.efc-wms-overview>strong{display:block;color:#258768;font-size:38px;line-height:1.2;margin:8px 0}.efc-wms-overview small,.efc-wms-overview p{font-size:11px;color:#777b83;line-height:1.6;margin:4px 0}
+.efc-wms-days{display:grid;gap:9px}.efc-wms-day{display:grid;grid-template-columns:52px minmax(70px,1fr) 72px 120px;align-items:center;gap:12px;border:0;background:transparent;padding:6px;text-align:left;border-radius:6px;color:#626773}.efc-wms-day:hover{background:#f5f8f6}.efc-wms-day b{text-align:right}.efc-wms-day small{text-align:right;color:#858a92;font-size:10px}
+.efc-wms-track{height:9px;border-radius:6px;background:#f0f2f1;overflow:hidden}.efc-wms-track i{display:block;height:100%;background:#32966f;border-radius:6px}
+.efc-wms-method{grid-column:1/-1;font-size:10px;color:#858a92}.efc-wms-method summary{cursor:pointer}.efc-wms-method p{margin:8px 0 0}.efc-hour-dialog{width:min(850px,92vw)}.efc-hour-dialog button{margin-top:12px}
+@media(max-width:760px){.efc-wms-card{grid-template-columns:1fr;gap:14px}.efc-wms-day{grid-template-columns:45px 1fr 65px}.efc-wms-day small{grid-column:2/4;text-align:right}.efc-wms-overview>strong{font-size:32px}}

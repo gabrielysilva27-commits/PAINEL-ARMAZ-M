@@ -23,3 +23,10 @@ test('month and daily filters recompute both rates from sums',()=>{
  const c=calculatePeriod(data,'2026-10');assert.equal(c.summary.resupply_rate,30/416);assert.equal(c.replenishmentSummary.rate,1);
  const d=calculatePeriod(data,'2026-10','2026-10-01');assert.equal(d.summary.resupply_rate,10/208);assert.equal(d.replenishmentSummary.rate,.5);
 });
+test('every product gets at least one position only in calculation, preserving original capacities',()=>{
+ const original=[{sku:'1',positions:0,palletization:100}];
+ const r=pickingSupply([row(151),row(151,'B',{product:'2'})],original,[...catalog,{sku_code:'2',boxes_per_pallet:100}],days);
+ assert.deepEqual(r.rows.map(x=>x.positions),[1,1]);
+ assert.deepEqual(r.rows.map(x=>x.estimated_pallets),[.6,.6]);
+ assert.equal(r.daily[0].capacity,200);assert.equal(original[0].positions,0);
+});
