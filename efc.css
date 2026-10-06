@@ -35,3 +35,19 @@
 .efc-supply-combined{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:center}.efc-supply-combined>div{min-width:0}.efc-supply-combined>div+div{border-left:1px solid #e5e7eb;padding-left:16px}.efc-supply-combined span{display:block;font-size:12px}.efc-supply-combined strong{display:block;font-size:clamp(20px,2vw,30px);margin-top:8px}
 
 .efc-visual-grid{align-items:start}
+
+/* Quality overview: compact summary and balanced chart rows. */
+#efcView .efc-quality-metrics{margin-bottom:16px}
+#efcView .efc-quality-metrics .efc-vmetric{padding:16px 18px;border-radius:12px}
+#efcView .efc-quality-metrics .efc-vmetric strong{font-size:25px;color:#29384a}
+#efcView .efc-quality-metrics .efc-vmetric:last-child strong{font-size:18px;line-height:1.8}
+#efcView .efc-quality-overview{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:16px;margin-bottom:16px;align-items:stretch}
+#efcView .efc-quality-dashboard .efc-chart-heading h2{font-size:14px!important;margin-bottom:4px}
+#efcView .efc-quality-dashboard .efc-bar-caption{font-size:12px;color:#526173}
+#efcView .efc-quality-dashboard .efc-bar-caption b{font-size:13px;color:#29384a}
+#efcView .efc-quality-dashboard .efc-bar-row{margin-bottom:14px}
+#efcView .efc-quality-dashboard .efc-bar-track{height:8px;background:#edf1f4;border-radius:5px}
+#efcView .efc-quality-dashboard .efc-donut-layout{justify-content:center;min-height:210px;gap:20px}
+#efcView .efc-quality-dashboard .efc-donut-legend{font-size:12px;color:#526173}
+#efcView .efc-quality-dashboard .efc-visual-grid{align-items:stretch}
+@media(max-width:900px){#efcView .efc-quality-overview{grid-template-columns:1fr}#efcView .efc-quality-dashboard .efc-donut-layout{min-height:150px}}
