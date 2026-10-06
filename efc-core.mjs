@@ -9,7 +9,14 @@ export function loading(pcd,events,policy=null){const loaded=events.filter(x=>no
 const sameVehicle=(a,b)=>plate(a.plate)===plate(b.plate)||Boolean((a.vehicle||(/^\d+$/.test(String(a.plate))?a.plate:''))&&(String(a.vehicle||a.plate)===String(b.vehicle||(/^\d+$/.test(String(b.plate))?b.plate:''))));
 export function priorities(rows,loads){
  const matched=rows.map(x=>({...x,load:loads.find(l=>l.date===x.date&&sameVehicle(l,x))})).filter(x=>x.load);
- return matched.map(x=>{const group=matched.filter(r=>r.date===x.date).sort((a,b)=>(a.source_order??a.sheet_row)-(b.source_order??b.sheet_row));const pos=group.indexOf(x),previous=pos>0?group[pos-1]:null;const ordered=loads.filter(l=>l.date===x.date&&l.loaded_at).sort((a,b)=>a.loaded_at.localeCompare(b.loaded_at));const rank=r=>r.load?.loaded_at?ordered.findIndex(l=>l.loaded_at===r.load.loaded_at)+1:null;const sequence=rank(x),prev=previous?rank(previous):null;return{...x,sequence,status:x.manual_priority===1?'OK':sequence==null||previous&&prev==null?'Pendente':pos===0?(sequence===1?'OK':'NOK'):sequence>=prev?'OK':'NOK'};});
+ const result=[];
+ for(const date of [...new Set(matched.map(x=>x.date))]){
+  const ordered=loads.filter(l=>l.date===date&&l.loaded_at).sort((a,b)=>a.loaded_at.localeCompare(b.loaded_at));
+  const rank=x=>x.load?.loaded_at?ordered.findIndex(l=>l.loaded_at===x.load.loaded_at)+1:null;
+  const group=matched.filter(x=>x.date===date).sort((a,b)=>(Number(b.priority)||0)-(Number(a.priority)||0)||(rank(a)??Infinity)-(rank(b)??Infinity)||(a.source_order??a.sheet_row??0)-(b.source_order??b.sheet_row??0));
+  group.forEach((x,i)=>{const sequence=rank(x),previous=i?rank(group[i-1]):null;result.push({...x,expected_sequence:i+1,sequence,status:x.manual_priority===1?'OK':x.priority==null||sequence==null||i&&previous==null?'Pendente':i===0?(sequence===1?'OK':'NOK'):sequence>=previous?'OK':'NOK'});});
+ }
+ return result;
 }
 export function replenishment(demand,capacities){const cap=new Map(capacities.map(x=>[x.sku,x]));return demand.map(x=>{const c=cap.get(x.sku),capacity=c?.positions!=null&&c?.palletization>0?c.positions*c.palletization:null;return{...x,positions:c?.positions??null,capacity,excess:capacity!=null?Math.max(0,x.boxes-capacity):null,estimated_pallets:capacity!=null?Math.max(0,Math.ceil(Math.max(0,x.boxes/c.palletization-c.positions)*10-1e-8))/10:null};});}
 export function people(rows){const groups=new Map();for(const x of rows){const key=norm(x.name);if(!groups.has(key))groups.set(key,{name:x.name,pallets:0,boxes:0,minutes:0,days:new Set(),activities:0,missing:0,validEFM:0,efmTotal:0});const g=groups.get(key);g.pallets+=Number(x.pallets)||0;g.boxes+=Number(x.boxes)||0;g.minutes+=Number(x.duration)||0;g.activities++;g.days.add(x.date);if(x.boxes==null)g.missing++;if(x.efm!=null){g.validEFM++;g.efmTotal+=x.efm;}}return [...groups.values()].map(g=>({...g,days:g.days.size,efm:ratio(g.efmTotal,g.validEFM),boxes_per_hour:ratio(g.boxes,g.minutes/60)})).sort((a,b)=>b.pallets-a.pallets);}
