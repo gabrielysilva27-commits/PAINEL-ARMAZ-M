@@ -1,8 +1,8 @@
-import {remunerationModel} from './efc-pay.mjs?v=20261006-pay-live';
-import {norm} from './efc-core.mjs?v=20261006-pay-live';
-import {dailySeries,hours,categories,loadProfile,ranking,periods,sum} from './efc-analytics.mjs?v=20261006-pay-live';
-import {historyRanking} from './efc-history.mjs?v=20261006-pay-live';
-import {escape as e,format as n,seriesChart,donutChart,horizontalBars,chartPanel as baseChartPanel,metric} from './efc-charts.mjs?v=20261006-pay-live';
+import {remunerationModel} from './efc-pay.mjs?v=20261006-pay-clean';
+import {norm} from './efc-core.mjs?v=20261006-pay-clean';
+import {dailySeries,hours,categories,loadProfile,ranking,periods,sum} from './efc-analytics.mjs?v=20261006-pay-clean';
+import {historyRanking} from './efc-history.mjs?v=20261006-pay-clean';
+import {escape as e,format as n,seriesChart,donutChart,horizontalBars,chartPanel as baseChartPanel,metric} from './efc-charts.mjs?v=20261006-pay-clean';
 const chartPanel=(title,description,body,controls)=>baseChartPanel(title,'',body,controls);
 const pct=v=>v==null?'Pendente':n(v*100,2)+'%';
 const grid=body=>`<div class="efc-visual-grid">${body}</div>`;
