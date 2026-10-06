@@ -1,4 +1,4 @@
-import {calculate,norm,ratio,people} from './efc-core.mjs?v=20261006-efc-review-1';
+import {calculate,norm,ratio,people} from './efc-core.mjs?v=20261006-wms-2';
 export const sum=(rows,key)=>rows.reduce((total,row)=>total+(Number(row[key])||0),0);
 export function weekStart(date){const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);return d.toISOString().slice(0,10);}
 export function inPeriod(date,month,day='',week=''){return !date||(date.startsWith(month)&&(!day||date===day)&&(!week||weekStart(date)===week));}

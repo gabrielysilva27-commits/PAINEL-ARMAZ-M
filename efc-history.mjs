@@ -1,6 +1,6 @@
-import {wmsAdherence} from './efc-wms.mjs?v=20261006-efc-review-1';
-import {calculate,people,ratio,norm,loading,priorities} from './efc-core.mjs?v=20261006-efc-review-1';
-import {selectPeriod,sum,weekStart} from './efc-analytics.mjs?v=20261006-efc-review-1';
+import {wmsAdherence} from './efc-wms.mjs?v=20261006-wms-2';
+import {calculate,people,ratio,norm,loading,priorities} from './efc-core.mjs?v=20261006-wms-2';
+import {selectPeriod,sum,weekStart} from './efc-analytics.mjs?v=20261006-wms-2';
 const mean=xs=>xs.length?xs.reduce((a,x)=>a+x,0)/xs.length:null;
 export function historicalWeek(date){const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-d.getUTCDay());return d.toISOString().slice(0,10);}
 export function periodKey(date,month){return month<='2026-09'?historicalWeek(date):weekStart(date);}

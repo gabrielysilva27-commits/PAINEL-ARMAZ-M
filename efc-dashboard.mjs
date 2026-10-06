@@ -1,7 +1,7 @@
-import {norm} from './efc-core.mjs?v=20261006-efc-review-1';
-import {dailySeries,hours,categories,loadProfile,ranking,periods,sum} from './efc-analytics.mjs?v=20261006-efc-review-1';
-import {historyRanking} from './efc-history.mjs?v=20261006-efc-review-1';
-import {escape as e,format as n,seriesChart,donutChart,horizontalBars,chartPanel as baseChartPanel,metric} from './efc-charts.mjs?v=20261006-efc-review-1';
+import {norm} from './efc-core.mjs?v=20261006-wms-2';
+import {dailySeries,hours,categories,loadProfile,ranking,periods,sum} from './efc-analytics.mjs?v=20261006-wms-2';
+import {historyRanking} from './efc-history.mjs?v=20261006-wms-2';
+import {escape as e,format as n,seriesChart,donutChart,horizontalBars,chartPanel as baseChartPanel,metric} from './efc-charts.mjs?v=20261006-wms-2';
 const chartPanel=(title,description,body,controls)=>baseChartPanel(title,'',body,controls);
 const pct=v=>v==null?'Pendente':n(v*100,2)+'%';
 const grid=body=>`<div class="efc-visual-grid">${body}</div>`;
@@ -30,7 +30,7 @@ export function memory(c){if(c.history)return `<div class="efc-calculation-list 
 export function payTable(c,table){if(!c.history)return '';return table('Remuneração',['Colaborador','Pallets','Base R$','Erros R$','Avarias R$','Eficiência R$','Presença R$','Final R$'],c.history.ranking.map(x=>({id:x.name,values:[x.name,n(x.pallets,2),n(x.base_payment,2),n(x.error_bonus,2),n(x.damage_bonus,2),n(x.efficiency_bonus,2),n(x.absence_bonus,2),n(x.payment,2)]})))+`<p class="efc-coverage">Total final salvo no Excel: R$ ${n(c.history.summary.payment,2)}.</p>`;}
 export function wmsVisual(c){
  const w=c.wmsEstimate;if(!w)return '';
- return `<section class="efc-wms-card"><div class="efc-wms-overview"><span>Aderência T2P</span><strong>${pct(w.rate)}</strong><small>Regra por segmentações</small><p>${n(w.adherent)} aderentes · ${n(w.segmented)} segmentados${w.pending_days?' · '+n(w.pending_days)+' dias pendentes':''}</p></div><div class="efc-wms-days">${w.daily.map(x=>`<button data-efc-chart-day="${e(x.date)}" class="efc-wms-day"><span>${e(x.date.slice(8)+'/'+x.date.slice(5,7))}</span><div class="efc-wms-track"><i style="width:${x.rate==null?0:x.rate*100}%"></i></div><b>${pct(x.rate)}</b><small>${x.rate==null?e(x.status):n(x.adherent)+' / '+n(x.planned)+' mapas'}</small></button>`).join('')}</div><details class="efc-wms-method"><summary>Critério</summary><p>(Mapas elegíveis − mapas segmentados) ÷ mapas elegíveis. Regra operacional baseada nas segmentações, sem medição de uso real de WMS.</p></details></section>`;
+ return `<section class="efc-wms-card"><div class="efc-wms-overview"><span>Aderência T2P</span><strong>${pct(w.rate)}</strong><small>031120 - ${n(w.adherent)} WMS / ${n(w.segmented)} Leandrosi</small><p>${n(w.planned)} mapas${w.pending_days?' · '+n(w.pending_days)+' dias pendentes':''}</p></div><div class="efc-wms-days">${w.daily.map(x=>`<button data-efc-chart-day="${e(x.date)}" class="efc-wms-day"><span>${e(x.date.slice(8)+'/'+x.date.slice(5,7))}</span><div class="efc-wms-track"><i style="width:${x.rate==null?0:x.rate*100}%"></i></div><b>${pct(x.rate)}</b><small>${x.rate==null?e(x.status):n(x.adherent)+' / '+n(x.planned)+' mapas'}</small></button>`).join('')}</div><details class="efc-wms-method"><summary>Critério</summary><p>(Mapas elegíveis − mapas segmentados) ÷ mapas elegíveis. Regra operacional baseada nas segmentações, sem medição de uso real de WMS.</p></details></section>`;
 }
 
 export function visuals(tab,c,raw,state,table){if(tab==='management')return headline(c)+wmsVisual(c)+loadingVisual(c,true)+supplyVisual(c,true);if(tab==='loading')return headline(c)+wmsVisual(c)+loadingVisual(c);if(tab==='productivity')return headline(c)+productivityVisual(c,raw,state);if(tab==='supply')return headline(c)+supplyVisual(c);if(tab==='quality')return qualityVisual(c);if(tab==='pay')return c.history?payTable(c,table):grid(chartPanel('Equipe de carregamento','Volume por colaborador',horizontalBars({title:'Equipe',data:team(c).map(x=>({label:x.name,value:x.pallets})),color:'#f47a20'})));return '';}

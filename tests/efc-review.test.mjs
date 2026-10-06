@@ -13,6 +13,6 @@ test('all main tabs render; partial coverage stays outside the chart grid and T2
  const raw={picking_rows:[],picking_days:[{date:'2026-10-01',estimated:1,positions:208,boxes:10,capacity:200,missing_boxes:13,complete:false}]},c=calculatePeriod(raw,'2026-10');
  for(const tab of ['management','loading','productivity','supply'])assert.ok(visuals(tab,c,raw,{month:'2026-10',member:''},()=>''));
  const html=visuals('management',c,raw,{month:'2026-10'},()=> '');
- assert.match(html,/Regra por segmentações/);assert.doesNotMatch(html,/Aderência estimada/);
+ assert.match(html,/031120 -/);assert.doesNotMatch(html,/Aderência estimada/);
  assert.match(html,/efc-inline-status[^]*?<\/p><div class="efc-visual-grid">/);
 });
