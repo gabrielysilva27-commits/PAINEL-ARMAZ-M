@@ -35,14 +35,28 @@ async function save(table:string,row:any,conflict?:string){const q=conflict?db.f
 async function employee(id:unknown){const {data,error}=await db.from('wlp_employees').select('id,job_title').eq('id',text(id,40)).eq('active',true).maybeSingle();if(error)throw error;if(!data)throw Error('Colaborador inválido ou inativo.');return data.id}
 async function overtimeAllowed(id:string,hours:number){if(hours<=0)return;const {data,error}=await db.from('wlp_employees').select('job_title').eq('id',id).single();if(error)throw error;if(/empilhadeira|empilhador/i.test(data.job_title))throw Error('Empilhadores não recebem horas extras.');}
 Deno.serve(async req=>{
- if(req.method==='OPTIONS')return reply({ok:true});if(req.method==='GET')return reply({service:'productivity-api',version:'2026-10-01-transport-4'});if(req.method!=='POST')return reply({error:'Método inválido.'},405);
+ if(req.method==='OPTIONS')return reply({ok:true});if(req.method==='GET')return reply({service:'productivity-api',version:'2026-10-06-team-1'});if(req.method!=='POST')return reply({error:'Método inválido.'},405);
  try{const u=await session(req);if(!u)return reply({error:'Sessão inválida ou expirada.'},401);const b=await req.json();
  if(b.action==='historical')return reply({months:await all(()=>db.from('wlp_monthly_archive').select('reference_month,payload,imported_at').order('reference_month')),rules:{daily_hours:7+20/60,monthly_overtime:13,forklift_overtime:0,shift_pattern:'6x1'}});
  if(b.action==='dashboard')return reply({dashboard:await dashboard(date(b.from),date(b.to))});
  if(u.role!=='admin')return reply({error:'Alterações restritas à administração.'},403);
  const stamp={recorded_by:u.id};
  if(b.action==='sync_repack'){const workers=await all(()=>db.from('repack_workers').select('id,display_name,active').eq('active',true).order('id'));const existing=await employees();const missing=workers.filter(w=>!existing.some(e=>e.repack_worker_id===w.id));if(missing.length)await save('wlp_employees',missing.map(w=>({display_name:w.display_name,area:'repack',repack_worker_id:w.id,created_by:u.id})),'repack_worker_id');}
- else if(b.action==='employee'){await save('wlp_employees',{display_name:required(b.display_name,160),job_title:text(b.job_title,160),area:area(b.area),shift:shift(b.shift),created_by:u.id});}
+ else if(b.action==='employee'||b.action==='employee_update'){
+ const row={display_name:required(b.display_name,160),job_title:required(b.job_title,160),area:area(b.area),shift:shift(b.shift)};
+ if(row.display_name.length<2)throw Error('Informe o nome completo do colaborador.');
+ const existing=await employees(),id=text(b.id,40),key=(v:string)=>v.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
+ if(existing.some(e=>e.id!==id&&key(e.display_name)===key(row.display_name)))throw Error('Este colaborador já está cadastrado. Edite ou reative o cadastro existente.');
+ if(b.action==='employee_update'){
+  if(!id||!existing.some(e=>e.id===id))throw Error('Colaborador não encontrado.');
+  const {data,error}=await db.from('wlp_employees').update(row).eq('id',id).select('id').maybeSingle();if(error)throw error;if(!data)throw Error('Colaborador não encontrado.');
+ }else await save('wlp_employees',{...row,active:true,created_by:u.id});
+ }
+ else if(b.action==='employee_status'){
+  if(typeof b.active!=='boolean')throw Error('Situação inválida.');
+  const id=text(b.id,40);if(!id)throw Error('Colaborador não encontrado.');
+  const {data,error}=await db.from('wlp_employees').update({active:b.active}).eq('id',id).select('id').maybeSingle();if(error)throw error;if(!data)throw Error('Colaborador não encontrado.');
+ }
  else if(b.action==='attendance'){const regular=num(b.regular_hours,0,24),overtime=num(b.overtime_hours,0,24),id=await employee(b.employee_id),day=date(b.reference_date),a=area(b.area),s=shift(b.shift);await overtimeAllowed(id,overtime);const registered=await all(()=>db.from('wlp_attendance').select('area,shift,regular_hours,overtime_hours').eq('employee_id',id).eq('reference_date',day).order('id'));const other=registered.filter(x=>x.area!==a||x.shift!==s).reduce((sum,x)=>sum+Number(x.regular_hours)+Number(x.overtime_hours),0);if(regular+overtime+other>24)throw Error('A soma das jornadas desta pessoa no dia excede 24 horas.');await save('wlp_attendance',{employee_id:id,reference_date:day,area:a,shift:s,regular_hours:regular,overtime_hours:overtime,notes:text(b.notes),...stamp,updated_at:new Date().toISOString()},'employee_id,reference_date,area,shift');}
  else if(b.action==='activity'){const a=area(b.area);if(['repack','despejo'].includes(a))throw Error('Repack e despejo são alimentados pelo cronômetro existente para evitar duplicação.');await save('wlp_activities',{employee_id:await employee(b.employee_id),reference_date:date(b.reference_date),area:a,quantity:num(b.quantity,0.001),duration_minutes:num(b.duration_minutes,0.001,1440),reference:required(b.reference,160),notes:text(b.notes),...stamp});}
  else if(b.action==='target'){await save('wlp_targets',{area:area(b.area),units_per_labor_hour:num(b.units_per_labor_hour,0.001),updated_by:u.id,updated_at:new Date().toISOString()},'area');}
@@ -55,3 +69,4 @@ Deno.serve(async req=>{
  return reply({ok:true});
  }catch(e){console.error('productivity-api',e instanceof Error?e.message:'error');return reply({error:e instanceof Error&& !('code' in e)?e.message:'Não foi possível salvar ou consultar. Confira os dados e tente novamente.'},400)}
 });
+

@@ -26,3 +26,29 @@
 #productivityView .wlp-planning .wlp-details{font-size:12px;box-shadow:none}
 @media(max-width:900px){#productivityView .wlp-planning .wlp-card{grid-column:span 6}#productivityView .wlp-planning .wlp-card:nth-child(n+5){grid-column:span 4}#productivityView .wlp-plan-table th,#productivityView .wlp-plan-table td{padding:11px 6px}}
 @media(max-width:680px){#productivityView .wlp-planning .wlp-controls{grid-template-columns:1fr;padding:15px}#productivityView .wlp-planning .wlp-cards{grid-template-columns:repeat(2,minmax(0,1fr))}#productivityView .wlp-planning .wlp-card,#productivityView .wlp-planning .wlp-card:nth-child(n+5){grid-column:span 1;padding:14px;min-height:90px}#productivityView .wlp-planning .wlp-card:last-child{grid-column:1/-1}#productivityView .wlp-planning .wlp-card strong{font-size:23px}#productivityView .wlp-plan-table td{text-align:left;overflow-wrap:anywhere}#productivityView .wlp-plan-table tr:has(.wlp-month-active){border-color:#d7a5ad}}
+/* Team roster and editing controls. */
+#productivityView .wlp-team-heading{display:flex;justify-content:space-between;align-items:start;gap:16px;margin-bottom:14px}
+#productivityView .wlp-team-heading h2{margin:0}
+#productivityView .wlp-team-table{overflow:visible}
+#productivityView .wlp-team-table table{table-layout:fixed}
+#productivityView .wlp-team-table td,#productivityView .wlp-team-table th{text-align:center;vertical-align:middle;white-space:normal;max-width:none;padding:12px 10px;line-height:1.45}
+#productivityView .wlp-team-table th:first-child{width:29%}
+#productivityView .wlp-team-table th:nth-child(2){width:25%}
+#productivityView .wlp-team-table th:nth-child(3){width:7%}
+#productivityView .wlp-team-table th:nth-child(5){width:9%}
+#productivityView .wlp-team-table td:first-child{font-weight:650;font-size:12px}
+#productivityView .wlp-team-table tbody tr:nth-child(even){background:#fafbfc}
+#productivityView .wlp-shift,#productivityView .wlp-team-he{display:inline-flex;align-items:center;justify-content:center;min-width:34px;padding:5px 9px;border-radius:9px;background:#f2f4f7;color:#455165;font-weight:750;font-variant-numeric:tabular-nums}
+#productivityView .wlp-team-he{background:#fbf0f2;color:#8b1d2d}
+#productivityView .wlp-team-he.zero{background:#f2f4f7;color:#667085}
+#productivityView .wlp-team-form{display:grid;grid-template-columns:2fr 1.6fr .6fr 1.4fr;gap:12px;background:#f8f9fb;border:1px solid var(--wlp-line);padding:16px;border-radius:14px;margin-bottom:18px}
+#productivityView .wlp-team-form label{display:grid;gap:7px;font-size:11px;text-transform:uppercase;font-weight:750;color:#667085;min-width:0}
+#productivityView .wlp-team-form input,#productivityView .wlp-team-form select{width:100%;box-sizing:border-box;min-width:0;border:1px solid #d9dde6;background:#fff;border-radius:10px;padding:10px;font:inherit;font-size:13px;color:#24252b;text-transform:none}
+#productivityView .wlp-team-form-actions{grid-column:1/-1;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+#productivityView .wlp-team-form-actions [role=status]{font-size:12px;color:#8b1d2d}
+#productivityView .wlp-team-actions{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px}
+#productivityView .wlp-team-actions button{font-size:11px;padding:6px 8px;border-radius:8px}
+#productivityView .wlp-team-actions .wlp-remove{color:#a71929;border-color:#ecd0d5}
+#productivityView .wlp-team-actions small{width:100%;color:#667085}
+@media(max-width:900px){#productivityView .wlp-team-form{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:680px){#productivityView .wlp-team-heading{align-items:center}#productivityView .wlp-team-heading button{font-size:12px;padding:9px 10px}#productivityView .wlp-team-table td{text-align:left}#productivityView .wlp-team-form{grid-template-columns:1fr}#productivityView .wlp-team-actions{justify-content:start}}
