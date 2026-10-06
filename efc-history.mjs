@@ -1,6 +1,7 @@
+import {withAuthorizedBoxesAverage} from './efc-boxes-average.mjs?v=20261006-boxes-average';
 import {normalizePeople,personName} from './efc-names.mjs?v=20261006-names-1';
 import {wmsAdherence} from './efc-wms.mjs?v=20261006-names-1';
-import {calculate,people,ratio,norm,loading,priorities} from './efc-core.mjs?v=20261006-names-1';
+import {calculate,people,ratio,norm,loading,priorities} from './efc-core.mjs?v=20261006-boxes-average';
 import {selectPeriod,sum,weekStart} from './efc-analytics.mjs?v=20261006-names-1';
 const mean=xs=>xs.length?xs.reduce((a,x)=>a+x,0)/xs.length:null;
 export function historicalWeek(date){const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-d.getUTCDay());return d.toISOString().slice(0,10);}
@@ -9,6 +10,7 @@ export function withHistoricalActivities(data,history){if(!history)return data;c
 const resupplyRate=(estimated,pallets,positions)=>ratio(estimated,pallets??positions);
 export function calculatePeriod(data,month,day='',week='',history=null){
  data=normalizePeople(data);
+ if(month>'2026-09')data=withAuthorizedBoxesAverage(data);
  const filtered=Object.fromEntries(Object.entries(data).map(([kind,rows])=>[kind,kind==='events'?rows:rows.filter(x=>!x.date||(x.date.startsWith(month)&&(!day||x.date===day)&&(!week||periodKey(x.date,month)===week)))]));
  if(month<='2026-09'&&!history)throw Error('Histórico original do Excel não disponível para este mês.');
  const c=calculate(filtered,month,day);c.month=month;c.payFiltered=Boolean(day||week);

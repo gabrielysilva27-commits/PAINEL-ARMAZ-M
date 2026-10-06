@@ -1,6 +1,6 @@
-import {norm} from './efc-core.mjs?v=20261006-checker-boxes';
-import {personName} from './efc-names.mjs?v=20261006-checker-boxes';
-import {escape as e,format as n,seriesChart,horizontalBars,chartPanel,metric} from './efc-charts.mjs?v=20261006-checker-boxes';
+import {norm} from './efc-core.mjs?v=20261006-boxes-average';
+import {personName} from './efc-names.mjs?v=20261006-boxes-average';
+import {escape as e,format as n,seriesChart,horizontalBars,chartPanel,metric} from './efc-charts.mjs?v=20261006-boxes-average';
 const key=v=>norm(personName(v));
 const sum=(xs,k)=>xs.reduce((a,x)=>a+(Number(x[k])||0),0);
 const maps=xs=>[...new Map(xs.map(x=>[x.date+'|'+x.map,x])).values()];
