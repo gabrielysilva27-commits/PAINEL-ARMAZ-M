@@ -16,3 +16,15 @@ test('missing table and unrelated emails do not become zero segmentations',()=>{
  assert.equal(parse({subject:'SEGMENTAÇÃO DE CLIENTES COM EMPILHADEIRA DIA 06/10/2026',html:'imagem'}).status,'review');
  assert.equal(parse({subject:'RE: outro assunto',html:table}),null);
 });
+
+test('forwarded table requires the same operational subject, never another date',()=>{
+ const subject='SEGMENTAÇÃO DE CLIENTES COM EMPILHADEIRA DIA 06/10/2026';
+ const matching='<div id="divRplyFwdMsg">Assunto: '+subject+'</div>'+table;
+ assert.equal(parse({subject:'RE: '+subject,html:matching}).status,'parsed');
+ assert.equal(parse({subject,html:matching.replace('06/10/2026','05/10/2026')}).status,'review');
+ assert.equal(parse({subject,html:'<blockquote>'+table+'</blockquote>'}).status,'review');
+});
+test('handles encoded accented headers and plural map headers',()=>{
+ const result=parse({subject:'SEGMENTAÇÃO DE CLIENTES COM EMPILHADEIRA DIA 06/10/2026',html:table.replace('Mapa','Mapas').replace('Veículo','Ve&iacute;culo')});
+ assert.equal(result.status,'parsed');assert.equal(result.rows.length,2);
+});

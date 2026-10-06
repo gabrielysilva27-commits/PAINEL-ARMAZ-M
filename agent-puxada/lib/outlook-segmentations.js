@@ -4,18 +4,29 @@ const crypto=require('crypto');
 const {spawn}=require('child_process');
 const ENDPOINT='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/efc-api';
 const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
-function text(v){return String(v||'').replace(/<[^>]*>/g,' ').replace(/&#(\d+);/g,(_,x)=>String.fromCodePoint(Number(x))).replace(/&#x([a-f\d]+);/gi,(_,x)=>String.fromCodePoint(parseInt(x,16))).replace(/&(aacute|agrave|acirc|atilde|eacute|ecirc|iacute|oacute|ocirc|otilde|uacute|ccedil);/gi,(_,name)=>({aacute:'á',agrave:'à',acirc:'â',atilde:'ã',eacute:'é',ecirc:'ê',iacute:'í',oacute:'ó',ocirc:'ô',otilde:'õ',uacute:'ú',ccedil:'ç'}[name.toLowerCase()])).replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/\s+/g,' ').trim();}
+function text(v){return String(v||'').replace(/<[^>]*>/g,' ').replace(/[\u200B-\u200D\uFEFF]/g,'').replace(/&#(\d+);/g,(_,x)=>String.fromCodePoint(Number(x))).replace(/&#x([a-f\d]+);/gi,(_,x)=>String.fromCodePoint(parseInt(x,16))).replace(/&(aacute|agrave|acirc|atilde|eacute|ecirc|iacute|oacute|ocirc|otilde|uacute|ccedil);/gi,(_,name)=>({aacute:'á',agrave:'à',acirc:'â',atilde:'ã',eacute:'é',ecirc:'ê',iacute:'í',oacute:'ó',ocirc:'ô',otilde:'õ',uacute:'ú',ccedil:'ç'}[name.toLowerCase()])).replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/\s+/g,' ').trim();}
 function parse(message){
  const subject=norm(message.subject),m=subject.match(/\b(\d{2})[/.\-](\d{2})[/.\-](2026)\b/);
  if(!/SEGMENTACAO.*CLIENTES.*EMPILHADEIRA/.test(subject)||!m)return null;
  const date=m[3]+'-'+m[2]+'-'+m[1];if(!Number.isFinite(Date.parse(date+'T12:00:00Z'))||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date)return null;
- const html=String(message.html||'').split(/<blockquote\b|<div[^>]+id=["'](?:divRplyFwdMsg|appendonsend)/i)[0];
+ const fullHtml=String(message.html||'');
+ let html=fullHtml.split(/<blockquote\b|<div[^>]+id=["'](?:divRplyFwdMsg|appendonsend)/i)[0];
+ // A forwarded table is usable only when its own quoted subject exactly
+ // matches the requested operational date. Never inherit an older day's table.
+ if(!/<table\b/i.test(html)&&html.length<fullHtml.length){
+  const quoted=fullHtml.slice(html.length),first=quoted.search(/<table\b/i);
+  const originalSubject=subject.replace(/^(?:(?:RE|RES|FW|FWD|ENC):\s*)+/,'');
+  if(first>=0&&norm(text(quoted.slice(0,first))).includes(originalSubject)){
+   const end=quoted.indexOf('</table>',first);
+   if(end>=0)html=quoted.slice(first,end+8);
+  }
+ }
  const rows=new Map();let invalid=0,found=false;
  for(const table of html.matchAll(/<table\b[^>]*>([\s\S]*?)<\/table>/gi)){
   let columns=null;
   for(const row of table[1].matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)){
    const cells=[...row[1].matchAll(/<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi)].map(x=>text(x[1]));
-   const headers=cells.map(norm);if(headers.includes('MAPA')&&headers.includes('VEICULO')){columns={map:headers.indexOf('MAPA'),vehicle:headers.indexOf('VEICULO'),customer:headers.findIndex(x=>/PDV|CLIENTE/.test(x))};found=true;continue;}
+   const headers=cells.map(norm),mapColumn=headers.findIndex(x=>/^(?:N[º°O.]?\s*)?MAPAS?$/.test(x));if(mapColumn>=0&&headers.includes('VEICULO')){columns={map:mapColumn,vehicle:headers.indexOf('VEICULO'),customer:headers.findIndex(x=>/PDV|CLIENTE/.test(x))};found=true;continue;}
    if(!columns||!cells.some(Boolean))continue;
    const clean=x=>String(x||'').replace(/[.\s]/g,''),map=clean(cells[columns.map]),vehicle=clean(cells[columns.vehicle]),customer=columns.customer>=0?clean(cells[columns.customer]):'';
    if(!/^\d{1,12}$/.test(map)||!/^\d{1,12}$/.test(vehicle)||!/^\d{1,12}$/.test(customer)){invalid++;continue;}
