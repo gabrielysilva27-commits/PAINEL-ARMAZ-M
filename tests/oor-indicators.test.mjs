@@ -14,3 +14,9 @@ test('histórico usa o universo real da planilha sem incluir SKUs sintéticos',(
  const h={eligible_skus:['1'],innovation_skus:['1'],unavailable_skus:[]};assert.equal(indicatorFlags({sku_code:'2'},h,{}).indicator_eligible,false);
 });
 test('seleção não aplica cadastro futuro ao histórico',()=>assert.equal(selectIndicatorConfig('2026-02-01',[{reference_month:'2026-03-01'},{reference_month:'2026-01-01'}]).reference_month,'2026-01-01'));
+test('indisponibilidade histórica acompanha OUT atual, sem tratar OK como indisponível',()=>{
+ const h={eligible_skus:['1'],innovation_skus:[],unavailable_skus:['1']};
+ assert.equal(indicatorFlags({sku_code:'1',status:'OK'},h,{route_skus:[]}).is_unavailable,false);
+ assert.equal(indicatorFlags({sku_code:'1',status:'OUT'},h,{route_skus:['1']}).is_unavailable,false);
+ assert.equal(indicatorFlags({sku_code:'1',status:'OUT'},h,{route_skus:[]}).is_unavailable,true);
+});

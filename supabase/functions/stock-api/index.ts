@@ -37,15 +37,18 @@ async function requireSession(req: Request) {
 const canEdit = (u: any) => u?.role === "admin";
 const todayBR = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 async function oorIndicators(dates: string[]) {
-  const [historyResult, configResult] = await Promise.all([
+  const [historyResult, configResult, unavailableResult] = await Promise.all([
     db.from("stock_oor_indicator_history").select("reference_date,payload").order("reference_date"),
     db.from("stock_oor_indicator_configs").select("*").order("reference_month"),
+    db.rpc("stock_oor_indicator_unavailable"),
   ]);
   if (historyResult.error) throw historyResult.error;
   if (configResult.error) throw configResult.error;
+  if (unavailableResult.error) throw unavailableResult.error;
+  const currentUnavailable=new Map<string,any>((unavailableResult.data||[]).map((r:any)=>[r.reference_date,r]));
   const configs=configResult.data||[];
   const allowed=new Set(dates);
-  const byDate=new Map<string,any>((historyResult.data||[]).filter((r:any)=>allowed.has(r.reference_date)).map((r:any)=>[r.reference_date,decorateIndicator(r.payload)]));
+  const byDate=new Map<string,any>((historyResult.data||[]).filter((r:any)=>allowed.has(r.reference_date)).map((r:any)=>[r.reference_date,decorateIndicator({...r.payload,...currentUnavailable.get(r.reference_date)})]));
   const missing=dates.filter(d=>!byDate.has(d));
   const live=new Map<string,any[]>();
   if(missing.length) for(let offset=0;;offset+=1000){

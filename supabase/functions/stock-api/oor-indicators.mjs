@@ -5,7 +5,7 @@ export function decorateIndicator(x){
 }
 export function indicatorFlags(row,metric,config){
   const sku=String(row.sku_code);
-  if(metric?.eligible_skus)return {indicator_eligible:metric.eligible_skus.includes(sku),is_innovation:metric.innovation_skus.includes(sku),is_unavailable:metric.unavailable_skus.includes(sku)};
+  if(metric?.eligible_skus)return {indicator_eligible:metric.eligible_skus.includes(sku),is_innovation:metric.innovation_skus.includes(sku),is_unavailable:row.status==='OUT'&&!(config?.route_skus||[]).includes(sku)};
   return {indicator_eligible:true,is_innovation:(config?.innovation_skus||[]).includes(sku),is_unavailable:row.status==='OUT'&&!(config?.route_skus||[]).includes(sku)};
 }
 export function calculateLiveIndicator(date,rows,config){
