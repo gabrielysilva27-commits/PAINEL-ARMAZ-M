@@ -31,3 +31,5 @@
 .efc-wms-track{height:9px;border-radius:6px;background:#f0f2f1;overflow:hidden}.efc-wms-track i{display:block;height:100%;background:#32966f;border-radius:6px}
 .efc-wms-method{grid-column:1/-1;font-size:10px;color:#858a92}.efc-wms-method summary{cursor:pointer}.efc-wms-method p{margin:8px 0 0}.efc-hour-dialog{width:min(850px,92vw)}.efc-hour-dialog button{margin-top:12px}
 @media(max-width:760px){.efc-wms-card{grid-template-columns:1fr;gap:14px}.efc-wms-day{grid-template-columns:45px 1fr 65px}.efc-wms-day small{grid-column:2/4;text-align:right}.efc-wms-overview>strong{font-size:32px}}
+
+.efc-supply-combined{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:center}.efc-supply-combined>div{min-width:0}.efc-supply-combined>div+div{border-left:1px solid #e5e7eb;padding-left:16px}.efc-supply-combined span{display:block;font-size:12px}.efc-supply-combined strong{display:block;font-size:clamp(20px,2vw,30px);margin-top:8px}
