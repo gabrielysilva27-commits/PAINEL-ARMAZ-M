@@ -1,6 +1,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2.57.4";
 import { validateSnapshot, enrich } from "./stock-core.js";
 import { decorateIndicator, calculateLiveIndicator, aggregateIndicators, selectIndicatorConfig, indicatorFlags, weeklyIndicators, routeConfig, indicatorWeek, WEEKLY_ROUTE_START } from "./oor-indicators.mjs";
+import { quarterDefinition, quarterActivation } from "./quarterly-policy.mjs";
 
 const db = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -207,6 +208,7 @@ Deno.serve(async (req: Request) => {
     const user = await requireSession(req);
     if (!user) return json({ error: "Sessão inválida ou expirada" }, 401);
     const body = await req.json();
+    if(["policy_prepare","policy_edit","policy_approve"].includes(body.action)&&!canEdit(user))return json({error:"Somente a administração pode alterar políticas de estoque."},403);
     const latest = await latestSnapshot();
 
     if (body.action === "get") {
@@ -301,6 +303,7 @@ Deno.serve(async (req: Request) => {
       const activity = await activePullSkus30d();
       const today = todayBR();
       const applyActivity = activity.available
+        && version.calculation_metadata?.cadence !== "quarterly"
         && version.status === "approved"
         && String(version.effective_start || "") <= today
         && String(version.effective_end || "") >= today;
@@ -330,6 +333,7 @@ Deno.serve(async (req: Request) => {
         source_file: x.source_file || null,
         suggestion_basis: x.suggestion_basis || null,
         review_note: x.review_note || null,
+        review_flags: x.review_flags || [],
       }));
       return json({
         version,
@@ -349,7 +353,10 @@ Deno.serve(async (req: Request) => {
       const code = String(body.code || "").trim();
       const reviewStart = String(body.review_start || ""), reviewEnd = String(body.review_end || "");
       const effectiveStart = String(body.effective_start || ""), effectiveEnd = String(body.effective_end || "");
-      if (!/^R[12]\/\d{4}$/.test(code) || !/^\d{4}-\d{2}-\d{2}$/.test(reviewStart) || !/^\d{4}-\d{2}-\d{2}$/.test(reviewEnd) || !/^\d{4}-\d{2}-\d{2}$/.test(effectiveStart) || !/^\d{4}-\d{2}-\d{2}$/.test(effectiveEnd)) return json({ error: "Período da revisão inválido" }, 400);
+      const match=code.match(/^T([1-4])\/(\d{4})$/);
+      if(!match)return json({error:"Use T1, T2, T3 ou T4 seguido do ano."},400);
+      const period=quarterDefinition(Number(match[2]),Number(match[1]));
+      if(reviewStart!==period.review_start||reviewEnd!==period.review_end||effectiveStart!==period.effective_start||effectiveEnd!==period.effective_end)return json({error:"A vigência deve seguir o trimestre civil e a base deve ser o trimestre anterior."},400);
       const { data: existing } = await db.from("stock_policy_versions").select("id").eq("code", code).maybeSingle();
       if (existing) return json({ error: code + " já existe" }, 409);
       const { data: base, error: baseError } = await db.from("stock_policy_versions").select("*").eq("status", "approved").order("effective_start", { ascending: false }).limit(1).maybeSingle();
@@ -357,21 +364,22 @@ Deno.serve(async (req: Request) => {
       if (!base) return json({ error: "Não existe Política vigente para servir de base" }, 409);
       const { data: version, error: versionError } = await db.from("stock_policy_versions").insert({
         code, review_start: reviewStart, review_end: reviewEnd, effective_start: effectiveStart, effective_end: effectiveEnd,
-        status: "draft", method_version: "fixed-out-over-v2",
-        notes: "Em preparação. Limites copiados da política vigente para revisão semestral com histórico de vendas.",
+        status: "draft", method_version: "quarterly-abc-demand-v1",oor_enabled:false,
+        calculation_metadata:{cadence:"quarterly",readiness:"missing",missing:["Vendas do trimestre anterior","Dias trabalhados","Estoque e puxada do trimestre anterior"]},
+        notes: "Política trimestral em preparação. Quantidades pendentes das bases do trimestre anterior. Não aplicada ao OOR.",
         created_by: user.id
       }).select("*").single();
       if (versionError) throw versionError;
       const baseItems = await policyItems(base.id);
       const inserts = baseItems.map((x: any) => ({
         version_id: version.id, sku_code: x.sku_code, sku_name: x.sku_name, unit_code: x.unit_code,
-        avg_daily_qty: x.avg_daily_qty, avg_daily_hl: x.avg_daily_hl,
-        min_days: x.min_days, objective_days: x.objective_days, max_days: x.max_days, base_max_days: x.base_max_days,
-        min_qty: x.min_qty, objective_qty: x.objective_qty, max_qty: x.max_qty,
-        min_hl: x.min_hl, objective_hl: x.objective_hl, max_hl: x.max_hl,
-        pallet_floor_qty: x.pallet_floor_qty, out_qty: x.out_qty, over_qty: x.over_qty,
-        policy_source: x.policy_source, suggestion_basis: x.suggestion_basis,
-        source_file: x.source_file, review_note: null, updated_by: user.id
+        avg_daily_qty: null, avg_daily_hl: null,
+        min_days: 3, objective_days: 5, max_days: null, base_max_days: null,
+        min_qty: null, objective_qty: null, max_qty: null,
+        min_hl: null, objective_hl: null, max_hl: null,
+        pallet_floor_qty: null, out_qty: null, over_qty: null,
+        policy_source: "TRIMESTRAL_SEM_BASE", suggestion_basis: "Aguardando as bases próprias do trimestre anterior; limites semestrais não copiados.",
+        review_flags:["SEM_BASE_TRIMESTRAL"],source_file: null, review_note: null, updated_by: user.id
       }));
       for (let i = 0; i < inserts.length; i += 250) {
         const { error } = await db.from("stock_policy_items").insert(inserts.slice(i, i + 250));
@@ -410,12 +418,16 @@ Deno.serve(async (req: Request) => {
       const versionId = String(body.version_id || "");
       const version = await policyVersionById(versionId);
       if (!version || version.status !== "draft") return json({ error: "A versão não está disponível para aprovação" }, 409);
+      if(version.calculation_metadata?.cadence==="quarterly"&&version.calculation_metadata?.readiness!=="ready")return json({error:"As bases trimestrais ainda estão pendentes de validação."},409);
       const items = await policyItems(versionId);
       if (!items.length || items.some((x: any) => x.out_qty == null || x.over_qty == null || Number(x.over_qty) <= Number(x.out_qty))) return json({ error: "Existem SKUs sem limites OUT/OVER válidos" }, 409);
-      await db.from("stock_policy_versions").update({ status: "superseded", updated_at: new Date().toISOString() }).eq("status", "approved").neq("id", versionId).lte("effective_start", version.effective_end).gte("effective_end", version.effective_start);
-      const { error } = await db.from("stock_policy_versions").update({ status: "approved", approved_by: user.id, approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", versionId);
+      const {data:lastOor,error:lastError}=await db.from("stock_oor_daily_summary").select("reference_date").order("reference_date",{ascending:false}).limit(1).maybeSingle();
+      if(lastError)throw lastError;
+      const activation=quarterActivation(version,todayBR(),lastOor?.reference_date);
+      // Versões antigas continuam disponíveis para suas datas históricas.
+      const { error } = await db.from("stock_policy_versions").update({ status: "approved",...activation,approved_by: user.id, approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", versionId);
       if (error) throw error;
-      await db.from("stock_policy_audit_log").insert({ version_id: versionId, action: "APPROVE", details: { code: version.code, effective_start: version.effective_start, effective_end: version.effective_end }, user_id: user.id });
+      await db.from("stock_policy_audit_log").insert({ version_id: versionId, action: "APPROVE", details: { code: version.code, effective_start: version.effective_start, effective_end: version.effective_end,...activation }, user_id: user.id });
       return json({ ok: true });
     }
 
@@ -481,7 +493,7 @@ Deno.serve(async (req: Request) => {
 
       let policy: any = null;
       const { data: policyRow, error: policyError } = await db.from("stock_policy_versions").select("*")
-        .eq("status", "approved").lte("effective_start", referenceDate).gte("effective_end", referenceDate)
+        .eq("status", "approved").eq("oor_enabled",true).or(`oor_effective_start.is.null,oor_effective_start.lte.${referenceDate}`).lte("effective_start", referenceDate).gte("effective_end", referenceDate)
         .order("effective_start", { ascending: false }).limit(1).maybeSingle();
       if (policyError) throw policyError;
       policy = policyRow || null;
@@ -559,7 +571,7 @@ Deno.serve(async (req: Request) => {
 
       let policy: any = null;
       const { data: policyRow, error: policyError } = await db.from("stock_policy_versions").select("*")
-        .eq("status", "approved").lte("effective_start", referenceDate).gte("effective_end", referenceDate)
+        .eq("status", "approved").eq("oor_enabled",true).or(`oor_effective_start.is.null,oor_effective_start.lte.${referenceDate}`).lte("effective_start", referenceDate).gte("effective_end", referenceDate)
         .order("effective_start", { ascending: false }).limit(1).maybeSingle();
       if (policyError) throw policyError;
       policy = policyRow || null;
@@ -591,7 +603,7 @@ Deno.serve(async (req: Request) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(referenceDate)) return json({ error: "Data de referência inválida" }, 400);
       if (!incoming.length || incoming.length > 5000) return json({ error: "Base OOR vazia ou acima do limite" }, 400);
 
-      const { data: policy, error: policyError } = await db.from("stock_policy_versions").select("*").eq("status", "approved").lte("effective_start", referenceDate).gte("effective_end", referenceDate).order("effective_start", { ascending: false }).limit(1).maybeSingle();
+      const { data: policy, error: policyError } = await db.from("stock_policy_versions").select("*").eq("status", "approved").eq("oor_enabled",true).or(`oor_effective_start.is.null,oor_effective_start.lte.${referenceDate}`).lte("effective_start", referenceDate).gte("effective_end", referenceDate).order("effective_start", { ascending: false }).limit(1).maybeSingle();
       if (policyError) throw policyError;
       if (!policy) return json({ error: "Não existe Política de Estoque vigente para esta data" }, 409);
 

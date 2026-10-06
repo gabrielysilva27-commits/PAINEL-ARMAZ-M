@@ -256,7 +256,7 @@
       activateNav(event.currentTarget);
       document.querySelector('.pull-nav-group')?.classList.add('open');
       try {
-        if (!window.__stockPolicy) await loadScript('stock-policy.js?v=20260924-3');
+        if (!window.__stockPolicy) await loadScript('stock-policy.js?v=20261006-quarterly');
         window.__stockPolicy?.open?.();
       } catch (error) {
         window.showToast?.(error.message || String(error), true);
