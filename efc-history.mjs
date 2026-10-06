@@ -1,12 +1,14 @@
-import {wmsAdherence} from './efc-wms.mjs?v=20261006-efm-review-2';
-import {calculate,people,ratio,norm,loading,priorities} from './efc-core.mjs?v=20261006-efm-review-2';
-import {selectPeriod,sum,weekStart} from './efc-analytics.mjs?v=20261006-efm-review-2';
+import {normalizePeople,personName} from './efc-names.mjs?v=20261006-names-1';
+import {wmsAdherence} from './efc-wms.mjs?v=20261006-names-1';
+import {calculate,people,ratio,norm,loading,priorities} from './efc-core.mjs?v=20261006-names-1';
+import {selectPeriod,sum,weekStart} from './efc-analytics.mjs?v=20261006-names-1';
 const mean=xs=>xs.length?xs.reduce((a,x)=>a+x,0)/xs.length:null;
 export function historicalWeek(date){const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()-d.getUTCDay());return d.toISOString().slice(0,10);}
 export function periodKey(date,month){return month<='2026-09'?historicalWeek(date):weekStart(date);}
 export function withHistoricalActivities(data,history){if(!history)return data;const byId=new Map(history.helpers.map(x=>[x.id,x]));return {...data,helpers:(data.helpers||[]).map(x=>{const h=byId.get(x.id);return h?{...x,history:h}:x;})};}
 const resupplyRate=(estimated,pallets,positions)=>ratio(estimated,pallets??positions);
 export function calculatePeriod(data,month,day='',week='',history=null){
+ data=normalizePeople(data);
  const filtered=Object.fromEntries(Object.entries(data).map(([kind,rows])=>[kind,kind==='events'?rows:rows.filter(x=>!x.date||(x.date.startsWith(month)&&(!day||x.date===day)&&(!week||periodKey(x.date,month)===week)))]));
  if(month<='2026-09'&&!history)throw Error('Histórico original do Excel não disponível para este mês.');
  const c=calculate(filtered,month,day);c.month=month;
@@ -30,4 +32,4 @@ export function calculatePeriod(data,month,day='',week='',history=null){
  c.wmsEstimate=wmsAdherence(c.loads,filtered.segmentations||[]);
  return c;
 }
-export function historyRanking(c){if(!c.history||!c.fullMonth)return null;return c.history.ranking.map(x=>({...x,average_minutes:x.average_time==null?null:x.average_time*1440,legacy_pay:x.payment,days:null,minutes:null,activities:null,error_quantity:null,missing:null})).sort((a,b)=>b.pallets-a.pallets);}
+export function historyRanking(c){if(!c.history||!c.fullMonth)return null;return c.history.ranking.map(x=>({...x,name:personName(x.name),average_minutes:x.average_time==null?null:x.average_time*1440,legacy_pay:x.payment,days:null,minutes:null,activities:null,error_quantity:null,missing:null})).sort((a,b)=>b.pallets-a.pallets);}
