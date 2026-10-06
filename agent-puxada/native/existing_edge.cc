@@ -868,6 +868,69 @@ static bool SelectOCPOption(const VisibleControl& control, bool selected) {
   if(elements)elements->Release();if(condition)condition->Release();if(root)root->Release();
   if(element)element->Release(); if(automation)automation->Release(); return ok;
 }
+// Read-only visual confirmation for legacy IE controls whose labels are exposed
+// but whose radio/check state is absent from UI Automation. Never toggles them.
+struct OCPVisual {
+  RECT rect={};int width=0,height=0;std::vector<unsigned char> pixels;
+  explicit OCPVisual(HWND hwnd){
+    if(GetForegroundWindow()!=hwnd || !GetWindowRect(hwnd,&rect))return;
+    width=rect.right-rect.left;height=rect.bottom-rect.top;
+    if(width<700||height<500||width>5000||height>4000)return;
+    HDC screen=GetDC(nullptr),memory=CreateCompatibleDC(screen);
+    HBITMAP bitmap=CreateCompatibleBitmap(screen,width,height);
+    HGDIOBJ old=SelectObject(memory,bitmap);
+    bool copied=BitBlt(memory,0,0,width,height,screen,rect.left,rect.top,SRCCOPY)!=0;
+    SelectObject(memory,old);
+    BITMAPINFO info={};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth=width;info.bmiHeader.biHeight=-height;
+    info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;info.bmiHeader.biCompression=BI_RGB;
+    pixels.resize(static_cast<size_t>(width)*height*4);
+    if(!copied||GetDIBits(memory,bitmap,0,height,pixels.data(),&info,DIB_RGB_COLORS)!=height)pixels.clear();
+    DeleteObject(bitmap);DeleteDC(memory);ReleaseDC(nullptr,screen);
+  }
+  const unsigned char* pixel(int x,int y)const{
+    x-=rect.left;y-=rect.top;if(pixels.empty()||x<0||y<0||x>=width||y>=height)return nullptr;
+    return &pixels[(static_cast<size_t>(y)*width+x)*4];
+  }
+  int gray(int x,int y)const{
+    const auto p=pixel(x,y);if(!p)return -1;
+    int lo=std::min(int(p[0]),std::min(int(p[1]),int(p[2]))),hi=std::max(int(p[0]),std::max(int(p[1]),int(p[2])));
+    return hi-lo<35?(int(p[0])+p[1]+p[2])/3:-1;
+  }
+  bool radio(const VisibleControl& label,bool selected)const{
+    int cy=(label.rect.top+label.rect.bottom)/2;
+    // Label-relative circle search, scoped to the actual visible option.
+    for(int x=label.rect.left-32;x<=label.rect.left-10;++x)for(int y=cy-3;y<=cy+3;++y){
+      int center=0;bool valid=true;
+      for(int dx=-1;dx<=1;++dx)for(int dy=-1;dy<=1;++dy){int v=gray(x+dx,y+dy);if(v<0)valid=false;center+=v;}
+      if(!valid)continue;center/=9;if(selected?center>145:center<175)continue;
+      for(int r=7;r<=10;++r){
+        int ring[]={gray(x-r,y),gray(x+r,y),gray(x,y-r),gray(x,y+r)};
+        int outer[]={gray(x-r-3,y),gray(x+r+3,y),gray(x,y-r-3),gray(x,y+r+3)};
+        int rm=0,om=0,edges=0;bool readable=true;
+        for(int i=0;i<4;++i){if(ring[i]<0||outer[i]<0)readable=false;rm+=ring[i];om+=outer[i];if(ring[i]>65&&ring[i]<225)++edges;}
+        rm/=4;om/=4;if(!readable||edges<3||om<180||om-rm<12)continue;
+        if(selected?rm-center>=25:center-rm>=25)return true;
+      }
+    }
+    return false;
+  }
+  bool tick(const VisibleControl& label)const{
+    int count=0;
+    for(int x=label.rect.left-45;x<=std::min(label.rect.left+45,label.rect.right);++x)
+      for(int y=label.rect.top-2;y<=label.rect.bottom+2;++y){
+        const auto p=pixel(x,y);if(p && p[1]>p[2]+20 && p[1]>p[0]+20 && p[1]>=80 && p[1]<=235)++count;
+      }
+    return count>=15;
+  }
+};
+static bool OCPVisualOption(const OCPVisual& view,const std::vector<VisibleControl>& controls,const wchar_t* name,bool isRadio,bool selected=true){
+  for(const auto& c:controls){
+    if(c.name!=name || c.rect.bottom-c.rect.top>35 || c.rect.right-c.rect.left>600 || c.rect.top<view.rect.top+160)continue;
+    if(isRadio?view.radio(c,selected):view.tick(c))return true;
+  }
+  return false;
+}
 static thread_local std::wstring OCP_FILTER_ISSUE;
 static bool FillOCP(HWND hwnd,const std::wstring* values) {
   OCP_FILTER_ISSUE=L"window-rectangle";
@@ -916,6 +979,12 @@ static bool FillOCP(HWND hwnd,const std::wstring* values) {
     return false;
   };
   complete=option(L"completa",true,&seenComplete);route=option(L"rota",true,&seenRoute);all=option(L"todos",false,&seenAll);
+  if(!complete || !route || !all){
+    const OCPVisual view(hwnd);
+    if(!complete)complete=OCPVisualOption(view,controls,L"completa",true) && OCPVisualOption(view,controls,L"abreviada",true,false);
+    if(!route)route=OCPVisualOption(view,controls,L"rota",true) && OCPVisualOption(view,controls,L"as",true,false);
+    if(!all)all=OCPVisualOption(view,controls,L"todos",false) && OCPVisualOption(view,controls,L"pallets fechados",false) && OCPVisualOption(view,controls,L"picking",false);
+  }
   if(!complete || !route || !all){
     OCP_FILTER_ISSUE=L"options:complete="+std::to_wstring(complete?1:0)+L":route="+std::to_wstring(route?1:0)+L":all="+std::to_wstring(all?1:0)+L":found="+std::to_wstring(seenComplete)+L","+std::to_wstring(seenRoute)+L","+std::to_wstring(seenAll);
     for(const auto& c:controls){if(Contains(c.name,L"completa")||Contains(c.name,L"rota")||Contains(c.name,L"todos"))OCP_FILTER_ISSUE+=L":label-type="+std::to_wstring(c.type)+L",role="+std::to_wstring(c.legacyRole);}
