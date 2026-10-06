@@ -80,6 +80,6 @@
     if($('pageSubtitle'))$('pageSubtitle').textContent='';
     await load();
   }
-  function install(){view();if(!$('stockPolicyCss')){const l=document.createElement('link');l.id='stockPolicyCss';l.rel='stylesheet';l.href='stock-policy.css?v=20261006-capacity';document.head.appendChild(l);}window.__stockPolicy={open,reload:load};}
+  function install(){view();if(!$('stockPolicyCss')){const l=document.createElement('link');l.id='stockPolicyCss';l.rel='stylesheet';l.href='stock-policy.css?v=20261006-capacity-aligned';document.head.appendChild(l);}window.__stockPolicy={open,reload:load};}
   install();
 })();
