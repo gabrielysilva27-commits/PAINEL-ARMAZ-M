@@ -31,16 +31,15 @@ async function run(api,log){
  const allowed=await call(api,'agent_segmentations_status',{});if(!allowed.enabled)return;
  const output=path.join(__dirname,'..','data','outlook-segmentations-'+process.pid+'.json');fs.mkdirSync(path.dirname(output),{recursive:true});
  try{
-  const psExe=path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
-  const quote=value=>"'"+String(value).replace(/'/g,"''")+"'";
-  const command='& ([ScriptBlock]::Create([IO.File]::ReadAllText('+quote(path.join(__dirname,'outlook-segmentations.ps1'))+'))) -OutputPath '+quote(output);
+  const host=path.join(process.env.SystemRoot||'C:\\Windows','System32','cscript.exe');
+  const script=path.join(__dirname,'outlook-segmentations.vbs');
   await new Promise((resolve,reject)=>{
    let child;
-   const fail=e=>reject(Error('Inicialização Outlook: '+String(e.code||e.message||'falha')+'; exe='+fs.existsSync(psExe)+'; cwd='+fs.existsSync(path.join(__dirname,'..'))+'; arch='+process.arch));
+   const fail=e=>reject(Error('Inicialização Outlook: '+String(e.code||e.message||'falha')+'; host=cscript; exe='+fs.existsSync(host)));
    try{
-    child=spawn(psExe,['-NoProfile','-STA','-EncodedCommand',Buffer.from(command,'utf16le').toString('base64')],{cwd:path.join(__dirname,'..'),windowsHide:true,stdio:'ignore',timeout:180000});
+    child=spawn(host,['//B','//nologo',script,output],{cwd:path.join(__dirname,'..'),windowsHide:true,stdio:'ignore',timeout:180000});
     child.once('error',fail);
-    child.once('exit',(code,signal)=>code===0?resolve():reject(Error('Leitura Outlook: processo terminou com código '+String(code)+' sinal '+String(signal||'nenhum'))));
+    child.once('exit',(code,signal)=>code===0?resolve():reject(Error('Leitura Outlook: código '+String(code)+' sinal '+String(signal||'nenhum'))));
    }catch(e){fail(e);}
   });
   const result=JSON.parse(fs.readFileSync(output,'utf8').replace(/^\uFEFF/,''));if(result.error)throw Error(result.error);
