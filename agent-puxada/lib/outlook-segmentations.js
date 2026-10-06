@@ -4,7 +4,7 @@ const crypto=require('crypto');
 const {spawn}=require('child_process');
 const ENDPOINT='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/efc-api';
 const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
-function text(v){return String(v||'').replace(/<[^>]*>/g,' ').replace(/&#(\d+);/g,(_,x)=>String.fromCodePoint(Number(x))).replace(/&#x([a-f\d]+);/gi,(_,x)=>String.fromCodePoint(parseInt(x,16))).replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/\s+/g,' ').trim();}
+function text(v){return String(v||'').replace(/<[^>]*>/g,' ').replace(/&#(\d+);/g,(_,x)=>String.fromCodePoint(Number(x))).replace(/&#x([a-f\d]+);/gi,(_,x)=>String.fromCodePoint(parseInt(x,16))).replace(/&(aacute|agrave|acirc|atilde|eacute|ecirc|iacute|oacute|ocirc|otilde|uacute|ccedil);/gi,(_,name)=>({aacute:'á',agrave:'à',acirc:'â',atilde:'ã',eacute:'é',ecirc:'ê',iacute:'í',oacute:'ó',ocirc:'ô',otilde:'õ',uacute:'ú',ccedil:'ç'}[name.toLowerCase()])).replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/\s+/g,' ').trim();}
 function parse(message){
  const subject=norm(message.subject),m=subject.match(/\b(\d{2})[/.\-](\d{2})[/.\-](2026)\b/);
  if(!/SEGMENTACAO.*CLIENTES.*EMPILHADEIRA/.test(subject)||!m)return null;
@@ -22,8 +22,9 @@ function parse(message){
    rows.set(map+'|'+vehicle+'|'+customer,{map:String(Number(map)),vehicle:String(Number(vehicle)),customer:String(Number(customer))});
   }
  }
+ const diagnostics=!found?'; tabelas='+[...html.matchAll(/<table\b/gi)].length+'/'+[...String(message.html||'').matchAll(/<table\b/gi)].length+'; imagens='+[...html.matchAll(/<img\b/gi)].length+'; cabecalhos='+[...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].map(x=>[...x[1].matchAll(/<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi)].map(y=>text(y[1]))).filter(cells=>cells.some(cell=>/^(MAPA|VEICULO|COD[ .]*PDV|CLIENTE)$/i.test(norm(cell)))).map(cells=>cells.filter(cell=>/^(MAPA|VEICULO|COD[ .]*PDV|CLIENTE)$/i.test(norm(cell))).join('|')).slice(0,4).join(','):'';
  const digest=crypto.createHash('sha256').update(String(message.key||'')+'|'+subject).digest('hex');
- return {id:digest,date,received_at:message.received_at,rows:[...rows.values()],status:found&&rows.size&&!invalid?'parsed':'review',issue:!found?'Tabela não localizada':invalid?'Linhas sem mapa, veículo ou cliente válido':'Sem segmentações legíveis'};
+ return {id:digest,date,received_at:message.received_at,rows:[...rows.values()],status:found&&rows.size&&!invalid?'parsed':'review',issue:!found?('Tabela não localizada'+diagnostics).slice(0,400):invalid?'Linhas sem mapa, veículo ou cliente válido':'Sem segmentações legíveis'};
 }
 async function call(api,action,payload){const r=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json','x-agent-token':api.token},body:JSON.stringify({action,...payload}),signal:AbortSignal.timeout(30000)});const d=await r.json();if(!r.ok)throw Error(d.error||'Erro na coleta de segmentações');return d;}
 let busy=false,next=0;
