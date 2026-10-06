@@ -1,5 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {stripTypeScriptTypes} from 'node:module';
+import {periodMonths} from '../supabase/functions/productivity-api/productivity-individual.mjs';
+import * as core from '../supabase/functions/productivity-api/core.mjs';
 import {workstationIdentity,ownEmployee,selfProductivity} from '../supabase/functions/productivity-api/workstation-self.mjs';
 const team=[{id:'one',active:true,display_name:'ANDREI SILVA DA CONCEIÇÃO',job_title:'Ajudante',shift:'A',area:'cheio_b'},{id:'two',active:true,display_name:'MAYCON DOUGLAS DA SILVA CAMPOS',job_title:'Ajudante',shift:'B',area:'cheio_b'}];
 test('Only a verified active Workstation account is accepted',async()=>{
@@ -19,4 +24,14 @@ test('Shared source totals use the full team before returning only own rows',()=
  assert.equal(result.activities.find(r=>r.area==='reabastecimento').quantity,50);assert.equal(result.activities.find(r=>r.area==='blitz_puxada').quantity,100);
  assert.ok(result.activities.every(r=>r.productivity===null));assert.ok(!JSON.stringify(result).includes('MAYCON'));assert.ok(!JSON.stringify(result).includes('999'));assert.ok(!('team' in result));assert.ok(!('entries' in result.activities[0]));
  const standard=selfProductivity(team[0],d,frames,[],'2026-10-01','2026-10-06','standard');assert.ok(standard.activities.every(r=>r.productivity>0));
+});
+test('HTTP self endpoint ignores spoofed employee IDs and refuses multi-day results',async()=>{
+ let serve,reads=0;
+ const db={from(table){const q={select(){return q},eq(){return q},gt(){return q},gte(){return q},lte(){return q},lt(){return q},order(){return q},range(){reads++;return Promise.resolve({data:table==='wlp_employees'?team:[],error:null})}};return q}};
+ let source=fs.readFileSync(new URL('../supabase/functions/productivity-api/index.ts',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace(/^const db=createClient.*;\n/m,'');
+ vm.runInNewContext(stripTypeScriptTypes(source),{db,...core,Deno:{serve:f=>serve=f},Request,Response,URL,Date,Map,console,periodMonths,ownEmployee,selfProductivity,workstationIdentity:async token=>token==='valid'?{name:team[0].display_name,username:'andrei'}:null,sourceFrames:async()=>({efc:[],blitz:[{cache:{by_day:[{date:'2026-10-02',packages_checked:200}]},checks:[]}],efd:[]})});
+ const request=(query,token)=>new Request('https://example.test/workstation?'+query,{headers:token?{'x-workstation-session':token}:{}});
+ assert.equal((await serve(request('from=2026-10-02&to=2026-10-02'))).status,401);assert.equal(reads,0);
+ assert.equal((await serve(request('from=2026-10-01&to=2026-10-02','valid'))).status,400);
+ const r=await serve(request('from=2026-10-02&to=2026-10-02&employee_id=two','valid'));assert.equal(r.status,200);const result=await r.json();assert.equal(result.employee.display_name,team[0].display_name);assert.equal(result.activities[0].quantity,100);assert.ok(!JSON.stringify(result).includes(team[1].display_name));
 });
