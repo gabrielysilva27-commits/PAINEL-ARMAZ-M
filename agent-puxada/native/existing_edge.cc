@@ -903,7 +903,7 @@ struct OCPVisual {
   bool radio(const VisibleControl& label,bool selected)const{
     int cy=(label.rect.top+label.rect.bottom)/2;
     // Label-relative circle search, scoped to the actual visible option.
-    for(int x=label.rect.left-32;x<=label.rect.left-10;++x)for(int y=cy-3;y<=cy+3;++y){
+    for(int x=label.rect.left-32;x<=label.rect.left+12;++x)for(int y=cy-8;y<=cy+8;++y){
       int center=0;bool valid=true;
       for(int dx=-1;dx<=1;++dx)for(int dy=-1;dy<=1;++dy){int v=gray(x+dx,y+dy);if(v<0)valid=false;center+=v;}
       if(!valid)continue;center/=9;if(selected?center>145:center<175)continue;
@@ -929,7 +929,10 @@ struct OCPVisual {
 };
 static bool OCPVisualOption(const OCPVisual& view,const std::vector<VisibleControl>& controls,const wchar_t* name,bool isRadio,bool selected=true){
   for(const auto& c:controls){
-    if(c.name!=name || c.rect.bottom-c.rect.top>35 || c.rect.right-c.rect.left>600 || c.rect.top<view.rect.top+160)continue;
+    std::wstring label=c.name;
+    label.erase(std::remove_if(label.begin(),label.end(),[](wchar_t v){return iswspace(v)||v==L'&'||v==0xA0;}),label.end());
+    std::wstring expected(name);expected.erase(std::remove_if(expected.begin(),expected.end(),[](wchar_t v){return iswspace(v);}),expected.end());
+    if(label!=expected || c.rect.bottom-c.rect.top>45 || c.rect.right-c.rect.left>600 || c.rect.top<view.rect.top+160)continue;
     if(isRadio?view.radio(c,selected):view.tick(c))return true;
   }
   return false;
@@ -990,7 +993,10 @@ static bool FillOCP(HWND hwnd,const std::wstring* values) {
   }
   if(!complete || !route || !all){
     OCP_FILTER_ISSUE=L"options:complete="+std::to_wstring(complete?1:0)+L":route="+std::to_wstring(route?1:0)+L":all="+std::to_wstring(all?1:0)+L":found="+std::to_wstring(seenComplete)+L","+std::to_wstring(seenRoute)+L","+std::to_wstring(seenAll);
-    for(const auto& c:controls){if(Contains(c.name,L"completa")||Contains(c.name,L"rota")||Contains(c.name,L"todos"))OCP_FILTER_ISSUE+=L":label-type="+std::to_wstring(c.type)+L",role="+std::to_wstring(c.legacyRole);}
+    for(const auto& c:controls){
+      if(c.type==UIA_TextControlTypeId && (Contains(c.name,L"completa")||Contains(c.name,L"rota")||Contains(c.name,L"abreviada")||c.name==L"as"))
+        OCP_FILTER_ISSUE+=L":radio-label="+std::to_wstring(Contains(c.name,L"completa")?1:Contains(c.name,L"rota")?2:Contains(c.name,L"abreviada")?3:4)+L","+std::to_wstring(c.rect.left-window.left)+L","+std::to_wstring(c.rect.top-window.top)+L","+std::to_wstring(c.rect.right-c.rect.left)+L","+std::to_wstring(c.rect.bottom-c.rect.top);
+    }
     return false;
   }
   bool central=false;
