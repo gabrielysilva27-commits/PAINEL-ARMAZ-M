@@ -1,7 +1,7 @@
-import {norm} from './efc-core.mjs?v=20261006-names-1';
-import {dailySeries,hours,categories,loadProfile,ranking,periods,sum} from './efc-analytics.mjs?v=20261006-names-1';
-import {historyRanking} from './efc-history.mjs?v=20261006-names-1';
-import {escape as e,format as n,seriesChart,donutChart,horizontalBars,chartPanel as baseChartPanel,metric} from './efc-charts.mjs?v=20261006-names-1';
+import {norm} from './efc-core.mjs?v=20261006-all-helpers';
+import {dailySeries,hours,categories,loadProfile,ranking,periods,sum} from './efc-analytics.mjs?v=20261006-all-helpers';
+import {historyRanking} from './efc-history.mjs?v=20261006-all-helpers';
+import {escape as e,format as n,seriesChart,donutChart,horizontalBars,chartPanel as baseChartPanel,metric} from './efc-charts.mjs?v=20261006-all-helpers';
 const chartPanel=(title,description,body,controls)=>baseChartPanel(title,'',body,controls);
 const pct=v=>v==null?'Pendente':n(v*100,2)+'%';
 const grid=body=>`<div class="efc-visual-grid">${body}</div>`;
@@ -16,8 +16,8 @@ function productivityVisual(c,raw,state,compact=false){const people=team(c),sele
  const histogram=(c.history&&c.fullMonth&&state.member===c.history.controls.J73?.v?c.history.histogram:hours(selected,'end',c.history?null:'pallets')).filter(x=>x.value>0);
  let body=chartPanel('Montagem por hora','',chart('helper-hours','Montagem por hora',histogram,[{key:'value',label:c.history?'Atividades':'Pallets',color:'#f47a20'}],{bars:true}),choose);
  if(!compact)body+=chartPanel('Pallets por dia','',chart('helper-daily','Pallets por dia',dailySeries({...c,helpers:selected}),[{key:'pallets',label:'Pallets',color:'#f47a20'}]));
- body+=chartPanel('EFM por ajudante','',horizontalBars({title:'Eficiência de montagem',percent:true,data:people.filter(x=>x.efm!=null).map(x=>({label:x.name,name:x.name,value:x.efm*100})),limit:10,color:'#617e96'}));
- if(!compact)body+=chartPanel('Participação da equipe','',horizontalBars({title:'Pallets por ajudante',data:people.map(x=>({label:x.name,name:x.name,value:x.pallets})),limit:12,color:'#617e96'}));
+ body+=chartPanel('EFM por ajudante','',horizontalBars({title:'Eficiência de montagem',percent:true,data:people.filter(x=>x.efm!=null).map(x=>({label:x.name,name:x.name,value:x.efm*100})),limit:people.length,color:'#617e96'}));
+ if(!compact)body+=chartPanel('Participação da equipe','',horizontalBars({title:'Pallets por ajudante',data:people.map(x=>({label:x.name,name:x.name,value:x.pallets})),limit:people.length,color:'#617e96'}));
  return grid(body)+(!compact?profiles(c,raw,state):'');}
 function profiles(c,raw,state){const values=c.history&&c.fullMonth?c.history.profiles:periods(raw,state.month,state.day,state.week).map(x=>({...x,...loadProfile(x.rows)}));return `<div class="efc-profile-grid">${values.map((x,i)=>chartPanel('Perfil · '+x.label,'Complexidade da montagem',donutChart({id:'profile-'+i,title:'Perfil '+x.label,data:x.bands.filter(x=>x.value!=null),center:n(sum(x.bands,'value')),subcenter:'atividades'}))).join('')}</div>`;}
 function supplySummary(c){const s=c.summary,r=c.replenishmentSummary||{};return grid(chartPanel('Ressuprimento','Pallets ressupidos sobre pallets separados',mini('Resultado',pct(s.resupply_rate),`${n(s.estimated_pallets)} pallets ÷ ${n(s.pallets??s.picking_positions)} base`))+chartPanel('Reabastecimento','Execução sobre a base de picking',mini('Resultado',pct(r.rate),`${n(r.boxes)} executado ÷ ${n(r.capacity)} base`)));}
