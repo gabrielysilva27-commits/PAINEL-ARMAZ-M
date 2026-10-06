@@ -1972,7 +1972,7 @@ async function export03023601(job, config, rootDir, validateCsv) {
     formReady = true;
   } catch (error) {
     const message = String(error && error.message || error);
-    if (!/window-not-found/.test(message) && !/window-not-foreground:enabled=0/.test(message)) throw error;
+    if (!/window-not-found/.test(message) && !/window-not-foreground[^\s]*:enabled=0/.test(message)) throw error;
   }
   if (!formReady) {
     await reportAction("shortcut03023601");
