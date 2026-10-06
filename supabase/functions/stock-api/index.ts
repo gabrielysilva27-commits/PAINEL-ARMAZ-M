@@ -1,6 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2.57.4";
 import { validateSnapshot, enrich } from "./stock-core.js";
-import { decorateIndicator, calculateLiveIndicator, aggregateIndicators, selectIndicatorConfig, indicatorFlags } from "./oor-indicators.mjs";
+import { decorateIndicator, calculateLiveIndicator, aggregateIndicators, selectIndicatorConfig, indicatorFlags, weeklyIndicators, routeConfig, indicatorWeek, WEEKLY_ROUTE_START } from "./oor-indicators.mjs";
 
 const db = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -37,14 +37,16 @@ async function requireSession(req: Request) {
 const canEdit = (u: any) => u?.role === "admin";
 const todayBR = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 async function oorIndicators(dates: string[]) {
-  const [historyResult, configResult, unavailableResult] = await Promise.all([
+  const [historyResult, configResult, unavailableResult, weeklyResult] = await Promise.all([
     db.from("stock_oor_indicator_history").select("reference_date,payload").order("reference_date"),
     db.from("stock_oor_indicator_configs").select("*").order("reference_month"),
     db.rpc("stock_oor_indicator_unavailable"),
+    db.from("stock_oor_weekly_routes").select("week_start,week_end,route_skus").order("week_start"),
   ]);
   if (historyResult.error) throw historyResult.error;
   if (configResult.error) throw configResult.error;
   if (unavailableResult.error) throw unavailableResult.error;
+  if (weeklyResult.error) throw weeklyResult.error;
   const currentUnavailable=new Map<string,any>((unavailableResult.data||[]).map((r:any)=>[r.reference_date,r]));
   const configs=configResult.data||[];
   const allowed=new Set(dates);
@@ -58,7 +60,7 @@ async function oorIndicators(dates: string[]) {
     for(const r of data||[]){const rows=live.get(r.reference_date)||[];rows.push(r);live.set(r.reference_date,rows);}
     if(!data||data.length<1000)break;
   }
-  for(const [date,rows] of live){const metric=calculateLiveIndicator(date,rows,selectIndicatorConfig(date,configs));if(metric)byDate.set(date,metric);}
+  for(const [date,rows] of live){const metric=calculateLiveIndicator(date,rows,routeConfig(date,selectIndicatorConfig(date,configs),weeklyResult.data||[]));if(metric)byDate.set(date,metric);}
   return {byDate,configs};
 }
 const rowKey = (r: any) => String(r?.id || `${r?.area || ""}|${r?.address || ""}|${r?.sku_code || ""}`);
@@ -453,6 +455,8 @@ Deno.serve(async (req: Request) => {
         daily:indicatorData.byDate.get(referenceDate)||null,
         accumulated:aggregateIndicators(monthIndicatorRows),
         month_daily:monthIndicatorRows,
+        all_daily:indicatorRows,
+        weekly:weeklyIndicators(indicatorRows),
         monthly:[...new Set(indicatorRows.map((x:any)=>x.reference_date.slice(0,7)))].map(m=>({month:m,...aggregateIndicators(indicatorRows.filter((x:any)=>x.reference_date.slice(0,7)===m))})),
       };
 
@@ -513,12 +517,14 @@ Deno.serve(async (req: Request) => {
         .eq("reference_date", referenceDate).order("sku_code");
       if (detailError) throw detailError;
       const detailRows = detailRowsRaw || [];
-      const [historyIndicator, indicatorConfig] = await Promise.all([
+      const [historyIndicator, indicatorConfig, weeklyRoute] = await Promise.all([
         db.from("stock_oor_indicator_history").select("payload").eq("reference_date",referenceDate).maybeSingle(),
         db.from("stock_oor_indicator_configs").select("*").lte("reference_month",referenceDate).order("reference_month",{ascending:false}).limit(1).maybeSingle(),
+        db.from("stock_oor_weekly_routes").select("week_start,week_end,route_skus").lte("week_start",referenceDate).gte("week_end",referenceDate).maybeSingle(),
       ]);
       if(historyIndicator.error)throw historyIndicator.error;
       if(indicatorConfig.error)throw indicatorConfig.error;
+      if(weeklyRoute.error)throw weeklyRoute.error;
 
       const skuCodes = [...new Set(detailRows.map((x: any) => String(x.sku_code)))];
       const skuMap = new Map<string, any>();
@@ -533,7 +539,7 @@ Deno.serve(async (req: Request) => {
         const m = skuMap.get(String(x.sku_code)) || {};
         return {
           ...x,
-          ...indicatorFlags(x,historyIndicator.data?.payload,indicatorConfig.data),
+          ...indicatorFlags(x,historyIndicator.data?.payload,routeConfig(referenceDate,indicatorConfig.data,weeklyRoute.data?[weeklyRoute.data]:[])),
           sku_code: String(x.sku_code),
           sku_name: String(m.sku_name || ""),
           unit_code: m.unit_code || null,
@@ -561,6 +567,20 @@ Deno.serve(async (req: Request) => {
       return json({ reference_date: referenceDate, rows, dates, counts, policy, detail_available: rows.length > 0 });
     }
 
+    if (body.action === "oor_malha_import") {
+      if (!canEdit(user)) return json({error:"Somente a administração pode atualizar a malha."},403);
+      const referenceDate=String(body.reference_date||"");
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(referenceDate)||!Number.isFinite(Date.parse(referenceDate+"T00:00:00Z")))return json({error:"Data de vigência inválida."},400);
+      const week=indicatorWeek(referenceDate);
+      if(week.week_end<WEEKLY_ROUTE_START)return json({error:"O histórico até 05/10/2026 deve permanecer preservado."},400);
+      const input=body.route_skus;
+      if(!Array.isArray(input)||input.length>5000||!input.every((x:any)=>/^\d+$/.test(String(x))))return json({error:"Lista de produtos da malha inválida."},400);
+      if(!input.length&&!body.confirm_empty)return json({error:"Confirme que esta semana não tem malha."},400);
+      const routeSkus=[...new Set(input.map((x:any)=>String(Number(x))))];
+      const {error}=await db.from("stock_oor_weekly_routes").upsert({...week,route_skus:routeSkus,source:String(body.source_file||"MALHA SEMANAL").slice(0,240),updated_at:new Date().toISOString()},{onConflict:"week_start"});
+      if(error)throw error;
+      return json({...week,products:routeSkus.length});
+    }
     if (body.action === "oor_import") {
       if (!canEdit(user)) return json({ error: "Seu perfil não possui permissão para atualizar o OOR" }, 403);
       const sourceFile = String(body.source_file || "").slice(0, 240);

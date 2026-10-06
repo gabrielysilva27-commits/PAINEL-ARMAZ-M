@@ -244,7 +244,7 @@
       activateNav(event.currentTarget);
       document.querySelector('.pull-nav-group')?.classList.add('open');
       try {
-        if (!window.__stockOor) await loadScript('oor.js?v=20261005-indicators');
+        if (!window.__stockOor) await loadScript('oor.js?v=20261006-weekly');
         window.__stockOor?.open?.();
       } catch (error) {
         window.showToast?.(error.message || String(error), true);

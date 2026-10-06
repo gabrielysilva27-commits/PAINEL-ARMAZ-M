@@ -1,6 +1,6 @@
 (() => {
   const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/stock-api';
-  const S={dash:null,detail:null,date:'',month:'',mode:'daily',status:'OUT',query:''};
+  const S={dash:null,detail:null,date:'',month:'',week:'',mode:'daily',status:'OUT',query:''};
   const $=id=>document.getElementById(id);
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const nf=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2});
@@ -13,6 +13,42 @@
   function numberValue(v){let s=String(v??'').trim().replace(/\s/g,'');if(!s)return null;if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');else if(/^-?\d{1,3}(\.\d{3})+$/.test(s))s=s.replace(/\./g,'');s=s.replace(/[^\d+\-.]/g,'');const n=Number(s);return Number.isFinite(n)?n:null;}
   function oorQty(v,unit){const raw=String(v??'').trim().replace(/\s/g,'');if(!raw)return null;let s=raw.split('/')[0];if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');else s=s.replace(/\./g,'');s=s.replace(/[^\d+\-.]/g,'');let n=Number(s);if(!Number.isFinite(n))return null;if(normHeader(unit)==='DZ')n=n/2;return n;}
   function skuValue(v){const s=String(v??'').trim().replace(/^'+/,'').replace(/\.0+$/,'').replace(/\D/g,'').replace(/^0+/,'');return s||'';}
+  async function malhaReader(){
+    if(window.XLSX)return window.XLSX;
+    if(!window.__oorXlsxPromise)window.__oorXlsxPromise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';s.onload=()=>resolve(window.XLSX);s.onerror=()=>{window.__oorXlsxPromise=null;reject(Error('Não foi possível carregar o leitor de Excel.'));};document.head.appendChild(s);});
+    return window.__oorXlsxPromise;
+  }
+  function malhaDate(value){
+    if(value instanceof Date)return value.toISOString().slice(0,10);
+    const v=String(value||'').trim();if(/^\d{4}-\d{2}-\d{2}$/.test(v))return v;
+    const m=v.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);return m?m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'):'';
+  }
+  function malhaWeek(date){const start=new Date(date+'T00:00:00Z');start.setUTCDate(start.getUTCDate()-start.getUTCDay());const end=new Date(start);end.setUTCDate(end.getUTCDate()+6);return {start:start.toISOString().slice(0,10),end:end.toISOString().slice(0,10)};}
+  async function parseMalha(file,reference){
+    let rows;
+    if(/\.(csv|inf)$/i.test(file.name)){const bytes=await file.arrayBuffer();let text=new TextDecoder('utf-8').decode(bytes);if(text.includes('\uFFFD'))text=new TextDecoder('windows-1252').decode(bytes);rows=parseCsv(text,detectDelimiter(text));}
+    else{const X=await malhaReader();const wb=X.read(await file.arrayBuffer(),{type:'array',cellDates:true});const sheet=wb.SheetNames.find(x=>normHeader(x)==='MALHA SEMANAL')||wb.SheetNames[0];rows=X.utils.sheet_to_json(wb.Sheets[sheet],{header:1,raw:true,defval:''});}
+    const header=rows.findIndex(row=>row.some(x=>['COD. PRODUTO','COD PRODUTO','CODIGO PRODUTO','CODIGO','SKU'].includes(normHeader(x)))&&row.some(x=>['DATA PUXADA','DATA'].includes(normHeader(x))));
+    if(header<0)throw Error('A malha precisa das colunas Cód. Produto e Data Puxada.');
+    const h=rows[header].map(normHeader),si=exactCol(h,['COD. PRODUTO','COD PRODUTO','CODIGO PRODUTO','CODIGO','SKU']),di=exactCol(h,['DATA PUXADA','DATA']),qi=exactCol(h,['MALHA DISPONIVEL (SKU)','MALHA DISPONIVEL (PALLET)','MALHA DISPONIVEL','QUANTIDADE','QTD']);
+    const week=malhaWeek(reference),skus=new Set();let matching=0;
+    for(const row of rows.slice(header+1)){const raw=String(row[si]??'').trim();if(!/^\d+(?:\.0+)?$/.test(raw))continue;const date=malhaDate(row[di]);if(!date)throw Error('Produto '+raw+' está sem Data Puxada válida.');if(date<week.start||date>week.end)continue;matching++;if(qi>=0){const qty=numberValue(row[qi]);if(qty==null)throw Error('Quantidade de malha inválida para o produto '+raw+'.');if(qty<=0)continue;}skus.add(skuValue(raw));}
+    if(!matching)throw Error('O arquivo não tem programação entre '+dt(week.start)+' e '+dt(week.end)+'.');
+    return [...skus];
+  }
+  function openMalha(){
+    let modal=$('oorMalhaModal');
+    if(!modal){modal=document.createElement('div');modal.id='oorMalhaModal';modal.className='modal-backdrop hidden';modal.innerHTML='<div class="modal-card"><div class="modal-header"><h2>Malha semanal</h2><button type="button" class="close-button" id="oorMalhaClose">×</button></div><div class="import-grid"><label>Data dentro da semana<input id="oorMalhaDate" type="date" min="2026-10-06"></label><label>Arquivo da malha<input id="oorMalhaFile" type="file" accept=".xlsx,.xls,.csv,.inf"></label></div><p id="oorMalhaRange"></p><label><input id="oorMalhaEmpty" type="checkbox"> Esta semana não possui malha disponível</label><p class="form-error" id="oorMalhaError"></p><div class="modal-actions"><button type="button" class="primary-button" id="oorMalhaSave">Salvar malha</button></div></div>';document.body.appendChild(modal);$('oorMalhaClose').onclick=()=>modal.classList.add('hidden');$('oorMalhaSave').onclick=saveMalha;$('oorMalhaDate').onchange=()=>{const date=$('oorMalhaDate').value;if(date){const w=malhaWeek(date);$('oorMalhaRange').textContent=dt(w.start)+' a '+dt(w.end);}};}
+    $('oorMalhaDate').value=S.date>='2026-10-06'?S.date:'2026-10-06';$('oorMalhaDate').onchange();$('oorMalhaFile').value='';$('oorMalhaEmpty').checked=false;$('oorMalhaError').textContent='';modal.classList.remove('hidden');
+  }
+  async function saveMalha(){
+    const error=$('oorMalhaError'),button=$('oorMalhaSave'),date=$('oorMalhaDate').value,file=$('oorMalhaFile').files?.[0],empty=$('oorMalhaEmpty').checked;error.textContent='';
+    if(!date||date<'2026-10-06'){error.textContent='Informe uma data a partir de 06/10/2026.';return;}
+    if(!file&&!empty){error.textContent='Selecione a malha da semana.';return;}
+    if(file&&empty){error.textContent='Selecione um arquivo ou marque semana sem malha.';return;}
+    button.disabled=true;
+    try{const skus=empty?[]:await parseMalha(file,date);if(!skus.length&&!empty)throw Error('Não há quantidades positivas. Confirme a opção de semana sem malha se isso estiver correto.');const result=await call('oor_malha_import',{reference_date:date,route_skus:skus,confirm_empty:empty,source_file:file?.name||'SEM MALHA — confirmado'});window.showToast?.('Malha salva: '+result.products+' produtos, '+dt(result.week_start)+' a '+dt(result.week_end)+'.');$('oorMalhaModal').classList.add('hidden');await load();}catch(e){error.textContent=e.message||String(e);}finally{button.disabled=false;}
+  }
   const SKU_ALIASES=['ITEM','COD ITEM','CODIGO ITEM','CODIGO DO ITEM','MATERIAL','COD MATERIAL','CODIGO MATERIAL','COD PRODUTO','CODIGO PRODUTO','COD PROD','CODIGO'];
   const QTY_ALIASES=['QTDE DISPONIVEL','QTD DISPONIVEL','QUANTIDADE DISPONIVEL','DISPONIVEL','ESTOQUE DISPONIVEL','SALDO DISPONIVEL','QTDE ESTOQUE','QTD ESTOQUE','QUANTIDADE ESTOQUE','SALDO ESTOQUE','SALDO','ESTOQUE','QTDE','QTD','QUANTIDADE'];
   const NAME_ALIASES=['DESCRICAO','DESC ITEM','DESCRICAO ITEM','NOME PRODUTO'],UNIT_ALIASES=['UNIDADE','UNID','UND','UN','UM'];
@@ -48,6 +84,7 @@
       S.dash=await call('oor_dashboard',S.date?{reference_date:S.date}:{});
       S.date=S.dash.reference_date||'';
       S.month=S.date?S.date.slice(0,7):S.month;
+      if(!availableWeeks().some(x=>x.week_start===S.week))S.week=availableWeeks().find(x=>x.week_start<=S.date&&x.week_end>=S.date)?.week_start||availableWeeks().at(-1)?.week_start||'';
       S.detail=await call('oor_get',{reference_date:S.date});
       render();
     }catch(e){
@@ -70,8 +107,7 @@
   function indicatorCards(x,interactive=false){
     if(!x)return '<div class="oor-note"><strong>Sem base para os indicadores complementares nesta data.</strong></div>';
     const card=(key,label,value,detail)=>'<button type="button" class="oor-kpi extra '+(interactive&&S.status===key?'active':'')+'" '+(interactive&&key?'data-status="'+key+'"':'disabled')+'><span><small>'+label+'</small><strong>'+pct(value)+'</strong></span><em>'+detail+'</em></button>';
-    return '<section class="oor-kpis oor-extra">'+card('','Ocupação de estoque',x.occupation_pct,nf.format(x.average_stock_qty??x.stock_qty)+' / '+nf.format(x.average_capacity_qty??x.capacity_qty)+' cx'+(x.days?' · média/dia':''))+card('INDISP','Indisponibilidade',x.unavailable_pct,nf.format(x.unavailable_count)+' de '+nf.format(x.product_count))+card('INNO','Inovação',x.innovation_pct,nf.format(x.innovation_count)+' de '+nf.format(x.product_count))+'</section>'+
-      '<div class="oor-indicator-source">Capacidade, INNO e malha: '+esc(x.config_month||'—')+' · '+(x.source==='AGENTE_020502'?'Estoque atualizado pelo agente':x.source==='MIXED'?'Histórico da planilha e agente':'Histórico da planilha')+(x.days?' · '+nf.format(x.days)+' dias com base':'')+'</div>';
+    return '<section class="oor-kpis oor-extra">'+card('','Ocupação de estoque',x.occupation_pct,nf.format(x.average_stock_qty??x.stock_qty)+' / '+nf.format(x.average_capacity_qty??x.capacity_qty)+' cx'+(x.days?' · média/dia':''))+card('INDISP','Indisponibilidade',x.unavailable_pct,x.unavailable_count==null?'Aguardando malha semanal':nf.format(x.unavailable_count)+' de '+nf.format(x.product_count))+card('INNO','Inovação',x.innovation_pct,nf.format(x.innovation_count)+' de '+nf.format(x.product_count))+'</section>';
   }
   function indicatorTable(rows,monthly=false){
     return '<section class="oor-table compact oor-indicator-table"><table><thead><tr><th>'+(monthly?'Mês':'Data')+'</th><th>Ocupação</th><th>Indisponibilidade</th><th>Inovação</th><th>'+(monthly?'Dias com base':'Produtos')+'</th></tr></thead><tbody>'+rows.map(x=>'<tr><td><strong>'+(monthly?monthLabel(x.month):dt(x.reference_date))+'</strong></td><td>'+pct(x.occupation_pct)+'</td><td>'+pct(x.unavailable_pct)+'</td><td>'+pct(x.innovation_pct)+'</td><td>'+nf.format(monthly?x.days:x.product_count)+'</td></tr>').join('')+'</tbody></table></section>';
@@ -102,6 +138,15 @@
       rows.map(x=>'<tr><td><strong>'+monthLabel(x.month)+'</strong></td><td>'+nf.format(x.out_count)+'</td><td class="out-text">'+pct(x.out_pct)+'</td><td>'+nf.format(x.over_count)+'</td><td class="over-text">'+pct(x.over_pct)+'</td><td>'+nf.format(x.ok_count)+'</td><td class="ok-text">'+pct(x.ok_pct)+'</td><td>'+nf.format(x.total_count)+'</td></tr>').join('')+
       '</tbody></table></section>';
   }
+  function availableWeeks(){
+    return (S.dash?.indicators?.weekly||[]).filter(x=>x.week_start.slice(0,7)===S.month||x.week_end.slice(0,7)===S.month);
+  }
+  function weeklyContent(){
+    const week=(S.dash?.indicators?.weekly||[]).find(x=>x.week_start===S.week);
+    if(!week)return '<div class="oor-note"><strong>Sem dados nesta semana.</strong></div>';
+    return indicatorCards(week,false)+indicatorTable(week.rows||[]);
+  }
+  function weekOptions(){return availableWeeks().map(x=>'<option value="'+esc(x.week_start)+'" '+(x.week_start===S.week?'selected':'')+'>'+dt(x.week_start)+' a '+dt(x.week_end)+'</option>').join('');}
   function monthOptions(){
     const dates=S.dash?.dates||[];
     const months=[...new Set(dates.map(x=>String(x).slice(0,7)))];
@@ -114,11 +159,12 @@
   function render(){
     const root=view();if(!root)return;const d=S.dash||{};
     root.innerHTML='<section class="oor-card">'+
-      '<div class="oor-card-head"><div class="oor-tabs"><button data-mode="daily" class="'+(S.mode==='daily'?'active':'')+'">Diário</button><button data-mode="accumulated" class="'+(S.mode==='accumulated'?'active':'')+'">Acumulado</button><button data-mode="monthly" class="'+(S.mode==='monthly'?'active':'')+'">Mensal</button></div>'+
-      '<div class="oor-meta"><span>Política '+esc(d.policy?.code||'—')+(d.policy?' · Vigente':'')+'</span><button type="button" class="outline-button" id="oorImportButton">Contingência · Importar 02.05.02</button><label>Mês<select id="oorMonth">'+monthOptions()+'</select></label><label>Dia<select id="oorDate">'+dayOptions()+'</select></label></div></div>'+
-      '<div class="oor-card-body">'+(S.mode==='daily'?dailyContent():S.mode==='accumulated'?accumulatedContent():monthlyContent())+'</div>'+
+      '<div class="oor-card-head"><div class="oor-tabs"><button data-mode="daily" class="'+(S.mode==='daily'?'active':'')+'">Diário</button><button data-mode="weekly" class="'+(S.mode==='weekly'?'active':'')+'">Semanal</button><button data-mode="accumulated" class="'+(S.mode==='accumulated'?'active':'')+'">Acumulado</button><button data-mode="monthly" class="'+(S.mode==='monthly'?'active':'')+'">Mensal</button></div>'+
+      '<div class="oor-meta"><span>Política '+esc(d.policy?.code||'—')+(d.policy?' · Vigente':'')+'</span><button type="button" class="outline-button" id="oorImportButton">Contingência · Importar 02.05.02</button><button type="button" class="outline-button" id="oorMalhaButton">Malha semanal</button><label>Mês<select id="oorMonth">'+monthOptions()+'</select></label>'+(S.mode==='weekly'?'<label>Semana<select id="oorWeek">'+weekOptions()+'</select></label>':'<label>Dia<select id="oorDate">'+dayOptions()+'</select></label>')+'</div></div>'+
+      '<div class="oor-card-body">'+(S.mode==='daily'?dailyContent():S.mode==='weekly'?weeklyContent():S.mode==='accumulated'?accumulatedContent():monthlyContent())+'</div>'+
       '</section>';
     $('oorImportButton').onclick=openImport;
+    $('oorMalhaButton').onclick=openMalha;
     $('oorMonth').onchange=async e=>{
       S.month=e.target.value;
       const dates=(S.dash?.dates||[]).filter(x=>String(x).slice(0,7)===S.month).sort();
@@ -126,7 +172,8 @@
       S.query='';
       await load();
     };
-    $('oorDate').onchange=async e=>{S.date=e.target.value;S.query='';await load();};
+    if($('oorDate'))$('oorDate').onchange=async e=>{S.date=e.target.value;S.week='';S.query='';await load();};
+    if($('oorWeek'))$('oorWeek').onchange=e=>{S.week=e.target.value;render();};
     root.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{S.mode=b.dataset.mode;render();});
     root.querySelectorAll('[data-status]').forEach(b=>b.onclick=()=>{S.status=b.dataset.status;render();});
     if($('oorSearch'))$('oorSearch').oninput=e=>{S.query=e.target.value;render();};
@@ -145,7 +192,7 @@
   }
   function install(){
     view();
-    if(!$('stockOorCss')){const l=document.createElement('link');l.id='stockOorCss';l.rel='stylesheet';l.href='oor.css?v=20261005-indicators';document.head.appendChild(l);}
+    if(!$('stockOorCss')){const l=document.createElement('link');l.id='stockOorCss';l.rel='stylesheet';l.href='oor.css?v=20261006-weekly';document.head.appendChild(l);}
     window.__stockOor={open,reload:load};
   }
   install();
