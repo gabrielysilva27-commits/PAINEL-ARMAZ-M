@@ -1,7 +1,7 @@
-import {norm} from './efc-core.mjs?v=20261006-cutoff-6';
-import {dailySeries,hours,categories,loadProfile,ranking,periods,sum} from './efc-analytics.mjs?v=20261006-cutoff-6';
-import {historyRanking} from './efc-history.mjs?v=20261006-cutoff-6';
-import {escape as e,format as n,seriesChart,donutChart,horizontalBars,chartPanel as baseChartPanel,metric} from './efc-charts.mjs?v=20261006-cutoff-6';
+import {norm} from './efc-core.mjs?v=20261006-clean-note';
+import {dailySeries,hours,categories,loadProfile,ranking,periods,sum} from './efc-analytics.mjs?v=20261006-clean-note';
+import {historyRanking} from './efc-history.mjs?v=20261006-clean-note';
+import {escape as e,format as n,seriesChart,donutChart,horizontalBars,chartPanel as baseChartPanel,metric} from './efc-charts.mjs?v=20261006-clean-note';
 const chartPanel=(title,description,body,controls)=>baseChartPanel(title,'',body,controls);
 const pct=v=>v==null?'Pendente':n(v*100,2)+'%';
 const grid=body=>`<div class="efc-visual-grid">${body}</div>`;
@@ -19,7 +19,7 @@ function productivityVisual(c,raw,state,compact=false){const people=team(c),sele
  return grid(body)+(!compact?profiles(c,raw,state):'');}
 function profiles(c,raw,state){const values=c.history&&c.fullMonth?c.history.profiles:periods(raw,state.month,state.day,state.week).map(x=>({...x,...loadProfile(x.rows)}));return `<div class="efc-profile-grid">${values.map((x,i)=>chartPanel('Perfil · '+x.label,'Complexidade da montagem',donutChart({id:'profile-'+i,title:'Perfil '+x.label,data:x.bands.filter(x=>x.value!=null),center:n(sum(x.bands,'value')),subcenter:'atividades'}))).join('')}</div>`;}
 function supplySummary(c){const s=c.summary,r=c.replenishmentSummary||{};return grid(chartPanel('Ressuprimento','Pallets ressupidos sobre pallets separados',mini('Resultado',pct(s.resupply_rate),`${n(s.estimated_pallets)} pallets ÷ ${n(s.pallets??s.picking_positions)} base`))+chartPanel('Reabastecimento','Execução sobre a base de picking',mini('Resultado',pct(r.rate),`${n(r.boxes)} executado ÷ ${n(r.capacity)} base`)));}
-function supplyVisual(c,compact=false){const historical=Boolean(c.history);const d=c.historySupply?c.historySupply.map(x=>({...x,rate:x.rate==null?null:x.rate*100})):dailySeries(c).map(x=>({...x,estimated:x.capacity_known?x.estimated:null,rate:null,tip:x.date+' · '+x.capacity_known+' demandas com capacidade / '+x.capacity_missing+' pendentes'}));let body='';const note=c.summary.supply_partial?'<p class="efc-inline-status">Cadastro a revisar: '+n(c.summary.supply_missing_boxes)+' caixas fora do cálculo por falta de paletização.</p>':'';
+function supplyVisual(c,compact=false){const historical=Boolean(c.history);const d=c.historySupply?c.historySupply.map(x=>({...x,rate:x.rate==null?null:x.rate*100})):dailySeries(c).map(x=>({...x,estimated:x.capacity_known?x.estimated:null,rate:null,tip:x.date+' · '+x.capacity_known+' demandas com capacidade / '+x.capacity_missing+' pendentes'}));let body='';const note='';
  body+=chartPanel('Ressuprimento por dia','Pallets por dia',chart('supply-daily','Ressuprimento por dia',d,[{key:'estimated',label:'Pallets',color:'#f47a20'}],{bars:true}));
  body+=chartPanel('Reabastecimento diário','Caixas por dia',c.replenishmentDays?.length?chart('replenish-daily','Reabastecimento por dia',c.replenishmentDays,[{key:'boxes',label:'Caixas',color:'#617e96'}],{bars:true}):'<div class="efc-chart-empty">Sem resultado de reabastecimento para este período.</div>');
  if(!compact){const top=historical&&c.fullMonth?c.history.supply_top.filter(x=>x.label&&x.value!=null):historical?c.history.supply_rows.map(x=>({label:x.sku,value:x.daily.reduce((a,v,i)=>a+(c.history.supply_days[i]&&c.historySupply.some(d=>d.date===c.history.supply_days[i].date)?v||0:0),0)})).sort((a,b)=>b.value-a.value):categories(c.supply.filter(x=>x.estimated_pallets!=null).map(x=>({...x,product:x.sku+' · '+x.description})),'product','estimated_pallets');body+=chartPanel('Produtos com maior ressuprimento','Ranking de pallets no período',horizontalBars({title:'Ressuprimento por produto',data:top,unit:'pallets',color:'#f47a20'}));}
