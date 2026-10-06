@@ -11,7 +11,7 @@ export function calculatePeriod(data,month,day='',week='',history=null){
  data=normalizePeople(data);
  const filtered=Object.fromEntries(Object.entries(data).map(([kind,rows])=>[kind,kind==='events'?rows:rows.filter(x=>!x.date||(x.date.startsWith(month)&&(!day||x.date===day)&&(!week||periodKey(x.date,month)===week)))]));
  if(month<='2026-09'&&!history)throw Error('Histórico original do Excel não disponível para este mês.');
- const c=calculate(filtered,month,day);c.month=month;
+ const c=calculate(filtered,month,day);c.month=month;c.payFiltered=Boolean(day||week);
  if(history&&month<='2026-09'){
   c.history=history;c.fullMonth=!day&&!week;
   const byId=new Map(history.helpers.map(x=>[x.id,x]));c.helpers=c.helpers.map(x=>{const h=byId.get(x.id);return h?{...x,boxes:h.boxes,duration:h.duration==null?null:h.duration*1440,average:h.average==null?null:h.average*1440,standard:h.standard==null?null:h.standard*1440,efm:h.efm,items_per_pallet:h.items_per_pallet,coverage:h.boxes==null?'Sem resultado no Excel':'Resultado salvo no Excel'}:{...x,boxes:x.cached_boxes??null,efm:x.cached_efm??null};});
