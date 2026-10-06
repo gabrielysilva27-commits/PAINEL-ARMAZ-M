@@ -1,3 +1,4 @@
+import {ocpRules,withoutIgnoredMaps} from './ocp-exceptions.mjs';
 import {withOcpInputs} from './ocp-inputs.mjs';
 import {ocpDay,ocpJob,ocpHeadersValid,ocpNumber} from './ocp-source.mjs';
 import {wmsDay} from './wms-adherence.mjs';
@@ -47,8 +48,9 @@ async function ocpState(){
  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).map(x=>[x.type,x.value]));
  const today=parts.year+'-'+parts.month+'-'+parts.day,yesterday=new Date(Date.parse(today+'T12:00:00Z')-86400000).toISOString().slice(0,10),target=Number(parts.hour)>=21?today:yesterday,through=config.backfill_through&&config.backfill_through>target?config.backfill_through:target;
  const [inventory,imports]=await Promise.all([all(()=>db.from('efc_ocp_inventory').select('*').lte('reference_date',through).order('reference_date')),all(()=>db.from('efc_ocp_imports').select('maps').eq('status','completed').order('completed_at'))]);
+ const exceptions=await all(()=>db.from('efc_ocp_exceptions').select('*').order('reference_date').order('map'));
  const latest=new Map();for(const file of imports)for(const r of file.maps)latest.set(r.map,r);const available=[...latest.values()],days=[];
- for(const f of inventory){const result=ocpDay(f.rows,available),row={reference_date:f.reference_date,...result,completed_at:result.status==='completed'?new Date().toISOString():null,updated_at:new Date().toISOString()};days.push(row);}
+ for(const f of inventory){const result=ocpDay(ocpRules(f.reference_date,f.rows,exceptions),available),row={reference_date:f.reference_date,...result,completed_at:result.status==='completed'?new Date().toISOString():null,updated_at:new Date().toISOString()};days.push(row);}
  if(days.length){const {error:e}=await db.from('efc_ocp_days').upsert(days,{onConflict:'reference_date'});check(e);}
  const needsInventory=!config.last_inventory_at||Date.parse(config.last_inventory_at)<Date.parse(target+'T21:00:00-03:00')||!config.last_inventory_date||config.last_inventory_date<through||!inventory.some(f=>f.reference_date===through);
  const pending=days.filter(d=>d.status!=='completed').length+(needsInventory?1:0);
@@ -157,9 +159,11 @@ Deno.serve(async req=>{
  const [segmentationEmails,segmentationScans]=await Promise.all([all(()=>db.from('efc_segmentation_emails').select('id,reference_date,received_at,rows,status,issue').gte('reference_date',from).lt('reference_date',next).order('reference_date').order('id')),db.from('efc_segmentation_scans').select('messages,review,errors,last_error,updated_at').order('updated_at',{ascending:false}).limit(1).maybeSingle()]);check(segmentationScans.error);
  const ocp=await all(()=>db.from('report_03023601_current').select('*').gte('reference_date',from).lt('reference_date',next).order('map').order('row_no'));data.ocp=ocp.map((r:any)=>({...r.payload,date:r.reference_date,source:r.source_file}));
  data=withOcpInputs(data,month);
+ const ocpExceptions=month>'2026-09'?await all(()=>db.from('efc_ocp_exceptions').select('*').gte('reference_date',from).lt('reference_date',next).order('reference_date').order('map')):[];
+ for(const kind of ['helpers','checkers','priority','items','demand'])if(data[kind])data[kind]=withoutIgnoredMaps(data[kind],ocpExceptions);
  data.segmentations=segmentationEmails.map((m:any)=>({...m,date:m.reference_date}));
  data.events=frozenEvents(mergeEvents(data.events||[],events,shared),cycles);
- const covered=new Set(pcd.map((r:any)=>r.reference_date)),planned=(data.pcd||[]).filter((p:any)=>!covered.has(p.date));for(const file of pcd){const snapshot=cycles.find((c:any)=>c.reference_date===file.reference_date);if(snapshot)planned.push(...snapshot.plans);else planned.push(...file.rows);}for(const p of planned){const matching=data.events.filter((e:any)=>e.emission===p.date&&e.plate===String(p.plate).replace(/[^A-Z0-9]/gi,'').toUpperCase());const fleets=[...new Set(matching.map((e:any)=>e.fleet).filter(Boolean))];if(!p.fleet&&fleets.length===1)p.fleet=fleets[0];}data.pcd=planned;
+ const covered=new Set(pcd.map((r:any)=>r.reference_date)),planned=(data.pcd||[]).filter((p:any)=>!covered.has(p.date));for(const file of pcd){const snapshot=cycles.find((c:any)=>c.reference_date===file.reference_date);if(snapshot)planned.push(...snapshot.plans);else planned.push(...file.rows);}for(const p of planned){const matching=data.events.filter((e:any)=>e.emission===p.date&&e.plate===String(p.plate).replace(/[^A-Z0-9]/gi,'').toUpperCase());const fleets=[...new Set(matching.map((e:any)=>e.fleet).filter(Boolean))];if(!p.fleet&&fleets.length===1)p.fleet=fleets[0];}data.pcd=withoutIgnoredMaps(planned,ocpExceptions);
  return reply({month,data,history:history.data?.payload||null,agent:agent.data,sources:[...new Set([...chunks.map(c=>c.source),...shared.map((r:any)=>r.source_file),...pcd.map((r:any)=>r.source_file)])],routine:{start_hour:21,time_zone:'America/Sao_Paulo',cycles:cycles.map((c:any)=>({date:c.reference_date,status:c.status,planned:c.planned,matched:c.matched,completed_at:c.completed_at}))},coverage:{report_03023601:{dates:[...new Set(ocp.map((r:any)=>r.reference_date))],last_import_at:ocp.map((r:any)=>r.completed_at).sort().at(-1)||null},segmentations:segmentationScans.data,report_031120:{dates:[...new Set(shared.map((r:any)=>r.reference_date))],last_import_at:shared.map((r:any)=>r.completed_at).sort().at(-1)||null},maps:{dates:[...new Set(pcd.map((r:any)=>r.reference_date))],last_import_at:pcd.map((r:any)=>r.updated_at).sort().at(-1)||null}},adjustments:patches.length});
  }catch(e){console.error('efc-api',e);return reply({error:'Não foi possível processar EFC. Confira os dados e tente novamente.'},400);}
 });
