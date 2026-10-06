@@ -2,7 +2,7 @@
   const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/repack-api';
   const PUB='sb_publishable_W8fSiZaa-n_tM1YhhsdVfQ_WErczC8K';
   const TIMER_URL='https://painel-armaz-m.gabrielysilva27.workers.dev/repack/';
-  const S={month:new Date().toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'}).slice(0,7),data:null,adminWorkers:null,pinIssue:null,requestId:0,refreshing:false};
+  const S={month:new Date().toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'}).slice(0,7),data:null,adminWorkers:null,pinIssue:null,requestId:0,refreshing:false,loading:false};
   const $=id=>document.getElementById(id);
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const nf=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1});
@@ -40,16 +40,17 @@
     v.innerHTML='<div class="repack-loading">Carregando resultados do Repack…</div>';await load();
   }
   async function load(){
+    S.loading=true;
     try{
       const month=S.month,requestId=++S.requestId;
       const d=await call('dashboard',{month});if(requestId!==S.requestId||month!==S.month)return;S.data=d.dashboard;
       if(role()==='admin'){try{S.adminWorkers=(await call('admin_workers')).workers||[]}catch{S.adminWorkers=null}}
       render();
-    }catch(e){ensureView().innerHTML='<div class="repack-empty"><strong>Não foi possível carregar o Repack</strong><span>'+esc(e.message)+'</span></div>'}
+    }catch(e){ensureView().innerHTML='<div class="repack-empty"><strong>Não foi possível carregar o Repack</strong><span>'+esc(e.message)+'</span></div>'}finally{S.loading=false}
   }
   async function refreshLive(){
     const root=$('repackView');
-    if(S.refreshing||!S.data||!root||root.classList.contains('hidden')||document.hidden)return;
+    if(S.loading||S.refreshing||!S.data||!root||root.classList.contains('hidden')||document.hidden)return;
     // Leave an unfinished worker registration and open PIN issuance intact.
     if($('repackWorkerName')?.value.trim()||root.contains(document.activeElement)&&document.activeElement?.matches('input,select'))return;
     S.refreshing=true;const month=S.month,requestId=S.requestId;
