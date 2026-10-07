@@ -9,10 +9,10 @@ export async function sourceFrames(db:any,all:any,months:string[],from:string,to
  for(const month of months){
   const start=month+'-01',next=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5)),1)).toISOString().slice(0,10),before=new Date(Date.parse(start+'T12:00:00Z')-172800000).toISOString().slice(0,10);
   const [chunks,patches,h,sources,checks,c]=await Promise.all([
-   all(()=>db.from('efc_archive').select('*').eq('month',month).order('kind').order('chunk')),
+   all(()=>db.from('efc_archive').select('*').eq('month',month).in('kind',month>'2026-09'?['helpers','checkers','capacity']:['helpers','checkers']).order('kind').order('chunk')),
    all(()=>db.from('efc_adjustments').select('*').eq('month',month).order('record_id')),
    db.from('efc_workbook_history').select('payload').eq('month',month).maybeSingle(),
-   db.rpc('efc_dashboard_sources',{p_from:start,p_before:before,p_to:next}),
+   month>'2026-09'?db.rpc('efc_dashboard_sources',{p_from:start,p_before:before,p_to:next}):Promise.resolve({data:{ocp:[]},error:null}),
    all(()=>db.from('blitz_pull_checks').select('*').gte('reference_date',start).lt('reference_date',next).order('check_key')),
    db.from('blitz_pull_summary_cache').select('*').eq('reference_month',start).maybeSingle()
   ]);

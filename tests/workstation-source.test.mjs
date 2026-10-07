@@ -1,0 +1,24 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {stripTypeScriptTypes} from 'node:module';
+import {pickingSupply} from '../supabase/functions/productivity-api/picking-supply.mjs';
+import {withoutIgnoredMaps} from '../supabase/functions/productivity-api/ocp-exceptions.mjs';
+import {withOcpInputs} from '../supabase/functions/productivity-api/ocp-inputs.mjs';
+import {checkIdentity,summarizeWorkbook} from '../supabase/functions/productivity-api/blitz-import-core.mjs';
+const source=fs.readFileSync(new URL('../supabase/functions/productivity-api/workstation-source.ts',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace('export async function','async function');
+const context={pickingSupply,withoutIgnoredMaps,withOcpInputs,checkIdentity,summarizeWorkbook};
+vm.createContext(context);vm.runInContext(stripTypeScriptTypes(source),context);
+for(const month of ['2026-01','2026-06','2026-09','2026-10'])test(`Source adapter preserves ${month} and excludes unrelated archives`,async()=>{
+ const queries=[],calls=[];
+ const helper={id:'h',name:'AJUDANTE',date:month+'-02',pallets:8};
+ const checker={id:'c',name:'CONFERENTE',date:month+'-02',map:'100',pallets:8};
+ const records={efc_archive:[{kind:'helpers',payload:[helper]},{kind:'checkers',payload:[checker]}],efc_workbook_history:{payload:{replenishment_days:[{date:month+'-02',boxes:120}],supply_days:[{date:month+'-02',estimated:3}]}},efd_route_maps:[{reference_date:month+'-02',vehicle:'1',map_id:'100',valid:true}]};
+ const db={from(table){const query={table,select(){return query},eq(k,v){queries.push([table,k,v]);return query},in(k,v){queries.push([table,k,Array.from(v)]);return query},order(){return query},gte(){return query},lte(){return query},lt(){return query},maybeSingle(){return Promise.resolve({data:records[table]||null,error:null})}};return query},rpc(name){calls.push(name);return Promise.resolve({data:{ocp:[]},error:null})}};
+ const result=await context.sourceFrames(db,async make=>records[make().table]||[],[month],month+'-02',month+'-02');
+ assert.equal(result.efc[0].month,month);assert.equal(result.efc[0].data.helpers[0].pallets,8);assert.equal(result.efc[0].data.checkers[0].map,'100');assert.equal(result.efd[0].maps[0].reference_date,month+'-02');
+ assert.deepEqual(queries.find(r=>r[0]==='efc_archive'&&r[1]==='kind')[2],month>'2026-09'?['helpers','checkers','capacity']:['helpers','checkers']);
+ assert.equal(calls.length,month>'2026-09'?1:0);
+ if(month<='2026-09')assert.equal(result.efc[0].history.replenishment_days[0].boxes,120);
+});
