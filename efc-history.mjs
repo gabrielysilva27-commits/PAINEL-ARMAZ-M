@@ -1,3 +1,4 @@
+import {applyGerot} from './efc-gerot.mjs?v=20261007-gerot-1';
 import {withAuthorizedBoxesAverage} from './efc-boxes-average.mjs?v=20261006-boxes-average';
 import {normalizePeople,personName} from './efc-names.mjs?v=20261006-names-1';
 import {wmsAdherence} from './efc-wms.mjs?v=20261006-names-1';
@@ -32,6 +33,8 @@ export function calculatePeriod(data,month,day='',week='',history=null){
   if(filtered.picking_days?.length){c.supply=filtered.picking_rows||[];c.historySupply=filtered.picking_days;c.replenishmentDays=filtered.picking_days;c.summary.estimated_pallets=sum(filtered.picking_days,'estimated');c.summary.picking_positions=sum(filtered.picking_days,'positions');c.summary.resupply_rate=ratio(c.summary.estimated_pallets,c.summary.picking_positions);c.replenishmentSummary={boxes:sum(filtered.picking_days,'boxes'),capacity:sum(filtered.picking_days,'capacity'),rate:ratio(sum(filtered.picking_days,'boxes'),sum(filtered.picking_days,'capacity'))};c.summary.capacity_missing=c.supply.filter(x=>x.boxes>0&&x.capacity==null).length;c.summary.supply_missing_boxes=sum(filtered.picking_days,'missing_boxes');c.summary.supply_partial=filtered.picking_days.some(d=>!d.complete);}
  }
  c.wmsEstimate=wmsAdherence(c.loads,filtered.segmentations||[]);
+ if(history?.manual_results){const fullLoads=loading((data.pcd||[]).filter(x=>x.date?.startsWith(month)),data.events||[]);applyGerot(c,history.manual_results,wmsAdherence(fullLoads,data.segmentations||[]),day,week);}
  return c;
 }
 export function historyRanking(c){if(!c.history||!c.fullMonth)return null;return c.history.ranking.map(x=>({...x,name:personName(x.name),average_minutes:x.average_time==null?null:x.average_time*1440,legacy_pay:x.payment,days:null,minutes:null,activities:null,error_quantity:null,missing:null})).sort((a,b)=>b.pallets-a.pallets);}
+
