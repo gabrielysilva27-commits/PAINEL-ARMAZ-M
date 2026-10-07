@@ -7,6 +7,13 @@ import {periodMonths} from '../supabase/functions/productivity-api/productivity-
 import * as core from '../supabase/functions/productivity-api/core.mjs';
 import {workstationIdentity,ownEmployee,selfProductivity} from '../supabase/functions/productivity-api/workstation-self.mjs';
 const team=[{id:'one',active:true,display_name:'ANDREI SILVA DA CONCEIÇÃO',job_title:'Ajudante',shift:'A',area:'cheio_b'},{id:'two',active:true,display_name:'MAYCON DOUGLAS DA SILVA CAMPOS',job_title:'Ajudante',shift:'B',area:'cheio_b'}];
+test('Conferente com nome abreviado conserva a produção e o vínculo privado',()=>{
+ const employee={id:'gracielle',active:true,display_name:'GRACIELLE SILVA DE FARIAS',job_title:'Conferente',area:'conferencia',shift:'C'};
+ const colleague={id:'raissa',active:true,display_name:'RAISSA CUNHA MARTINS',job_title:'Conferente',area:'conferencia',shift:'C'};
+ const frames={efc:[{month:'2026-10',data:{checkers:[{id:'a',name:'GRACIELLE FARIAS',date:'2026-10-06',map:'100',pallets:12},{id:'b',name:'RAISSA CUNHA MARTINS',date:'2026-10-06',map:'200',pallets:30}]}}],blitz:[],efd:[]};
+ const result=selfProductivity(employee,{team:[employee,colleague],activities:[]},frames,[],'2026-10-06','2026-10-06','standard');
+ assert.equal(result.activities.find(r=>r.area==='conferencia_c').quantity,12);assert.equal(result.activities.find(r=>r.area==='mapas_conferidos_c').quantity,1);assert.ok(!JSON.stringify(result).includes('RAISSA'));
+});
 test('Only a verified active Workstation account is accepted',async()=>{
  let calls=0;assert.equal(await workstationIdentity('',()=>{calls++}),null);assert.equal(await workstationIdentity('bad;token',()=>{calls++}),null);assert.equal(calls,0);
  assert.equal(await workstationIdentity('opaque.token',async(url,options)=>{assert.equal(url,'https://workstation-armazem.gabrielysilva27.workers.dev/api/auth/me');assert.equal(options.headers.Cookie,'workstation_session=opaque.token');return new Response('{}',{status:401})}),null);

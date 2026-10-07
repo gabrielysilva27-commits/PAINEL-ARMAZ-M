@@ -1,6 +1,7 @@
 const key=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toUpperCase();
 // Explicit aliases verified against the EFC archive; never merge by similarity.
 const pairs=[
+ ['GRACIELLE FARIAS','GRACIELLE SILVA DE FARIAS'],
  ['ANDERSON DE ARAUJO ALGADO','ANDERSON DE ARAUJO SALGADO'],
  ['WESDILLEY BORGES GERALDO','WEDISLLEY BORGES GERALDO'],
  ['YURI TAVARES DE O. DOROW','YURI TAVARES DE OLIVEIRA DOROW'],
