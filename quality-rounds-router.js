@@ -6,7 +6,7 @@
     if(loading)return loading;
     loading=new Promise((resolve,reject)=>{
       if(!$('qualityRoundsCss')){const l=document.createElement('link');l.id='qualityRoundsCss';l.rel='stylesheet';l.href='quality-rounds.css?v=20260918-1';document.head.appendChild(l);}
-      const s=document.createElement('script');s.src='quality-rounds.js?v=20260918-1';s.async=true;s.onload=()=>resolve(window.__qualityRounds);s.onerror=()=>reject(new Error('Falha ao carregar Ronda de Qualidade'));document.body.appendChild(s);
+      const s=document.createElement('script');s.src='quality-rounds.js?v=20260918-1';s.async=true;s.onload=()=>resolve(window.__qualityRounds);s.onerror=()=>{s.remove();loading=null;reject(new Error('Falha ao carregar Ronda de Qualidade'))};document.body.appendChild(s);
     });
     return loading;
   }

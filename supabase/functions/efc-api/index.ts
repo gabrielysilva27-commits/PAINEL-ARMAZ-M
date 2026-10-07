@@ -23,7 +23,7 @@ async function reconcileCycle(date:string){
  const {data:cycle,error}=await db.from('efc_night_cycles').select('*').eq('reference_date',date).maybeSingle();check(error);if(!cycle||!['waiting','running'].includes(cycle.status))return cycle;
  const {data:file,error:fe}=await db.from('efc_agent_map_files').select('*').eq('reference_date',date).maybeSingle();check(fe);if(!file)return cycle;
  const before=new Date(Date.parse(date+'T12:00:00Z')-2*86400000).toISOString().slice(0,10),next=new Date(Date.parse(date+'T12:00:00Z')+86400000).toISOString().slice(0,10);
- const records=await db.rpc('efc_dashboard_sources',{p_from:from,p_before:before,p_to:next});
+ const records=await all(()=>db.from('report_031120_current').select('reference_date,headers,raw_values,source_file,completed_at').gte('reference_date',before).lt('reference_date',next).order('reference_date').order('row_no'));
  const result=cycleResult(date,file.rows,sharedEvents(records)),now=new Date().toISOString(),patch={...result,plans:file.rows,source_file:file.source_file,map_import_at:file.updated_at,report_import_at:records.map((r:any)=>r.completed_at).sort().at(-1)||null,updated_at:now,completed_at:result.status==='completed'?now:null};
  const {error:ue}=await db.from('efc_night_cycles').update(patch).eq('reference_date',date).in('status',['waiting','running']);check(ue);return{...cycle,...patch};
 }

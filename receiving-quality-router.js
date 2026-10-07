@@ -6,7 +6,7 @@
     if(loading)return loading;
     loading=new Promise((resolve,reject)=>{
       if(!$('receivingQualityCss')){const l=document.createElement('link');l.id='receivingQualityCss';l.rel='stylesheet';l.href='receiving-quality.css?v=20260929-3';document.head.appendChild(l);}
-      const s=document.createElement('script');s.src='receiving-quality.js?v=20260929-3';s.async=true;s.onload=()=>resolve(window.__receivingQuality);s.onerror=()=>reject(new Error('Falha ao carregar Qualidade do Recebimento'));document.body.appendChild(s);
+      const s=document.createElement('script');s.src='receiving-quality.js?v=20260929-3';s.async=true;s.onload=()=>resolve(window.__receivingQuality);s.onerror=()=>{s.remove();loading=null;reject(new Error('Falha ao carregar Qualidade do Recebimento'))};document.body.appendChild(s);
     });
     return loading;
   }

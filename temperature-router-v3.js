@@ -6,7 +6,7 @@
     if(loading)return loading;
     loading=new Promise((resolve,reject)=>{
       if(!$('temperatureCss')){const l=document.createElement('link');l.id='temperatureCss';l.rel='stylesheet';l.href='temperature-dashboard-v3.css?v=20260929-1';document.head.appendChild(l);}
-      const s=document.createElement('script');s.src='temperature-dashboard-v3.js?v=20260929-1';s.async=true;s.onload=()=>resolve(window.__temperatureModule);s.onerror=()=>reject(new Error('Falha ao carregar Temperatura'));document.body.appendChild(s);
+      const s=document.createElement('script');s.src='temperature-dashboard-v3.js?v=20260929-1';s.async=true;s.onload=()=>resolve(window.__temperatureModule);s.onerror=()=>{s.remove();loading=null;reject(new Error('Falha ao carregar Temperatura'))};document.body.appendChild(s);
     });
     return loading;
   }

@@ -28,18 +28,7 @@
     document.head.appendChild(link);
   }
 
-  function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      const base = src.split('?')[0];
-      if (document.querySelector(`script[src^="${base}"]`)) return resolve();
-      const script = document.createElement('script');
-      script.src = src;
-      script.async = true;
-      script.onload = resolve;
-      script.onerror = () => reject(new Error('Não foi possível carregar ' + src));
-      document.body.appendChild(script);
-    });
-  }
+  function loadScript(src) { return window.__panelRuntime.loadScript(src); }
 
   function activateNav(button) {
     document.querySelectorAll('.nav-link').forEach(item => item.classList.toggle('active', item === button));
@@ -84,13 +73,13 @@
   function ensureLayoutScript() {
     if (window.__pickingLayout) return Promise.resolve(window.__pickingLayout);
     if (layoutScriptPromise) return layoutScriptPromise;
-    layoutScriptPromise = loadScript('layout-picking-lite.js?v=20260916-1').then(() => window.__pickingLayout);
+    layoutScriptPromise = loadScript('layout-picking-lite.js?v=20260916-1').then(() => window.__pickingLayout).catch(error=>{layoutScriptPromise=null;throw error;});
     return layoutScriptPromise;
   }
 
   function ensureBlitz() {
     loadCss('blitz.css?v=20261002-history-reconciled-1');
-    if (!blitzScriptPromise) blitzScriptPromise = loadScript('blitz.js?v=20261002-history-reconciled-1');
+    if (!blitzScriptPromise) blitzScriptPromise = loadScript('blitz.js?v=20261002-history-reconciled-1').catch(error=>{blitzScriptPromise=null;throw error;});
     return blitzScriptPromise;
   }
 
@@ -362,3 +351,4 @@
   setTimeout(installAreaRules, 1200);
   setTimeout(() => { if (!booted) boot(); }, 1200);
 })();
+

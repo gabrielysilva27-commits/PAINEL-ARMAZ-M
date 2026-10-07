@@ -39,7 +39,7 @@ async function api(action, payload = {}, auth = true) {
   if (auth && state.token) headers['x-session-token'] = state.token;
   const res = await fetch(API_URL, { method:'POST', headers, body: JSON.stringify({action, ...payload}) });
   const data = await res.json().catch(()=>({error:'Resposta inválida'}));
-  if (!res.ok) throw new Error(data.error || data.detail || 'Erro na requisição');
+  if (!res.ok) {const error=new Error(data.error || data.detail || 'Erro na requisição');error.status=res.status;throw error;}
   return data;
 }
 
@@ -280,8 +280,8 @@ function rememberView(view){
 function setView(view){
   rememberView(view);
   document.querySelectorAll('.nav-link').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
-  if(view==='abc'){$('abcView').classList.remove('hidden');$('placeholderView').classList.add('hidden');$('pageTitle').textContent='Curva ABC';$('pageSubtitle').textContent='Classificação mensal dos SKUs por participação de volume em Hectos.';}
-  else {$('abcView').classList.add('hidden');$('placeholderView').classList.remove('hidden');const names={overview:'Visão geral',operation:'Operação',indicators:'Indicadores',routines:'Rotinas',people:'Pessoas',reports:'Relatórios'};$('pageTitle').textContent=names[view]||'Módulo';$('placeholderTitle').textContent=names[view]||'Módulo';$('pageSubtitle').textContent='Módulo em preparação.';}
+  if(view==='abc'){document.querySelectorAll('main > .view').forEach(v=>v.classList.add('hidden'));$('abcView').classList.remove('hidden');$('placeholderView')?.classList.add('hidden');$('pageTitle').textContent='Curva ABC';$('pageSubtitle').textContent='Classificação mensal dos SKUs por participação de volume em Hectos.';}
+  else {$('abcView').classList.add('hidden');$('placeholderView')?.classList.remove('hidden');const names={overview:'Visão geral',operation:'Operação',indicators:'Indicadores',routines:'Rotinas',people:'Pessoas',reports:'Relatórios'};$('pageTitle').textContent=names[view]||'Módulo';if($('placeholderTitle'))$('placeholderTitle').textContent=names[view]||'Módulo';$('pageSubtitle').textContent='Módulo em preparação.';}
   $('sidebar').classList.remove('open');
 }
 function restoreLastView(){
@@ -323,7 +323,9 @@ $('reportMarketplace').onchange=e=>{if(e.target.files[0])handleReport('marketpla
 (async function init(){
   renderMonths();renderAreaCards();
   if(!state.token)return;
-  try{const d=await api('session');setLoggedIn(d.user);await refreshMonths();await loadCurve();restoreLastView();}catch{logoutLocal();}
+  try{const d=await api('session');setLoggedIn(d.user);}catch(error){if(error.status===401||error.status===403)logoutLocal();else{document.documentElement.classList.remove('restoring-session');$('loginError').textContent='Não foi possível verificar a sessão. Atualize a página para tentar novamente.';}return;}
+  restoreLastView();
+  try{await refreshMonths();await loadCurve();}catch(error){showToast(error.message,true);}
 })();
 
 
