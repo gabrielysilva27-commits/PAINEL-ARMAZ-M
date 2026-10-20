@@ -280,7 +280,7 @@ async function validatedForExport(body:any){
   const exportRows=await hydrateSources(all);
   const pa:any[]=[],daily:any[]=[];
   for(const row of exportRows)for(const item of row.items||[]){
-    const qty=Number(item.total_qty||0),factor=item.factor_hecto==null||item.factor_hecto_commercial==null?null:Number(item.factor_hecto)*Number(item.factor_hecto_commercial),cost=item.average_cost==null?null:Number(item.average_cost);
+    const qty=Number(item.discarded_qty??0),factor=item.factor_hecto==null||item.factor_hecto_commercial==null?null:Number(item.factor_hecto)*Number(item.factor_hecto_commercial),cost=item.average_cost==null?null:Number(item.average_cost);
     const validator=row.validator?.display_name||row.validator?.username||"";
     const subjectType=row.subject_type||"Funcionário";
     const subjectName=subjectType==="Funcionário"?row.employee_name:(subjectType==="Fábrica"?(row.factory_name||"Fábrica"):"Armazém");
@@ -419,3 +419,4 @@ Deno.serve(async(req:Request)=>{
     return json(req,{error:message,code},500);
   }
 });
+
