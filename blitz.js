@@ -3,7 +3,15 @@ const B={month:new Date().toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paul
 const be=id=>document.getElementById(id);
 const bes=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const bn=v=>v==null||v===''||Number.isNaN(Number(v))?'—':Number(v).toLocaleString('pt-BR',{maximumFractionDigits:2});
-const months=['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08','2026-09','2026-10'];
+function blitzMonths(current=B.month){
+  const [currentYear,currentMonth]=String(current).split('-').map(Number),out=[];
+  for(let year=2026;year<=currentYear;year++){
+    const last=year===currentYear?currentMonth:12;
+    for(let month=1;month<=last;month++)out.push(year+'-'+String(month).padStart(2,'0'));
+  }
+  return out;
+}
+const months=blitzMonths();
 const monthName=m=>new Date(m+'-15T12:00:00Z').toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
 const mlabel=m=>monthName(m).split(' ')[0].slice(0,3).toUpperCase();
 const today=()=>new Date().toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'});
