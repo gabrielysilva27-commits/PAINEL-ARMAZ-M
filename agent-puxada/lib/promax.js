@@ -2010,7 +2010,7 @@ async function export03023601(job, config, rootDir, validateCsv) {
     stable = prior && prior.path === current.path && prior.size === current.size ? stable + 1 : 0;
     prior = current;
     return stable >= 2 ? current : null;
-  }, 30000, 700).catch(error => {
+  }, job.month ? 180000 : 30000, 700).catch(error => {
     if (/Tempo esgotado/.test(String(error.message))) throw new Error("03023601_DOWNLOAD_TIMEOUT: " + saveStatus);
     throw error;
   });
@@ -2053,6 +2053,7 @@ async function export030519(job, config, rootDir, validateCsv) {
     await sleep(1800);
     await reportAction("filters030519", vals);
   }
+  await reportAction("generate030519");
   await sleep(2200);
 
   await waitUntil(async function () {
@@ -2084,7 +2085,7 @@ async function export030519(job, config, rootDir, validateCsv) {
     stable = prior && prior.path === current.path && prior.size === current.size ? stable + 1 : 0;
     prior = current;
     return stable >= 2 ? current : null;
-  }, 30000, 700).catch(error => {
+  }, job.month ? 180000 : 30000, 700).catch(error => {
     if (/Tempo esgotado/.test(String(error.message))) throw new Error("030519_DOWNLOAD_TIMEOUT: " + saveStatus);
     throw error;
   });
