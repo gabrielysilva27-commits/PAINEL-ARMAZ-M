@@ -1343,7 +1343,7 @@ static napi_value Act(napi_env env, napi_callback_info info) {
         return;
       }
       TargetWindow target = { nullptr, stage == L"shortcut" || stage == L"shortcut031120" || stage == L"shortcut03023601" || stage == L"shortcut030519", -1, {} };
-      if(stage==L"filters030519"||stage==L"csv030519"||stage==L"close030519"){
+      if(stage==L"filters030519"||stage==L"csv030519"||stage==L"generate030519"||stage==L"close030519"){
         HWND report=nullptr;EnumWindows(FindABCSalesWindow,reinterpret_cast<LPARAM>(&report));target.hwnd=report;
       } else if (stage == L"filters03023601" || stage == L"csv03023601" || stage==L"close03023601") {
         HWND report=nullptr; EnumWindows(FindOCPWindow,reinterpret_cast<LPARAM>(&report)); target.hwnd=report;
@@ -1400,6 +1400,8 @@ static napi_value Act(napi_env env, napi_callback_info info) {
           result = Fill031120(target.hwnd, values) ? L"ok" : L"031120-filter-controls-not-found";
         } else if (stage == L"filters03023601") {
           result=FillOCP(target.hwnd,values)?L"ok":L"03023601-filter-controls-not-found:"+OCP_FILTER_ISSUE;
+        } else if(stage==L"generate030519"){
+          result=GenerateABCSales(target.hwnd)?L"ok":L"030519-generate-button-not-found";
         } else if(stage==L"filters030519"){
           result=FillABCSales(target.hwnd,values)?L"ok":L"030519-filter-controls-not-found:"+ABC_SALES_ISSUE;
         } else if (stage == L"csv030519" || stage == L"csv" || stage == L"csv031120" || stage == L"csv03023601") {
