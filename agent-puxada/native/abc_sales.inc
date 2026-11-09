@@ -11,6 +11,21 @@ static BOOL CALLBACK FindABCSalesWindow(HWND hwnd, LPARAM raw) {
   return TRUE;
 }
 static thread_local std::wstring ABC_SALES_ISSUE;
+static bool GenerateABCSales(HWND hwnd){
+  for(const auto& c:Controls(hwnd))if(c.type==UIA_ButtonControlTypeId&&Contains(c.name,L"csv"))return true;
+  IUIAutomation* automation=nullptr;IUIAutomationElement* root=nullptr;IUIAutomationCondition* condition=nullptr;IUIAutomationElementArray* elements=nullptr;bool ok=false;
+  if(SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation,nullptr,CLSCTX_INPROC_SERVER,IID_IUIAutomation,reinterpret_cast<void**>(&automation)))&&automation&&SUCCEEDED(automation->ElementFromHandle(hwnd,&root))&&root&&SUCCEEDED(automation->CreateTrueCondition(&condition))&&condition&&SUCCEEDED(root->FindAll(TreeScope_Descendants,condition,&elements))&&elements){
+    int count=0;elements->get_Length(&count);
+    for(int i=0;i<count&&!ok;i++){IUIAutomationElement* item=nullptr;if(FAILED(elements->GetElement(i,&item))||!item)continue;BSTR raw=nullptr;CONTROLTYPEID type=0;BOOL enabled=FALSE;
+      if(SUCCEEDED(item->get_CurrentName(&raw))&&raw&&SUCCEEDED(item->get_CurrentControlType(&type))&&type==UIA_ButtonControlTypeId&&SUCCEEDED(item->get_CurrentIsEnabled(&enabled))&&enabled){std::wstring name(raw,SysStringLen(raw));std::transform(name.begin(),name.end(),name.begin(),towlower);
+        if(Contains(name,L"visualizar")){IUIAutomationInvokePattern* invoke=nullptr;if(SUCCEEDED(item->GetCurrentPatternAs(UIA_InvokePatternId,IID_IUIAutomationInvokePattern,reinterpret_cast<void**>(&invoke)))&&invoke){ok=SUCCEEDED(invoke->Invoke());invoke->Release();}
+          if(!ok){IUIAutomationLegacyIAccessiblePattern* legacy=nullptr;if(SUCCEEDED(item->GetCurrentPatternAs(UIA_LegacyIAccessiblePatternId,IID_IUIAutomationLegacyIAccessiblePattern,reinterpret_cast<void**>(&legacy)))&&legacy){ok=SUCCEEDED(legacy->DoDefaultAction());legacy->Release();}}
+        }
+      }if(raw)SysFreeString(raw);item->Release();
+    }
+  }
+  if(elements)elements->Release();if(condition)condition->Release();if(root)root->Release();if(automation)automation->Release();return ok;
+}
 static bool ABCOption(HWND hwnd,const std::vector<VisibleControl>& controls,const std::wstring& label,bool radio,bool selected) {
   const VisibleControl* input=nullptr;
   auto isInput=[&](const VisibleControl& c){return radio?(c.type==UIA_RadioButtonControlTypeId||c.legacyRole==ROLE_SYSTEM_RADIOBUTTON):(c.type==UIA_CheckBoxControlTypeId||c.legacyRole==ROLE_SYSTEM_CHECKBUTTON);};
