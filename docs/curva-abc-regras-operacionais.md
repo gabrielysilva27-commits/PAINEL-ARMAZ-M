@@ -1,5 +1,17 @@
 # Regras operacionais — Aderência da Curva ABC
 
+## Atualização mensal pelo Agente Puxada
+
+- Referência do mês corrente; usar os três meses completos anteriores. Novembro/2026: **01/08/2026 a 31/10/2026**.
+- Executar uma vez por mês, na primeira oportunidade com Promax disponível e Windows desbloqueado, aguardando 30 segundos sem uso de mouse/teclado.
+- Ambos os computadores usam a mesma trava mensal no servidor. Uma execução possui lease, heartbeat e identificador próprio; o resultado só é publicado por quem mantém a trava.
+- Não sobrescrever um mês já importado. Exportações e falhas ficam identificadas em `abc_agent_monthly_runs`.
+- **03.05.19:** Quebra 1 **Geral**; datas do período; filtros de linha/marca, tipo de marca e embalagem gerais; NF Emitida; Sem Devolução (Bruto); devoluções Todas; conversão **Não**; visão Gerencial; preferências de totalização desmarcadas. O painel aplica o fator comercial da base 01.11 uma única vez.
+- **03.02.36.01:** obter o menor mapa do arquivo MAPAS da data inicial e o maior mapa do arquivo MAPAS da data final, na pasta configurada do computador. Não adivinhar números nem substituir uma data ausente. Armazém Central; descrição Completa; tipo Rota; áreas Todos (pallets fechados e picking).
+- Para Picking, somar somente linhas com `Pallet Fechado = Não`. Dias do período: datas distintas da OCP dentro do período.
+- Reutilizar as bases 01.11 e Marketplace salvas; excluir ativos de giro e registrar os códigos sem fator comercial. Manter as quatro áreas e o Pareto vigente (70%/90%).
+- Gravar todas as áreas e marcar a execução como concluída na mesma transação; falhas não podem publicar um mês parcial.
+
 ## Estoque Geral
 
 A aderência não considera apenas distância ao Picking. A posição também precisa respeitar o tipo físico de armazenagem.
