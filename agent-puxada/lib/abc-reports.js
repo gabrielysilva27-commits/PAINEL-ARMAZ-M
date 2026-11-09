@@ -10,14 +10,15 @@ function pickingRows(parsed,job){const values=new Map(),dates=new Set();let excl
 function fileDate(name){const m=/^MAPAS[^0-9]*(\d{2})[._-](\d{2})[._-](\d{4}|\d{2})\.xlsx$/i.exec(name);if(!m)return null;const d=(m[3].length===2?'20'+m[3]:m[3])+'-'+m[2]+'-'+m[1];if(new Date(d+'T12:00:00Z').toISOString().slice(0,10)!==d)throw Error('ABC_INVALID_MAP_FILE_DATE');return d;}
 function mapBounds(root,job){
   // Scan the configured folder, including older months; never infer map IDs.
-  const scan=efd.inventory(root);if(scan.errors.length||scan.files.length>=5000)throw Error('ABC_MAP_INVENTORY_INCOMPLETE: '+scan.errors.slice(0,3).join(' | '));
-  const files=scan.files.map(f=>({...f,date:fileDate(f.name)})).filter(f=>f.date&&f.date>=job.date_from&&f.date<=job.date_to).sort((a,b)=>a.date.localeCompare(b.date)||b.modified_at.localeCompare(a.modified_at));
+  const base=root.replace(/[\\/]+$/,''),byYear=/[\\/]\d{4}$/.test(base),roots=byYear?Array.from({length:+job.date_to.slice(0,4)-+job.date_from.slice(0,4)+1},(_,i)=>base.slice(0,-4)+(+job.date_from.slice(0,4)+i)):[root];
+  const scans=roots.map(root=>({root,scan:efd.inventory(root)}));for(const {scan} of scans)if(scan.errors.length||scan.files.length>=5000)throw Error('ABC_MAP_INVENTORY_INCOMPLETE: '+scan.errors.slice(0,3).join(' | '));
+  const files=scans.flatMap(({root,scan})=>scan.files.map(f=>({...f,root,date:fileDate(f.name)}))).filter(f=>f.date&&f.date>=job.date_from&&f.date<=job.date_to).sort((a,b)=>a.date.localeCompare(b.date)||b.modified_at.localeCompare(a.modified_at));
   if(!files.length)throw Error('ABC_MAP_FILES_MISSING: '+job.date_from+' até '+job.date_to);
   const firstDate=files[0].date,lastDate=files.at(-1).date;
   // Exact boundary dates are required. Missing files must be resolved, not
   // silently replaced by another operating day.
   if(firstDate!==job.date_from||lastDate!==job.date_to)throw Error('ABC_BOUNDARY_DATE_MISSING: encontrados '+firstDate+' a '+lastDate);
-  function boundary(date,smallest){const candidates=files.filter(f=>f.date===date),sets=[];for(const f of candidates){const p=efd.mapsRows(root,f);if(!p)throw Error('ABC_MAP_FORMAT_UNSUPPORTED: '+f.name);const nums=[...p.rows,...p.excluded].map(x=>String(x.map||'')).filter(x=>/^\d{1,12}$/.test(x)).map(Number);if(!nums.length)throw Error('ABC_MAP_NUMBERS_MISSING: '+f.name);sets.push({file:f.relative_path,value:smallest?Math.min(...nums):Math.max(...nums)});}if(new Set(sets.map(x=>x.value)).size!==1)throw Error('ABC_CONFLICTING_BOUNDARY_FILES: '+date);return sets[0];}
+  function boundary(date,smallest){const candidates=files.filter(f=>f.date===date),sets=[];for(const f of candidates){const p=efd.mapsRows(f.root,f);if(!p)throw Error('ABC_MAP_FORMAT_UNSUPPORTED: '+f.name);const nums=[...p.rows,...p.excluded].map(x=>String(x.map||'')).filter(x=>/^\d{1,12}$/.test(x)).map(Number);if(!nums.length)throw Error('ABC_MAP_NUMBERS_MISSING: '+f.name);sets.push({file:roots.length>1?path.join(f.root,f.relative_path):f.relative_path,value:smallest?Math.min(...nums):Math.max(...nums)});}if(new Set(sets.map(x=>x.value)).size!==1)throw Error('ABC_CONFLICTING_BOUNDARY_FILES: '+date);return sets[0];}
   const first=boundary(firstDate,true),last=boundary(lastDate,false);if(first.value>last.value)throw Error('ABC_MAP_RANGE_REVERSED');
   return{map_from:String(first.value),map_to:String(last.value),first_date:firstDate,last_date:lastDate,first_file:first.file,last_file:last.file,files_found:files.length};
 }
