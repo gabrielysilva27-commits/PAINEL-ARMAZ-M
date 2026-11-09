@@ -1,5 +1,9 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {period,buildCurve}=require('../lib/abc-core'),r=require('../lib/abc-reports'),efd=require('../lib/efd-sync');
+test('older MAPAS needs only the named map column, regardless of vehicle/plate layout',()=>{
+  assert.deepEqual(r.mapNumbersFromSheets([{rows:['A1:Roteirização','B3:Nº Mapa | C3:Motorista','B4:001235 | C4:Operador','B5:1236 | C5:Outro','B6:Total']}]),[1235,1236]);
+  assert.throws(()=>r.mapNumbersFromSheets([{rows:['A1:Veículo','A2:1235']}]),/MAP_COLUMN_MISSING/);
+});
 test('November closes August–October and January crosses the year boundary',()=>{
   assert.deepEqual(period('2026-11'),{month:'2026-11',date_from:'2026-08-01',date_to:'2026-10-31'});
   assert.deepEqual(period('2027-01'),{month:'2027-01',date_from:'2026-10-01',date_to:'2026-12-31'});
