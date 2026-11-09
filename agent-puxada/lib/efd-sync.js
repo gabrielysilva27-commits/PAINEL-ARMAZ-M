@@ -64,7 +64,7 @@ function pcdRows(root,file){
 }
 function mapsRows(root,file){
  const m=file.name.match(/^MAPAS[^0-9]*(\d{2})[.\-_](\d{2})[.\-_](\d{4}|\d{2})\.xlsx$/i);if(!m)return null;
- const date=(m[3].length===2?'20'+m[3]:m[3])+'-'+m[2]+'-'+m[1];if(!date.startsWith('2026-')||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date)throw Error('EFC_MAPAS_INVALID_DATE: '+file.name);
+ const date=(m[3].length===2?'20'+m[3]:m[3])+'-'+m[2]+'-'+m[1];if(Number(date.slice(0,4))<2026||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date)throw Error('EFC_MAPAS_INVALID_DATE: '+file.name);
  const result=new Map(),excluded=[];let found=false;
  for(const sheet of xlsxPreview(fs.readFileSync(path.join(root,file.relative_path)),5000)){
   let cols=null;

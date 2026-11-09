@@ -1009,6 +1009,8 @@ static bool FillOCP(HWND hwnd,const std::wstring* values) {
   return Fill031120Control(maps[0],values[0]) && Fill031120Control(maps[1],values[1]);
 }
 
+#include "abc_sales.inc"
+
 static bool Select031120Mapa(const VisibleControl& control) {
   if (!ClickControl(control) || !Key(VK_HOME) || !Key(VK_HOME,true) ||
       !Key('M') || !Key('M',true) || !Key(VK_RETURN) || !Key(VK_RETURN,true)) return false;
@@ -1276,7 +1278,8 @@ static BOOL CALLBACK FindReportForDownload(HWND hwnd, LPARAM raw) {
       name.find(L"planilha de acompanhamento") != std::wstring::npos ||
       name.find(L"03.11.20") != std::wstring::npos ||
       name.find(L"ocp carregamento") != std::wstring::npos ||
-      name.find(L"03.02.36.01") != std::wstring::npos)
+      name.find(L"03.02.36.01") != std::wstring::npos ||
+      name.find(L"resumo f") != std::wstring::npos)
     reinterpret_cast<std::vector<HWND>*>(raw)->push_back(hwnd);
   return TRUE;
 }
@@ -1325,21 +1328,24 @@ static napi_value Act(napi_env env, napi_callback_info info) {
   if (valid && stage == L"filters03023601") {
     valid = ReadString(env,argv[1],"mapFrom",&values[0]) && ReadString(env,argv[1],"mapTo",&values[1]);
   }
+  if(valid && stage==L"filters030519")valid=ReadString(env,argv[1],"dateFrom",&values[0])&&ReadString(env,argv[1],"dateTo",&values[1]);
   std::wstring result = L"invalid-parameters";
   if (valid) {
     std::thread worker([&]() {
       const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
       if (FAILED(initialized)) { result = L"com-unavailable"; return; }
       SetProcessDPIAware();
-      const bool ocpStage=stage==L"shortcut03023601"||stage==L"filters03023601"||stage==L"csv03023601";
+      const bool ocpStage=stage==L"shortcut030519"||stage==L"filters030519"||stage==L"csv030519"||stage==L"shortcut03023601"||stage==L"filters03023601"||stage==L"csv03023601";
       if(ocpStage){MSG message={};PeekMessageW(&message,nullptr,0,0,PM_NOREMOVE);}
       if (stage == L"save") {
         result = SaveDialog(savePath);
         CoUninitialize();
         return;
       }
-      TargetWindow target = { nullptr, stage == L"shortcut" || stage == L"shortcut031120" || stage == L"shortcut03023601", -1, {} };
-      if (stage == L"filters03023601" || stage == L"csv03023601") {
+      TargetWindow target = { nullptr, stage == L"shortcut" || stage == L"shortcut031120" || stage == L"shortcut03023601" || stage == L"shortcut030519", -1, {} };
+      if(stage==L"filters030519"||stage==L"csv030519"||stage==L"generate030519"||stage==L"close030519"){
+        HWND report=nullptr;EnumWindows(FindABCSalesWindow,reinterpret_cast<LPARAM>(&report));target.hwnd=report;
+      } else if (stage == L"filters03023601" || stage == L"csv03023601" || stage==L"close03023601") {
         HWND report=nullptr; EnumWindows(FindOCPWindow,reinterpret_cast<LPARAM>(&report)); target.hwnd=report;
       } else if (stage == L"filters031120" || stage == L"csv031120") {
         HWND report031120 = nullptr;
@@ -1348,20 +1354,21 @@ static napi_value Act(napi_env env, napi_callback_info info) {
       } else {
         EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&target));
       }
-      if(stage==L"shortcut03023601" && target.hwnd && !IsWindowEnabled(target.hwnd)){
+      if((stage==L"shortcut03023601"||stage==L"shortcut030519") && target.hwnd && !IsWindowEnabled(target.hwnd)){
         target.hwnd=nullptr;
         for(HWND candidate:target.candidates){if(IsWindow(candidate)&&IsWindowEnabled(candidate)){target.hwnd=candidate;if(HasForeground(candidate))break;}}
       }
       RECT r = {};
       if (!target.hwnd || !GetWindowRect(target.hwnd, &r)) result = L"window-not-found";
       else {
-        if (!FocusWindow(target.hwnd)) {
+        if(stage==L"close030519"||stage==L"close03023601"){PostMessageW(target.hwnd,WM_CLOSE,0,0);result=L"ok";}
+        else if (!FocusWindow(target.hwnd)) {
           result=L"window-not-foreground";
           if(ocpStage)result+=L":exists="+std::to_wstring(IsWindow(target.hwnd)?1:0)+L":enabled="+std::to_wstring(IsWindowEnabled(target.hwnd)?1:0)+L":popup="+std::to_wstring(GetLastActivePopup(target.hwnd)!=target.hwnd?1:0);
         }
-        else if (stage == L"shortcut" || stage == L"shortcut031120" || stage == L"shortcut03023601") {
+        else if (stage == L"shortcut" || stage == L"shortcut031120" || stage == L"shortcut03023601" || stage == L"shortcut030519") {
           result = L"shortcut-controls-not-found";
-          const std::wstring reportCode = stage == L"shortcut03023601" ? L"03.02.36.01" : stage == L"shortcut031120" ? L"03.11.20" : L"02.05.01";
+          const std::wstring reportCode = stage == L"shortcut030519" ? L"03.05.19" : stage == L"shortcut03023601" ? L"03.02.36.01" : stage == L"shortcut031120" ? L"03.11.20" : L"02.05.01";
           for (HWND candidate : target.candidates) {
             if (!FocusWindow(candidate) || !ActivatePromaxTab(candidate)) continue;
             Sleep(350);
@@ -1370,7 +1377,9 @@ static napi_value Act(napi_env env, napi_callback_info info) {
             result = L"shortcut-no-report-window";
             for (int i = 0; i < 30; ++i) {
               Sleep(200);
-              if (stage == L"shortcut03023601") {
+              if(stage==L"shortcut030519"){
+                HWND report=nullptr;EnumWindows(FindABCSalesWindow,reinterpret_cast<LPARAM>(&report));if(report){result=L"ok";break;}
+              } else if (stage == L"shortcut03023601") {
                 HWND report=nullptr; EnumWindows(FindOCPWindow,reinterpret_cast<LPARAM>(&report));
                 if(report){result=L"ok";break;}
               } else if (stage == L"shortcut031120") {
@@ -1391,7 +1400,11 @@ static napi_value Act(napi_env env, napi_callback_info info) {
           result = Fill031120(target.hwnd, values) ? L"ok" : L"031120-filter-controls-not-found";
         } else if (stage == L"filters03023601") {
           result=FillOCP(target.hwnd,values)?L"ok":L"03023601-filter-controls-not-found:"+OCP_FILTER_ISSUE;
-        } else if (stage == L"csv" || stage == L"csv031120" || stage == L"csv03023601") {
+        } else if(stage==L"generate030519"){
+          result=GenerateABCSales(target.hwnd)?L"ok":L"030519-generate-button-not-found";
+        } else if(stage==L"filters030519"){
+          result=FillABCSales(target.hwnd,values)?L"ok":L"030519-filter-controls-not-found:"+ABC_SALES_ISSUE;
+        } else if (stage == L"csv030519" || stage == L"csv" || stage == L"csv031120" || stage == L"csv03023601") {
           result = ClickNamedButton(target.hwnd, L"csv", false, true) ? L"ok" : L"csv-not-found";
         } else result = L"unknown-stage";
       }
