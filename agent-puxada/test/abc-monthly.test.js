@@ -4,6 +4,10 @@ test('older MAPAS needs only the named map column, regardless of vehicle/plate l
   assert.deepEqual(r.mapNumbersFromSheets([{rows:['A1:Roteirização','B3:Nº Mapa | C3:Motorista','B4:001235 | C4:Operador','B5:1236 | C5:Outro','B6:Total']}]),[1235,1236]);
   assert.throws(()=>r.mapNumbersFromSheets([{rows:['A1:Veículo','A2:1235']}]),/MAP_COLUMN_MISSING/);
 });
+test('observed headerless MAPAS validates map, plate and vehicle together',()=>{
+  assert.deepEqual(r.mapNumbersFromSheets([{rows:['A1:523681 | B1:RJM5A12 | C1:291','A2:523682 | B2:LSC8380 | C2:223']}]),[523681,523682]);
+  assert.throws(()=>r.mapNumbersFromSheets([{rows:['A1:523681 | B1:not a plate | C1:291']}]),/MAP_COLUMN_MISSING/);
+});
 test('November closes August–October and January crosses the year boundary',()=>{
   assert.deepEqual(period('2026-11'),{month:'2026-11',date_from:'2026-08-01',date_to:'2026-10-31'});
   assert.deepEqual(period('2027-01'),{month:'2027-01',date_from:'2026-10-01',date_to:'2026-12-31'});
