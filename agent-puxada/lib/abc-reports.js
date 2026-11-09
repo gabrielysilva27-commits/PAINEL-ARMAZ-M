@@ -8,6 +8,22 @@ function salesRows(rows){let h=-1,code=-1,name=-1,total=-1;for(let i=0;i<Math.mi
 function parseSales(file){return salesRows(read(file));}
 function pickingRows(parsed,job){const values=new Map(),dates=new Set();let excluded=0;for(const r of parsed.rows){if(+r.map<+job.map_from||+r.map>+job.map_to)throw Error('ABC_OCP_MAP_OUTSIDE_RANGE');if(r.date<job.date_from||r.date>job.date_to){excluded++;continue;}dates.add(r.date);if(r.closed)continue;if(!Number.isFinite(r.boxes))throw Error('ABC_OCP_INVALID_BOXES');const v=values.get(r.product)||{sku_code:r.product,boxes:0,name:r.raw_values[20]||''};v.boxes+=r.boxes;values.set(r.product,v);}if(!dates.size||!values.size)throw Error('ABC_OCP_EMPTY_PERIOD');return{rows:[...values.values()],dates:[...dates].sort(),excluded_rows:excluded};}
 function fileDate(name){const m=/^MAPAS[^0-9]*(\d{2})[._-](\d{2})[._-](\d{4}|\d{2})\.xlsx$/i.exec(name);if(!m)return null;const d=(m[3].length===2?'20'+m[3]:m[3])+'-'+m[2]+'-'+m[1];if(new Date(d+'T12:00:00Z').toISOString().slice(0,10)!==d)throw Error('ABC_INVALID_MAP_FILE_DATE');return d;}
+function mapNumbersFromSheets(sheets){
+  const numbers=[];
+  for(const sheet of sheets){let columns=[];for(const line of sheet.rows){const cells={};for(const cell of line.split(/ \| (?=[A-Z]+\d+:)/)){const m=/^([A-Z]+)\d+:(.*)$/.exec(cell);if(m)cells[m[1]]=m[2];}
+    const headers=Object.entries(cells).filter(([,v])=>['mapa','mapas','nr mapa','n mapa','no mapa','nro mapa','numero mapa'].includes(norm(v))).map(([col])=>col);
+    if(headers.length){columns=headers;continue;}
+    for(const col of columns){const value=String(cells[col]||'').trim();if(/^\d{1,12}(?:\.0+)?$/.test(value)&&Number(value)>0)numbers.push(Number(value));}
+  }}
+  if(!numbers.length)throw Error('ABC_MAP_COLUMN_MISSING: '+JSON.stringify(sheets.map(s=>({sheet:s.sheet,rows:s.rows.slice(0,5)}))).slice(0,1500));
+  return numbers;
+}
+function mapNumbers(root,file){
+  // Only a map ID is needed here. Older MAPAS files do not necessarily have
+  // the plate and vehicle columns required by the EFC reconciliation parser.
+  try{const p=efd.mapsRows(root,file);if(p){const n=[...p.rows,...p.excluded].map(x=>String(x.map||'')).filter(x=>/^\d{1,12}$/.test(x)).map(Number);if(n.length)return n;}}catch{}
+  return mapNumbersFromSheets(efd.xlsxPreview(fs.readFileSync(path.join(root,file.relative_path)),5000));
+}
 function mapBounds(root,job){
   // Scan the configured folder, including older months; never infer map IDs.
   const base=root.replace(/[\\/]+$/,''),byYear=/[\\/]\d{4}$/.test(base),roots=byYear?Array.from({length:+job.date_to.slice(0,4)-+job.date_from.slice(0,4)+1},(_,i)=>base.slice(0,-4)+(+job.date_from.slice(0,4)+i)):[root];
@@ -18,8 +34,8 @@ function mapBounds(root,job){
   // Exact boundary dates are required. Missing files must be resolved, not
   // silently replaced by another operating day.
   if(firstDate!==job.date_from||lastDate!==job.date_to)throw Error('ABC_BOUNDARY_DATE_MISSING: encontrados '+firstDate+' a '+lastDate);
-  function boundary(date,smallest){const candidates=files.filter(f=>f.date===date),sets=[];for(const f of candidates){const p=efd.mapsRows(f.root,f);if(!p)throw Error('ABC_MAP_FORMAT_UNSUPPORTED: '+f.name);const nums=[...p.rows,...p.excluded].map(x=>String(x.map||'')).filter(x=>/^\d{1,12}$/.test(x)).map(Number);if(!nums.length)throw Error('ABC_MAP_NUMBERS_MISSING: '+f.name);sets.push({file:roots.length>1?path.join(f.root,f.relative_path):f.relative_path,value:smallest?Math.min(...nums):Math.max(...nums)});}if(new Set(sets.map(x=>x.value)).size!==1)throw Error('ABC_CONFLICTING_BOUNDARY_FILES: '+date);return sets[0];}
+  function boundary(date,smallest){const candidates=files.filter(f=>f.date===date),sets=[];for(const f of candidates){const nums=mapNumbers(f.root,f);sets.push({file:roots.length>1?path.join(f.root,f.relative_path):f.relative_path,value:smallest?Math.min(...nums):Math.max(...nums)});}if(new Set(sets.map(x=>x.value)).size!==1)throw Error('ABC_CONFLICTING_BOUNDARY_FILES: '+date);return sets[0];}
   const first=boundary(firstDate,true),last=boundary(lastDate,false);if(first.value>last.value)throw Error('ABC_MAP_RANGE_REVERSED');
   return{map_from:String(first.value),map_to:String(last.value),first_date:firstDate,last_date:lastDate,first_file:first.file,last_file:last.file,files_found:files.length};
 }
-module.exports={read,records,number,salesRows,parseSales,pickingRows,mapBounds,fileDate};
+module.exports={read,records,number,salesRows,parseSales,pickingRows,mapBounds,fileDate,mapNumbersFromSheets};
