@@ -79,7 +79,7 @@
 
   function ensureBlitz() {
     loadCss('blitz.css?v=20261002-history-reconciled-1');
-    if (!blitzScriptPromise) blitzScriptPromise = loadScript('blitz.js?v=20261002-history-reconciled-1').catch(error=>{blitzScriptPromise=null;throw error;});
+    if (!blitzScriptPromise) blitzScriptPromise = loadScript('blitz.js?v=20261109-dynamic-months-1').catch(error=>{blitzScriptPromise=null;throw error;});
     return blitzScriptPromise;
   }
 
