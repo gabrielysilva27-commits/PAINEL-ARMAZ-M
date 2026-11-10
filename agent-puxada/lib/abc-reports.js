@@ -17,8 +17,15 @@ function mapNumbersFromSheets(sheets){
     for(const col of columns){const value=String(cells[col]||'').trim();if(/^\d{1,12}(?:\.0+)?$/.test(value)&&Number(value)>0)numbers.push(Number(value));}
   }
     // Observed historical MAPAS layout: no header, A=map, B=plate, C=vehicle.
-    // Require every nonempty row to match all three fields before accepting it.
-    if(!headerSeen&&legacy.length&&legacy.every(c=>/^\d{1,12}$/.test(String(c.A||'').trim())&&Number(c.A)>0&&/^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(String(c.B||'').trim().toUpperCase())&&/^\d{1,6}$/.test(String(c.C||'').trim())))numbers.push(...legacy.map(c=>Number(c.A)));
+    // Anchor the layout using the observed first rows. Plate/vehicle blanks
+    // later in the file must not discard valid map IDs in column A.
+    const isMap=c=>/^\d{1,12}(?:\.0+)?$/.test(String(c.A||'').trim())&&Number(c.A)>0;
+    const anchors=legacy.slice(0,5);
+    if(!headerSeen&&anchors.length&&anchors.every(c=>isMap(c)&&/^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(String(c.B||'').trim().toUpperCase())&&/^\d{1,6}$/.test(String(c.C||'').trim()))){
+      const invalid=legacy.filter(c=>String(c.A||'').trim()&&!isMap(c));
+      if(invalid.length)throw Error('ABC_INVALID_MAP_COLUMN_A: '+JSON.stringify(invalid.slice(0,5)).slice(0,1300));
+      numbers.push(...legacy.filter(isMap).map(c=>Number(c.A)));
+    }
   }
   if(!numbers.length)throw Error('ABC_MAP_COLUMN_MISSING: '+JSON.stringify(sheets.map(s=>({sheet:s.sheet,rows:s.rows.slice(0,5)}))).slice(0,1500));
   return numbers;
