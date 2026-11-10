@@ -530,7 +530,7 @@ async function agentPull031120Status(node:any){
   if(!forceRun){
     const {data:recentRun,error:recentError}=await db.from("receiving_pull_031120_state").select("started_at,status").in("status",["running","completed","error"]).order("started_at",{ascending:false,nullsFirst:false}).limit(1).maybeSingle();
     if(recentError)throw recentError;
-    if(recentRun?.started_at&&Date.now()-Date.parse(recentRun.started_at)<(recentRun.status==="error"?5:15)*60000)return{enabled:true,preferred_node:preferred,complete:true,date_from:null,date_to:today,force_run:false};
+    if(recentRun?.started_at&&Date.now()-Date.parse(recentRun.started_at)<60*60000)return{enabled:true,preferred_node:preferred,complete:true,date_from:null,date_to:today,force_run:false};
   }
   if(!preferred||node.slot_code!==preferred)return{enabled:false,preferred_node:preferred||null,complete:false,force_run:forceRun};
   const {data:sharedLast,error:sharedError}=await db.from("report_031120_imports").select("date_to").eq("status","completed").order("date_to",{ascending:false}).limit(1).maybeSingle();

@@ -127,7 +127,7 @@ function operationalDay(timestamp){
 }
 function shouldScan(config,now=Date.now()){
  const last=Date.parse(config.last_scan_at||'');
- return !!config.diagnostic_requested||!Number.isFinite(last)||operationalDay(last)!==operationalDay(now)||now-last>=15*60*1000;
+ return !!config.diagnostic_requested||!Number.isFinite(last)||operationalDay(last)!==operationalDay(now)||now-last>=60*60*1000;
 }
 async function sync(api,log){
  const now=Date.now();if(now-lastCheck<30000)return;lastCheck=now;
