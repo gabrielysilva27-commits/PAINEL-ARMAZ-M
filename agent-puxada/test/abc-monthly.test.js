@@ -8,6 +8,11 @@ test('observed headerless MAPAS validates map, plate and vehicle together',()=>{
   assert.deepEqual(r.mapNumbersFromSheets([{rows:['A1:523681 | B1:RJM5A12 | C1:291','A2:523682 | B2:LSC8380 | C2:223']}]),[523681,523682]);
   assert.throws(()=>r.mapNumbersFromSheets([{rows:['A1:523681 | B1:not a plate | C1:291']}]),/MAP_COLUMN_MISSING/);
 });
+test('anchored historical layout retains maps with incomplete vehicle metadata',()=>{
+  const rows=Array.from({length:5},(_,i)=>'A'+(i+1)+':'+(523681+i)+' | B'+(i+1)+':RJM5A12 | C'+(i+1)+':291');
+  assert.deepEqual(r.mapNumbersFromSheets([{rows:[...rows,'A6:523690','B7:Observação']}]),[523681,523682,523683,523684,523685,523690]);
+  assert.throws(()=>r.mapNumbersFromSheets([{rows:[...rows,'A6:invalid | B6:RJM5A12']}]),/INVALID_MAP_COLUMN_A/);
+});
 test('November closes August–October and January crosses the year boundary',()=>{
   assert.deepEqual(period('2026-11'),{month:'2026-11',date_from:'2026-08-01',date_to:'2026-10-31'});
   assert.deepEqual(period('2027-01'),{month:'2027-01',date_from:'2026-10-01',date_to:'2026-12-31'});
