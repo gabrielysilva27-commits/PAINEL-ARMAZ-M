@@ -30,7 +30,7 @@ async function sync(api,promax,config,root,log){
     const result=await call(api,'complete',{...payload,bounds,sales,picking:picking.rows,dates:picking.dates,excluded_ocp_rows:picking.excluded_rows,source_files:[path.basename(salesFile),path.basename(ocpFile)],sha256:[hash(salesFile),hash(ocpFile)]});
     log('Curva ABC '+job.month+' atualizada: '+result.items+' itens, '+picking.dates.length+' dias; '+result.skipped_codes.length+' códigos sem fator, '+result.asset_codes.length+' ativos de giro excluídos.');
     next=Date.now()+15*60000;
-  }catch(e){log('Curva ABC: '+e.message,true);next=Date.now()+5*60000;if(job)await call(api,'error',{month:job.month,run_id:job.run_id,error:e.message}).catch(()=>{});}
+  }catch(e){const message=e.message+(/EDGE_NATIVE_.*window/.test(e.message)?' | windows='+JSON.stringify(edge.probe()):'');log('Curva ABC: '+message,true);next=Date.now()+5*60000;if(job)await call(api,'error',{month:job.month,run_id:job.run_id,error:message}).catch(()=>{});}
   finally{if(timer)clearInterval(timer);}
 }
 module.exports={sync};
