@@ -18,14 +18,20 @@ async function sync(api,promax,config,root,log){
     await stage('map_inventory');
     const bounds=reports.mapBounds(job.root_path,job);Object.assign(job,bounds);
     await stage('map_boundaries',bounds);
+    const hash=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+    const checkpointFile=path.join(root,'downloads','abc-'+job.month+'-checkpoint.json');
+    const identity=JSON.stringify({month:job.month,date_from:job.date_from,date_to:job.date_to,bounds});
+    let checkpoint={identity};
+    try{const saved=JSON.parse(fs.readFileSync(checkpointFile,'utf8'));if(saved.identity===identity)checkpoint=saved;}catch{}
+    const cached=kind=>{const c=checkpoint[kind];try{return c&&path.dirname(c.file)===path.join(root,'downloads')&&hash(c.file)===c.sha256?c.file:null;}catch{return null;}};
+    const remember=(kind,file)=>{checkpoint[kind]={file,sha256:hash(file)};fs.mkdirSync(path.dirname(checkpointFile),{recursive:true});const tmp=checkpointFile+'.tmp';fs.writeFileSync(tmp,JSON.stringify(checkpoint));fs.renameSync(tmp,checkpointFile);};
     log('ABC: mapas '+bounds.map_from+' ('+bounds.first_file+') a '+bounds.map_to+' ('+bounds.last_file+').');
     // Preserve an OCP window already opened by the operator. Sales opens its
     // own report and may need to close OCP first to unlock the home shortcut.
     await stage('export_03023601');
-    const ocpFile=await promax.export03023601(job,config,root,parse03023601),picking=reports.pickingRows(parse03023601(ocpFile),job);
+    const ocpFile=cached('ocp')||await promax.export03023601(job,config,root,parse03023601),picking=reports.pickingRows(parse03023601(ocpFile),job);remember('ocp',ocpFile);
     await stage('export_030519',{picking_skus:picking.rows.length,days:picking.dates.length});
-    const salesFile=await promax.export030519(job,config,root,reports.parseSales),sales=reports.parseSales(salesFile);
-    const hash=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+    const salesFile=cached('sales')||await promax.export030519(job,config,root,reports.parseSales),sales=reports.parseSales(salesFile);remember('sales',salesFile);
     await stage('calculating',{picking_skus:picking.rows.length,days:picking.dates.length});
     const result=await call(api,'complete',{...payload,bounds,sales,picking:picking.rows,dates:picking.dates,excluded_ocp_rows:picking.excluded_rows,source_files:[path.basename(salesFile),path.basename(ocpFile)],sha256:[hash(salesFile),hash(ocpFile)]});
     log('Curva ABC '+job.month+' atualizada: '+result.items+' itens, '+picking.dates.length+' dias; '+result.skipped_codes.length+' códigos sem fator, '+result.asset_codes.length+' ativos de giro excluídos.');
