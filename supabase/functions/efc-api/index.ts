@@ -1,3 +1,4 @@
+import {ocpRetryGate} from './ocp-cadence.mjs';
 import {pickingSupply} from './picking-supply.mjs';
 import {ocpRules,withoutIgnoredMaps} from './ocp-exceptions.mjs';
 import {withOcpInputs} from './ocp-inputs.mjs';
@@ -57,7 +58,10 @@ async function ocpState(){
  const pending=days.filter(d=>d.status!=='completed').length+(needsInventory?1:0);
  if(!pending&&config.backfill_through){const {error:e}=await db.from('efc_ocp_config').update({backfill_through:null}).eq('id',1);check(e);}
  const manualRequest=config.manual_request_id&&!config.manual_claimed_at&&Date.parse(config.manual_until||'')>Date.now()?config.manual_request_id:null;
- return{enabled:true,pending,manual_request_id:manualRequest,force_run:Boolean(config.backfill_through)||Boolean(manualRequest),inventory_through:through,job:ocpJob(inventory,days,through),days,start_hour:21,time_zone:'America/Sao_Paulo'};
+ const job=ocpJob(inventory,days,through);
+ const {data:completed,error:completedError}=await db.from('efc_ocp_imports').select('started_at,map_from,map_to').eq('status','completed').order('started_at',{ascending:false}).limit(1).maybeSingle();check(completedError);
+ const gate=ocpRetryGate({lastScan:config.last_scan_at,completed,job,target,manual:Boolean(manualRequest)});
+ return{enabled:true,pending,manual_request_id:manualRequest,force_run:Boolean(config.backfill_through)||Boolean(manualRequest),inventory_through:through,job:gate.blocked?null:job,retry_after:gate.retry_after||null,pause_reason:gate.reason||null,days,start_hour:21,time_zone:'America/Sao_Paulo'};
 }
 Deno.serve(async req=>{
  if(req.method==='OPTIONS')return reply({ok:true});if(req.method==='GET')return reply({service:'efc-api',version:'2026-10-02-fleet-fixed-1'});if(req.method!=='POST')return reply({error:'Método inválido'},405);
