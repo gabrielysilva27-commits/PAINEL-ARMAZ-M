@@ -29,7 +29,13 @@ async function sync(api,promax,config,root,log){
     // Preserve an OCP window already opened by the operator. Sales opens its
     // own report and may need to close OCP first to unlock the home shortcut.
     await stage('export_03023601');
-    const ocpFile=cached('ocp')||await promax.export03023601(job,config,root,parse03023601),picking=reports.pickingRows(parse03023601(ocpFile),job);remember('ocp',ocpFile);
+    // Recover an already exported OCP only when its actual rows prove both
+    // exact boundary maps; never infer provenance from filename or mtime.
+    let recoveredOcp=null;
+    try{const dir=path.join(root,'downloads');for(const name of fs.readdirSync(dir).filter(n=>/^03023601_normal_edge_\d+\.csv\.inf$/.test(n)).sort().reverse()){
+      const file=path.join(dir,name);try{const parsed=parse03023601(file),maps=parsed.rows.map(r=>+r.map);if(maps.length&&Math.min(...maps)===+job.map_from&&Math.max(...maps)===+job.map_to&&parsed.rows.every(r=>r.date>=job.date_from&&r.date<=job.date_to)){reports.pickingRows(parsed,job);recoveredOcp=file;break;}}catch{}
+    }}catch{}
+    const ocpFile=cached('ocp')||recoveredOcp||await promax.export03023601(job,config,root,parse03023601),picking=reports.pickingRows(parse03023601(ocpFile),job);remember('ocp',ocpFile);
     await stage('export_030519',{picking_skus:picking.rows.length,days:picking.dates.length});
     const salesFile=cached('sales')||await promax.export030519(job,config,root,reports.parseSales),sales=reports.parseSales(salesFile);remember('sales',salesFile);
     await stage('calculating',{picking_skus:picking.rows.length,days:picking.dates.length});
