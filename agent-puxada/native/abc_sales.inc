@@ -55,7 +55,8 @@ static bool FillABCSales(HWND hwnd,const std::wstring* values){
   }
   ABC_SALES_ISSUE=L"quebra1";if(!quebra)return false;
   // Traverse only this dropdown; stop only after exact value verification.
-  if(!ClickControl(*quebra)||!Key(VK_HOME)||!Key(VK_HOME,true)||!Key(VK_RETURN)||!Key(VK_RETURN,true))return false;
+  if(!ClickControl(*quebra)||!Key('G')||!Key('G',true)||!Key(VK_RETURN)||!Key(VK_RETURN,true))return false;
+  Sleep(300);
   bool geral=false;for(int i=0;i<45;i++){Sleep(80);if(Read031120Value(*quebra)==L"Geral"||Read031120Value(*quebra)==L"GERAL"||Read031120Value(*quebra)==L"geral"){geral=true;break;}if(!ClickControl(*quebra)||!Key(VK_DOWN)||!Key(VK_DOWN,true)||!Key(VK_RETURN)||!Key(VK_RETURN,true))return false;}
   if(!geral)return false;
   // Quebra changes can rebuild the document. Reacquire every field.
