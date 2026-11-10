@@ -2001,12 +2001,19 @@ async function export03023601(job, config, rootDir, validateCsv) {
     }
   }
 
-  let prior = null, stable = 0;
+  let prior = null, stable = 0, lastSaveProbe = Date.now();
   const candidate = await waitUntil(async function () {
     const current = fs.existsSync(dialogTarget)
       ? { path: dialogTarget, size: fs.statSync(dialogTarget).size, mtimeMs: fs.statSync(dialogTarget).mtimeMs }
       : newestCandidate(since);
-    if (!current) return null;
+    if (!current) {
+      if (job.month && Date.now()-lastSaveProbe>=10000) {
+        lastSaveProbe=Date.now();
+        try { saveStatus=existingEdge.saveDialog(dialogTarget); }
+        catch(error) { if(!/save-dialog-not-found/.test(String(error.message)))throw error; }
+      }
+      return null;
+    }
     stable = prior && prior.path === current.path && prior.size === current.size ? stable + 1 : 0;
     prior = current;
     return stable >= 2 ? current : null;
