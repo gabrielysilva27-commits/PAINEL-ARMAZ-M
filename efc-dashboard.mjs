@@ -2,7 +2,7 @@ import {checkerVisual} from './efc-checkers.mjs?v=20261006-boxes-average';
 import {remunerationModel} from './efc-pay.mjs?v=20261006-boxes-average';
 import {norm} from './efc-core.mjs?v=20261006-boxes-average';
 import {dailySeries,hours,categories,loadProfile,ranking,periods,sum} from './efc-analytics.mjs?v=20261006-boxes-average';
-import {historyRanking} from './efc-history.mjs?v=20261110-supply-review-1';
+import {historyRanking} from './efc-history.mjs?v=20261110-layout-capacity-1';
 import {escape as e,format as n,seriesChart,donutChart,horizontalBars,chartPanel as baseChartPanel,metric} from './efc-charts.mjs?v=20261006-boxes-average';
 const chartPanel=(title,description,body,controls)=>baseChartPanel(title,'',body,controls);
 const pct=v=>v==null?'Pendente':n(v*100,2)+'%';
