@@ -1,7 +1,7 @@
 import {calculate,norm} from './efc-core.mjs?v=20261006-boxes-average';
 import {selectPeriod,weekStart,hourLoads} from './efc-analytics.mjs?v=20261006-boxes-average';
 import {calculatePeriod,periodKey} from './efc-history.mjs?v=20261110-layout-capacity-1';
-import {visuals} from './efc-dashboard.mjs?v=20261007-wms-criterion-1';
+import {visuals} from './efc-dashboard.mjs?v=20261110-mixed-pallets-1';
 import {periodMemo} from './efc-performance.mjs?v=20261110-performance-1';
 const calculateSelectedPeriod=periodMemo(calculatePeriod);
 const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/efc-api';

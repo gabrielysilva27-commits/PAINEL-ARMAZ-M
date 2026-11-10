@@ -9,7 +9,7 @@ test('closed pallets and falsely open whole pallets are removed before daily agg
  assert.equal(r.rows[0].boxes,70);assert.equal(r.rows[0].excluded_boxes,300);assert.equal(r.rows[0].estimated_pallets,0);assert.equal(r.daily[0].boxes,70);assert.equal(r.daily[0].capacity,200);assert.equal(r.daily[0].complete,true);
 });
 test('workbook rounding and capacity subtraction are kept, without capping rates',()=>{
- const r=pickingSupply([row(531)],capacity,catalog,days);
+ const r=pickingSupply(Array.from({length:9},()=>row(59)),capacity,catalog,days);
  assert.equal(r.rows[0].estimated_pallets,4);assert.equal(r.rows[0].replenishment_boxes,331);assert.equal(r.daily[0].positions,2);
 });
 test('partial product lines stay in picking even when their sum equals a whole pallet',()=>{
@@ -27,14 +27,14 @@ test('layout positions are preserved for every included product',()=>{
  const original=[{sku:'1',positions:1,palletization:100},{sku:'2',positions:1,palletization:100}];
  const r=pickingSupply([row(151),row(151,'B',{product:'2'})],original,[...catalog,{sku_code:'2',boxes_per_pallet:100}],days);
  assert.deepEqual(r.rows.map(x=>x.positions),[1,1]);
- assert.deepEqual(r.rows.map(x=>x.estimated_pallets),[1,1]);
+ assert.deepEqual(r.rows.map(x=>x.estimated_pallets),[0,0]);
  assert.equal(r.daily[0].capacity,200);assert.equal(original[0].positions,1);
 });
 test('Brahma 13201 uses 90 boxes from 01.11, regardless of OCP flags or obsolete override',()=>{
  const data=[180,900,450,540,160].map((boxes,i)=>({...row(boxes,'P'+i),product:'13201',closed:false}));
  data.push({...row(20,'OTHER'),product:'13201',closed:true});
  const result=pickingSupply(data,[{sku:'13201',positions:1,palletization:999,adjustment_reason:'old'}],[{sku_code:'13201',boxes_per_pallet:90}],days);
- assert.equal(result.rows[0].palletization,90);assert.equal(result.rows[0].excluded_boxes,2070);assert.equal(result.rows[0].boxes,180);
+ assert.equal(result.rows[0].palletization,90);assert.equal(result.rows[0].excluded_boxes,2160);assert.equal(result.rows[0].boxes,90);
 });
 test('zero picking demand still contributes its daily physical capacity',()=>{
  const r=pickingSupply([row(100)],capacity,catalog,days);
