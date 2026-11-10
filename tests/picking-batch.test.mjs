@@ -1,9 +1,15 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {platePositions} from '../supabase/functions/layout-api/plate-positions.mjs';
 import {batchLabels,batchDocument} from '../conferente/placas/batch-print.mjs';
-test('street order, repeated codes, empty slots and two-column Flow Rack match positions',()=>{
+test('Flow Rack is a separate batch with its two-column order and no frontal signs',()=>{
+ const plan={main:[{id:'R1',slots:[{sku_code:'1'}]}],front:[{id:'PF1',slots:[{sku_code:'2'}]},{id:'PF2',slots:[{sku_code:'3'}]}],flow:{items:[{sku_code:'4'},{sku_code:'5'},{sku_code:'6'}]}};
+ assert.deepEqual(platePositions(plan,'flow').map(x=>[x.street,x.position,x.code]),[['FR1',1,'4'],['FR1',2,'6'],['FR2',1,'5']]);
+ assert.deepEqual(platePositions(plan).map(x=>x.code),['1']);
+ assert.throws(()=>platePositions(plan,'invalid'),/Área/);
+});
+test('picking includes main streets and excludes caixaria, frontal lanes and Flow Rack',()=>{
  const positions=platePositions({caixaria:[{id:'CX1',slots:[{sku_code:'1'},null,{sku_code:'1'}]}],main:[{id:'R1',slots:[{sku_code:'2'}]}],front:[{id:'PF1',slots:[{sku_code:'3'}]}],flow:{items:[{sku_code:'4'},{sku_code:'5'},{sku_code:'6'}]},overflow:[{sku_code:'99'}]});
- assert.deepEqual(positions.map(x=>[x.street,x.position,x.code]),[['R1',1,'2'],['PF1',1,'3'],['FR1',1,'4'],['FR1',2,'6'],['FR2',1,'5']]);
+ assert.deepEqual(positions.map(x=>[x.street,x.position,x.code]),[['R1',1,'2']]);
 });
 test('all caixaria lanes are excluded while the same SKU elsewhere keeps its signs',()=>{
  const caixaria=Array.from({length:7},(_,i)=>({id:'CX'+(i+1),slots:Array.from({length:12},()=>({sku_code:'13201'}))}));
