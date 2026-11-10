@@ -80,7 +80,7 @@ static bool FillABCSales(HWND hwnd,const std::wstring* values){
   std::sort(ranges.begin(),ranges.end(),[](const VisibleControl&a,const VisibleControl&b){if(abs(a.rect.top-b.rect.top)>8)return a.rect.top<b.rect.top;return a.rect.left<b.rect.left;});
   ABC_SALES_ISSUE=L"general-ranges:"+std::to_wstring(ranges.size());if(ranges.size()!=6)return false;
   for(size_t i=0;i<ranges.size();++i)if(!Fill031120Control(ranges[i],i%2?L"999":L"0"))return false;
-  const wchar_t* options[]={L"emitida",L"s/ devol nf",L"todas",L"não",L"gerencial"};
+  const wchar_t* options[]={L"emitida",L"s/ devol nf",L"todas",L"n\u00e3o",L"gerencial"};
   for(const auto* option:options){ABC_SALES_ISSUE=L"option:"+std::wstring(option);if(!ABCOption(hwnd,controls,option,true,true))return false;}
   for(const auto& c:controls)if(c.type==UIA_CheckBoxControlTypeId||c.legacyRole==ROLE_SYSTEM_CHECKBUTTON){ABC_SALES_ISSUE=L"unchecked-preference";if(!SelectOCPOption(c,false))return false;}
   // Date readback immediately before export; successful generation is separate.
