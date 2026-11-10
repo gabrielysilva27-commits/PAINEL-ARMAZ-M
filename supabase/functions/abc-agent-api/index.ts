@@ -42,7 +42,9 @@ Deno.serve(async(req:Request)=>{
     if(action==='complete'){
       const p=period(requested),bounds=b.bounds;
       if(!bounds||bounds.first_date!==p.date_from||bounds.last_date!==p.date_to||!/^\d{1,12}$/.test(bounds.map_from)||!/^\d{1,12}$/.test(bounds.map_to)||+bounds.map_from>+bounds.map_to)throw Error('ABC_INVALID_BOUNDARIES');
-      const confirmed=run.details?.map_boundaries;if(!confirmed||JSON.stringify(confirmed)!==JSON.stringify(bounds))throw Error('ABC_BOUNDARIES_NOT_CONFIRMED');
+      const confirmed=run.details?.map_boundaries;
+      const canonical=(value:any)=>JSON.stringify(Object.keys(value).sort().map(key=>[key,value[key]]));
+      if(!confirmed||canonical(confirmed)!==canonical(bounds))throw Error('ABC_BOUNDARIES_NOT_CONFIRMED');
       const dates=[...new Set(Array.isArray(b.dates)?b.dates:[])];if(!dates.length||dates.length>92||dates.some((x:any)=>typeof x!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(x)||x<p.date_from||x>p.date_to||new Date(x+'T12:00:00Z').toISOString().slice(0,10)!==x))throw Error('ABC_INVALID_DATES');
       if(!Array.isArray(b.source_files)||b.source_files.length!==2||!Array.isArray(b.sha256)||b.sha256.length!==2||b.sha256.some((x:any)=>!/^[a-f0-9]{64}$/.test(x)))throw Error('ABC_SOURCE_AUDIT_MISSING');
       const sales=sourceRows(b.sales),picking=sourceRows(b.picking),codes=[...new Set([...sales,...picking].map(x=>x.sku_code))],catalog:any[]=[];
