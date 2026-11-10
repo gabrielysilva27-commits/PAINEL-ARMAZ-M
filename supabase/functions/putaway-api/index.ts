@@ -530,12 +530,23 @@ async function forkliftUsers(){
   const {data,error}=await db.from("receiving_forklift_operators").select("id,display_name").eq("active",true).order("display_name");
   if(error)throw error;return data||[];
 }
+async function verifyMasterPin(pin:string,stored:string){
+  if(!stored.startsWith("pbkdf2-sha256$"))return await hash(pin)===stored;
+  const [scheme,iterations,salt,expected]=stored.split("$");
+  if(scheme!=="pbkdf2-sha256"||iterations!=="200000"||!salt||!expected)return false;
+  const key=await crypto.subtle.importKey("raw",enc.encode(pin),"PBKDF2",false,["deriveBits"]);
+  const bytes=new Uint8Array(await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:enc.encode(salt),iterations:200000},key,256));
+  const actual=Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");let diff=actual.length^expected.length;
+  for(let i=0;i<Math.max(actual.length,expected.length);i++)diff|=(actual.charCodeAt(i)||0)^(expected.charCodeAt(i)||0);
+  return diff===0;
+}
 async function forkliftLogin(operatorId:string,pin:string){
   if(!operatorId)throw new Error("Selecione seu nome.");
-  if(!/^\d{4}$/.test(pin))throw new Error("Informe o PIN de 4 dígitos.");
-  const {data:u,error}=await db.from("receiving_forklift_operators").select("id,display_name,pin_hash,active").eq("id",operatorId).maybeSingle();
+  const {data:u,error}=await db.from("receiving_forklift_operators").select("id,display_name,pin_hash,active,master_app_user_id").eq("id",operatorId).maybeSingle();
   if(error)throw error;
-  if(!u||!u.active||!u.pin_hash||await hash(pin)!==u.pin_hash)throw new Error("Nome ou PIN do empilhador inválido.");
+  if(!(u?.master_app_user_id?/^[A-Za-z0-9]{3,12}$/:/^\d{4}$/).test(pin))throw new Error("Informe um PIN válido.");
+  if(u?.master_app_user_id){const {data:admin,error}=await db.from("app_users").select("id").eq("id",u.master_app_user_id).eq("active",true).eq("role","admin").maybeSingle();if(error)throw error;if(!admin)throw new Error("Acesso mestre indisponível.");}
+  if(!u||!u.active||!u.pin_hash||!(u.master_app_user_id?await verifyMasterPin(pin,u.pin_hash):await hash(pin)===u.pin_hash))throw new Error("Nome ou PIN do empilhador inválido.");
   const token=crypto.randomUUID()+crypto.randomUUID(),expires=new Date(Date.now()+12*60*60*1000).toISOString();
   await db.from("receiving_forklift_sessions").delete().lt("expires_at",new Date().toISOString());
   const {error:se}=await db.from("receiving_forklift_sessions").insert({token_hash:await hash(token),operator_id:u.id,expires_at:expires});
