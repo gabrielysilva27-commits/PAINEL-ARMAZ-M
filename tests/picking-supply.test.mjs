@@ -6,14 +6,14 @@ const row=(boxes,pallet='A',more={})=>({map:'1',date:'2026-10-01',product:'1',pa
 const days=[{reference_date:'2026-10-01',status:'completed'}];
 test('closed pallets and falsely open whole pallets are removed before daily aggregation',()=>{
  const r=pickingSupply([row(100),row(200,'B'),row(50,'C'),row(20,'D',{closed:true})],capacity,catalog,days);
- assert.equal(r.rows[0].boxes,50);assert.equal(r.rows[0].excluded_boxes,300);assert.equal(r.rows[0].estimated_pallets,0);assert.equal(r.daily[0].boxes,50);assert.equal(r.daily[0].capacity,200);assert.equal(r.daily[0].complete,true);
+ assert.equal(r.rows[0].boxes,70);assert.equal(r.rows[0].excluded_boxes,300);assert.equal(r.rows[0].estimated_pallets,0);assert.equal(r.daily[0].boxes,70);assert.equal(r.daily[0].capacity,200);assert.equal(r.daily[0].complete,true);
 });
 test('workbook rounding and capacity subtraction are kept, without capping rates',()=>{
  const r=pickingSupply([row(531)],capacity,catalog,days);
  assert.equal(r.rows[0].estimated_pallets,3.4);assert.equal(r.rows[0].replenishment_boxes,331);assert.equal(r.daily[0].positions,208);
 });
-test('split SKU lines within a pallet are checked together, but small picks in different maps are not discarded',()=>{
- const r=pickingSupply([row(40),row(60),row(50,'B'),row(50,'B',{map:'2'})],capacity,catalog,days);assert.equal(r.rows[0].excluded_boxes,100);assert.equal(r.rows[0].boxes,100);
+test('partial product lines stay in picking even when their sum equals a whole pallet',()=>{
+ const r=pickingSupply([row(40),row(60),row(50,'B'),row(50,'B',{map:'2'})],capacity,catalog,days);assert.equal(r.rows[0].excluded_boxes,0);assert.equal(r.rows[0].boxes,200);
 });
 test('missing palletization is visible and cannot become a calculated zero',()=>{
  const r=pickingSupply([row(13,'A',{product:'2'})],capacity,catalog,days);assert.equal(r.rows[0].estimated_pallets,null);assert.deepEqual(r.daily[0].missing_skus,['2']);assert.equal(r.daily[0].missing_boxes,13);assert.equal(r.daily[0].complete,false);
@@ -29,4 +29,10 @@ test('every product gets at least one position only in calculation, preserving o
  assert.deepEqual(r.rows.map(x=>x.positions),[1,1]);
  assert.deepEqual(r.rows.map(x=>x.estimated_pallets),[.6,.6]);
  assert.equal(r.daily[0].capacity,200);assert.equal(original[0].positions,0);
+});
+test('Brahma 13201 uses 90 boxes from 01.11, regardless of OCP flags or obsolete override',()=>{
+ const data=[180,900,450,540,160].map((boxes,i)=>({...row(boxes,'P'+i),product:'13201',closed:false}));
+ data.push({...row(20,'OTHER'),product:'13201',closed:true});
+ const result=pickingSupply(data,[{sku:'13201',positions:1,palletization:999,adjustment_reason:'old'}],[{sku_code:'13201',boxes_per_pallet:90}],days);
+ assert.equal(result.rows[0].palletization,90);assert.equal(result.rows[0].excluded_boxes,2070);assert.equal(result.rows[0].boxes,180);
 });

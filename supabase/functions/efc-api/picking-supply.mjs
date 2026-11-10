@@ -5,15 +5,13 @@ const sum=(rows,key)=>rows.reduce((s,r)=>s+(Number(r[key])||0),0);
 // capacity, otherwise demand minus capacity. Both are workbook estimates.
 export function pickingSupply(ocp,capacities,catalog,days){
  const products=new Map(catalog.map(p=>[sku(p.sku_code),p]));
- const cap=new Map(capacities.map(c=>{const p=products.get(sku(c.sku));return[sku(c.sku),{...c,positions:Math.max(1,Number(c.positions)||0),palletization:c.adjustment_reason?c.palletization:p?.boxes_per_pallet>0?Number(p.boxes_per_pallet):c.palletization}];}));
- const groups=new Map(),demand=new Map(),observed=new Set(ocp.map(r=>r.date));
- for(const r of ocp){if(r.closed||!(r.boxes>0)||!r.product)continue;
-  const key=[r.date,r.map,r.pallet||'',sku(r.product)].join('|');
-  if(!groups.has(key))groups.set(key,{...r,boxes:0,units:0});
-  const g=groups.get(key);g.boxes+=r.boxes;g.units+=Number(r.units)||0;
- }
- for(const r of groups.values()){
-  const code=sku(r.product),c=cap.get(code),p=products.get(code),palletization=c?.adjustment_reason?c.palletization:p?.boxes_per_pallet>0?Number(p.boxes_per_pallet):c?.palletization;
+ const cap=new Map(capacities.map(c=>{const p=products.get(sku(c.sku));return[sku(c.sku),{...c,positions:Math.max(1,Number(c.positions)||0),palletization:p?.boxes_per_pallet>0?Number(p.boxes_per_pallet):c.palletization}];}));
+ const demand=new Map(),observed=new Set(ocp.map(r=>r.date));
+ // Classify each original product line from 01.11, never the unreliable OCP flag
+ // or a sum of different picking lines that happens to equal a full pallet.
+ for(const r of ocp){
+  if(!(r.boxes>0)||!r.product)continue;
+  const code=sku(r.product),c=cap.get(code),p=products.get(code),palletization=p?.boxes_per_pallet>0?Number(p.boxes_per_pallet):c?.palletization;
   // False "Não" rows that are full pallets never become picking demand.
   const full=palletization>0&&!r.units&&Math.abs(r.boxes/palletization-Math.round(r.boxes/palletization))<1e-9;
   const key=r.date+'|'+code;
