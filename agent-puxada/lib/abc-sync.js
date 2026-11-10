@@ -9,7 +9,7 @@ async function sync(api,promax,config,root,log){
   let job=null,timer=null;
   try{
     const state=await call(api,'status');if(state.complete){next=Date.now()+15*60000;return;}
-    if(!edge.desktopUnlocked()||(edge.idleMilliseconds()??0)<30000)return;
+    if(!edge.desktopUnlocked()||(!state.force_run&&(edge.idleMilliseconds()??0)<30000))return;
     const claim=await call(api,'claim');if(!claim.job)return;job=claim.job;
     const payload={month:job.month,run_id:job.run_id};
     timer=setInterval(()=>call(api,'heartbeat',payload).catch(e=>log('ABC heartbeat: '+e.message,true)),45000);

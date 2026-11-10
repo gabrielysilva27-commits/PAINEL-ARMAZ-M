@@ -15,15 +15,21 @@ Deno.serve(async(req:Request)=>{
     const node=await nodeAuth(req);if(!node)return json({error:'Agente não autorizado'},401);
     const b=await req.json(),action=String(b.action||''),month=currentMonth(),job=period(month);
     if(month<'2026-11')return json({complete:true});
-    if(action==='status')return json({complete:await imported(month),...job});
+    let manual:any=null;
+    if(action==='status'||action==='claim'){
+      const {data,error}=await db.from('abc_agent_monthly_runs').select('details').eq('reference_month',month+'-01').maybeSingle();if(error)throw error;
+      const requested=data?.details?.manual_run;if(requested&&typeof requested.expires_at==='string'&&Date.parse(requested.expires_at)>Date.now()&&requested.slot==='ADM')manual=requested;
+    }
+    if(action==='status')return json({complete:await imported(month),force_run:!!manual&&node.slot_code===manual.slot,...job});
     if(action==='claim'){
       if(await imported(month))return json({complete:true});
+      if(manual&&node.slot_code!==manual.slot)return json({job:null});
       const {data:config,error:ce}=await db.from('efd_agent_config').select('root_path').limit(1).maybeSingle();if(ce)throw ce;if(!config?.root_path)throw Error('ABC_MAP_ROOT_NOT_CONFIGURED');
       const {error:ie}=await db.from('abc_agent_monthly_runs').upsert({reference_month:month+'-01'},{onConflict:'reference_month',ignoreDuplicates:true});if(ie)throw ie;
       const now=new Date().toISOString();
       const {data:prior,error:pe}=await db.from('abc_agent_monthly_runs').select('attempts').eq('reference_month',month+'-01').maybeSingle();if(pe)throw pe;
       const run_id=crypto.randomUUID();
-      const {data,error}=await db.from('abc_agent_monthly_runs').update({status:'running',run_id,node_id:node.id,lease_expires_at:lease(),stage:'claimed',details:{},attempts:Number(prior?.attempts||0)+1,last_error:null,started_at:now,updated_at:now}).eq('reference_month',month+'-01').or('status.in.(pending,error),and(status.eq.running,lease_expires_at.lt.'+now+')').select('run_id').maybeSingle();if(error)throw error;
+      const {data,error}=await db.from('abc_agent_monthly_runs').update({status:'running',run_id,node_id:node.id,lease_expires_at:lease(),stage:'claimed',details:manual?{manual_run:manual}:{},attempts:Number(prior?.attempts||0)+1,last_error:null,started_at:now,updated_at:now}).eq('reference_month',month+'-01').or('status.in.(pending,error),and(status.eq.running,lease_expires_at.lt.'+now+')').select('run_id').maybeSingle();if(error)throw error;
       return json({job:data?{...job,run_id,root_path:config.root_path}:null});
     }
     const requested=String(b.month||'');period(requested);const run=await owned(requested,String(b.run_id||''),node.id);
