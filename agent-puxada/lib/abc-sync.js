@@ -33,7 +33,7 @@ async function sync(api,promax,config,root,log){
     // exact boundary maps; never infer provenance from filename or mtime.
     let recoveredOcp=null;
     try{const dir=path.join(root,'downloads');for(const name of fs.readdirSync(dir).filter(n=>/^03023601_normal_edge_\d+\.csv\.inf$/.test(n)).sort().reverse()){
-      const file=path.join(dir,name);try{const parsed=parse03023601(file),maps=parsed.rows.map(r=>+r.map);if(maps.length&&Math.min(...maps)===+job.map_from&&Math.max(...maps)===+job.map_to&&parsed.rows.every(r=>r.date>=job.date_from&&r.date<=job.date_to)){reports.pickingRows(parsed,job);recoveredOcp=file;break;}}catch{}
+      const file=path.join(dir,name);try{const parsed=parse03023601(file),range=parsed.rows.reduce((a,r)=>[Math.min(a[0],+r.map),Math.max(a[1],+r.map)],[Infinity,-Infinity]);if(parsed.rows.length&&range[0]===+job.map_from&&range[1]===+job.map_to&&parsed.rows.every(r=>r.date>=job.date_from&&r.date<=job.date_to)){reports.pickingRows(parsed,job);recoveredOcp=file;break;}}catch{}
     }}catch{}
     const ocpFile=cached('ocp')||recoveredOcp||await promax.export03023601(job,config,root,parse03023601),picking=reports.pickingRows(parse03023601(ocpFile),job);remember('ocp',ocpFile);
     await stage('export_030519',{picking_skus:picking.rows.length,days:picking.dates.length});
