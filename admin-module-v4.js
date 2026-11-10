@@ -310,7 +310,7 @@
     bindAccess('adminConf',CONFERENTE_URL,CONFERENTE_QR,'Portal do Conferente — B.O. + NRI + Temperatura','QR_Portal_Conferentes.png');
     bindAccess('adminGate',PORTARIA_URL,PORTARIA_QR,'Portaria — Entrada de Carreta','QR_Portaria_Recebimento.png');
     bindAccess('adminFork',EMPILHADOR_URL,EMPILHADOR_QR,'Empilhadores — Descarga + Guarda','QR_Empilhadores_Descarga_Guarda.png');
-    $('adminPinGroup').onchange=renderPinPeople;$('adminPinPerson').onchange=renderPinSelected;$('adminPinAction').onclick=issueSelectedPin;$('adminPinMissing').onclick=issueMissingForGroup;$('adminPinOpenForklift').onclick=()=>window.open(RECEBIMENTO_URL+'guarda.html','_blank','noopener,noreferrer');$('adminAgentSaveInterval').onclick=saveAgentInterval;$('adminAgentSyncNow').onclick=syncAgentNow;$('adminAgentRefresh').onclick=loadAgentAdmin;$('adminAgentRoutines').onclick=()=>import('./agent-routines.mjs?v=20261110-1').then(m=>m.openAgentRoutines()).catch(()=>showToast('Não foi possível abrir as rotinas. Tente novamente.',true));
+    $('adminPinGroup').onchange=renderPinPeople;$('adminPinPerson').onchange=renderPinSelected;$('adminPinAction').onclick=issueSelectedPin;$('adminPinMissing').onclick=issueMissingForGroup;$('adminPinOpenForklift').onclick=()=>window.open(RECEBIMENTO_URL+'guarda.html','_blank','noopener,noreferrer');$('adminAgentSaveInterval').onclick=saveAgentInterval;$('adminAgentSyncNow').onclick=syncAgentNow;$('adminAgentRefresh').onclick=loadAgentAdmin;$('adminAgentRoutines').onclick=()=>import('./agent-routines.mjs?v=20261110-2').then(m=>m.openAgentRoutines()).catch(()=>showToast('Não foi possível abrir as rotinas. Tente novamente.',true));
     await Promise.all([loadUnifiedPins(),loadAgentAdmin()]);
   }
   function bind(){
