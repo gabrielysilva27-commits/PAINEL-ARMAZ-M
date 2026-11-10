@@ -1,14 +1,33 @@
-import {productLabel} from './product-label.mjs';
+import {productLabel} from './product-label.mjs?v=20261110-fit-2';
+import {fittedFont} from './text-fit.mjs';
 const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/bo-api';
 const $=id=>document.getElementById(id);
 let token=sessionStorage.getItem('bo_token')||sessionStorage.getItem('nri_conf_token')||'',sequence=0;
 async function call(action,payload={},auth=true){const headers={'Content-Type':'application/json'};if(auth&&token)headers['x-bo-token']=token;const response=await fetch(API,{method:'POST',headers,body:JSON.stringify({action,...payload})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Não foi possível concluir. Tente novamente.');return data;}
 function enter(user){$('loginView').hidden=true;$('workView').hidden=false;$('identity').hidden=false;$('userName').textContent=user.display_name;$('message').textContent='';$('codeInput').focus();}
-function fit(element,max,min=10){element.style.fontSize=min+'px';for(let size=max;size>=min;size--){element.style.fontSize=size+'px';if(element.scrollWidth<=element.clientWidth+1&&element.scrollHeight<=element.clientHeight+1)break;}}
-function fitSign(){if($('preview').hidden)return;const height=$('sign').clientHeight,width=$('sku').clientWidth;const text=$('skuText');text.style.fontSize=(width*.96)+'px';while((text.getBoundingClientRect().height>height-35||text.getBoundingClientRect().width>width)&&parseFloat(text.style.fontSize)>10)text.style.fontSize=(parseFloat(text.style.fontSize)-1)+'px';fit($('name'),Math.round(height*.18));fit($('details'),Math.round(height*.095));fit($('size'),Math.round(height*.35));}
+const canvas=document.createElement('canvas'),context=canvas.getContext('2d');
+const measure=(text,size)=>{context.font='900 '+size+'px Arial';return context.measureText(text).width;};
+function fitSign(){
+ if($('preview').hidden)return;
+ for(const [id,max,ratio] of [['name',132,1.04],['details',65,1.04],['size',250,1]]){
+  const box=$(id),span=box.firstElementChild;
+  const padding=id==='details'?14:8;
+  const size=fittedFont(span.textContent,box.clientWidth-4,box.clientHeight-padding,max,measure,ratio);
+  span.style.fontSize=size+'px';
+ }
+ const text=$('skuText'),height=$('sku').clientHeight-30,width=$('sku').clientWidth-8;
+ let size=Math.floor(width);
+ while(size>10&&(measure(text.textContent,size)>height||size>width))size--;
+ text.style.fontSize=size+'px';
+}
+function scalePreview(){
+ const box=$('preview'),scale=Math.max(.05,Math.min((box.clientWidth-24)/1062,(box.clientHeight-24)/733));
+ $('sign').style.setProperty('--preview-scale',scale);
+}
+new ResizeObserver(scalePreview).observe($('preview'));
 function resetProduct(){sequence++;$('preview').hidden=true;$('originalWrap').hidden=true;$('printButton').disabled=true;$('source').textContent='';}
 $('codeInput').addEventListener('input',resetProduct);
-$('productForm').onsubmit=async event=>{event.preventDefault();resetProduct();const current=sequence;$('message').textContent='Buscando na OCP…';$('searchButton').disabled=true;try{const {product}=await call('picking_product',{code:$('codeInput').value.trim()});if(current!==sequence)return;if(!product){$('message').textContent='Código não encontrado na base OCP. Nenhuma placa foi gerada.';return;}const label=productLabel(product);$('skuText').textContent=label.code;$('name').textContent=label.name;$('details').textContent=label.details;$('size').textContent=label.size;$('original').textContent=label.original;$('originalWrap').hidden=false;$('preview').hidden=false;$('source').textContent='Base OCP · '+product.reference_date.split('-').reverse().join('/');fitSign();$('printButton').disabled=!label.size;$('message').textContent=label.size?'':'O volume não está identificado na OCP. Verifique o cadastro antes de imprimir.';}catch(error){if(current===sequence)$('message').textContent=error.message;}finally{$('searchButton').disabled=false;}};
+$('productForm').onsubmit=async event=>{event.preventDefault();resetProduct();const current=sequence;$('message').textContent='Buscando na OCP…';$('searchButton').disabled=true;try{const {product}=await call('picking_product',{code:$('codeInput').value.trim()});if(current!==sequence)return;if(!product){$('message').textContent='Código não encontrado na base OCP. Nenhuma placa foi gerada.';return;}const label=productLabel(product);$('skuText').textContent=label.code;$('name').firstElementChild.textContent=label.name;$('details').firstElementChild.textContent=label.details;$('size').firstElementChild.textContent=label.size;$('original').textContent=label.original;$('originalWrap').hidden=false;$('preview').hidden=false;$('source').textContent='Base OCP · '+product.reference_date.split('-').reverse().join('/');fitSign();scalePreview();$('printButton').disabled=!label.size;$('message').textContent=label.size?'':'O volume não está identificado na OCP. Verifique o cadastro antes de imprimir.';}catch(error){if(current===sequence)$('message').textContent=error.message;}finally{$('searchButton').disabled=false;}};
 $('printButton').onclick=()=>{if(!$('printButton').disabled)window.print();};
 window.addEventListener('beforeprint',fitSign);window.addEventListener('afterprint',fitSign);
 $('loginForm').onsubmit=async event=>{event.preventDefault();$('loginButton').disabled=true;try{const data=await call('pin_login',{conferencer_id:$('conferencerSelect').value,pin:$('pinInput').value},false);token=data.token;sessionStorage.setItem('bo_token',token);$('pinInput').value='';enter(data.conferencer);}catch(error){$('message').textContent=error.message;}finally{$('loginButton').disabled=false;}};
