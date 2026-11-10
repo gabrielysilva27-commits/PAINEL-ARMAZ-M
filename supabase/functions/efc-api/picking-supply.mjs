@@ -5,12 +5,12 @@ const sum=(rows,key)=>rows.reduce((s,r)=>s+(Number(r[key])||0),0);
 // capacity, otherwise demand minus capacity. Both are workbook estimates.
 export function pickingSupply(ocp,capacities,catalog,days){
  const products=new Map(catalog.map(p=>[sku(p.sku_code),p]));
- const cap=new Map(capacities.map(c=>{const p=products.get(sku(c.sku));return[sku(c.sku),{...c,positions:Math.max(1,Number(c.positions)||0),palletization:p?.boxes_per_pallet>0?Number(p.boxes_per_pallet):c.palletization}];}));
+ const cap=new Map(capacities.filter(c=>Number(c.positions)>0).map(c=>{const p=products.get(sku(c.sku));return[sku(c.sku),{...c,positions:Math.max(1,Number(c.positions)||0),palletization:p?.boxes_per_pallet>0?Number(p.boxes_per_pallet):c.palletization}];}));
  const demand=new Map(),observed=new Set(ocp.map(r=>r.date));
  // Classify each original product line from 01.11, never the unreliable OCP flag
  // or a sum of different picking lines that happens to equal a full pallet.
  for(const r of ocp){
-  if(!(r.boxes>0)||!r.product)continue;
+  if(!(r.boxes>0)||!r.product||!cap.has(sku(r.product)))continue;
   const code=sku(r.product),c=cap.get(code),p=products.get(code),palletization=p?.boxes_per_pallet>0?Number(p.boxes_per_pallet):c?.palletization;
   // False "Não" rows that are full pallets never become picking demand.
   const full=palletization>0&&!r.units&&Math.abs(r.boxes/palletization-Math.round(r.boxes/palletization))<1e-9;
@@ -18,7 +18,7 @@ export function pickingSupply(ocp,capacities,catalog,days){
   if(!demand.has(key))demand.set(key,{id:'picking:'+key,date:r.date,sku:code,description:p?.sku_name||r.raw_values?.[20]||'',boxes:0,excluded_boxes:0,units:0,positions:Math.max(1,Number(c?.positions)||0),palletization:palletization??null});
   const d=demand.get(key);if(full)d.excluded_boxes+=r.boxes;else{d.boxes+=r.boxes;d.units+=r.units;}
  }
- const rows=[...demand.values()].map(d=>{const known=d.palletization>0&&d.positions!=null,capacity=known?d.positions*d.palletization:null;return{...d,capacity,excess:known?Math.max(0,d.boxes-capacity):null,estimated_pallets:known?up(Math.max(0,up(d.boxes/d.palletization)-d.positions)):null,replenishment_boxes:known?(d.boxes<capacity?d.boxes:d.boxes-capacity):null};});
+ const rows=[...demand.values()].map(d=>{const known=d.palletization>0&&d.positions!=null,capacity=known?d.positions*d.palletization:null;return{...d,capacity,excess:known?Math.max(0,d.boxes-capacity):null,estimated_pallets:known?Math.max(0,Math.ceil((d.boxes-capacity)/d.palletization-1e-9)):null,replenishment_boxes:known?(d.boxes<capacity?d.boxes:d.boxes-capacity):null};});
  for(const d of rows)if(!cap.has(d.sku)&&d.palletization>0)cap.set(d.sku,{positions:1,palletization:d.palletization});
  const base=sum([...cap.values()].filter(c=>c.palletization>0).map(c=>({capacity:c.positions*c.palletization})),'capacity');
  const positionBase=sum([...cap.values()],'positions');
