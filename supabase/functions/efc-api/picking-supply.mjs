@@ -22,10 +22,15 @@ export function pickingSupply(ocp,capacities,catalog,days){
   if(!(r.boxes>0)||!r.product||!cap.has(sku(r.product)))continue;
   const code=sku(r.product),c=cap.get(code),p=products.get(code),palletization=p?.boxes_per_pallet>0?Number(p.boxes_per_pallet):c?.palletization;
   // False "Não" rows that are full pallets never become picking demand.
-  const full=palletization>0&&!r.units&&Math.abs(r.boxes/palletization-Math.round(r.boxes/palletization))<1e-9;
+  // A mixed line can contain several complete pallets plus loose boxes.
+  // Split before aggregation: 160 boxes / 90 = 90 full + 70 picking.
+  const ratio=palletization>0?r.boxes/palletization:0;
+  const whole=palletization>0?Math.floor(ratio+1e-9):0;
+  const excluded=palletization>0?Math.min(r.boxes,whole*palletization):0;
+  const picking=Math.max(0,r.boxes-excluded);
   const key=r.date+'|'+code;
   if(!demand.has(key))demand.set(key,{id:'picking:'+key,date:r.date,sku:code,description:p?.sku_name||r.raw_values?.[20]||'',boxes:0,excluded_boxes:0,units:0,positions:Math.max(1,Number(c?.positions)||0),palletization:palletization??null});
-  const d=demand.get(key);if(full)d.excluded_boxes+=r.boxes;else{d.boxes+=r.boxes;d.units+=r.units;}
+  const d=demand.get(key);d.excluded_boxes+=excluded;d.boxes+=picking;d.units+=Number(r.units)||0;
  }
  const rows=[...demand.values()].map(d=>{const known=d.palletization>0&&d.positions!=null,capacity=known?d.positions*d.palletization:null;return{...d,capacity,excess:known?Math.max(0,d.boxes-capacity):null,estimated_pallets:known?Math.max(0,Math.ceil((d.boxes-capacity)/d.palletization-1e-9)):null,replenishment_boxes:known?(d.boxes<capacity?d.boxes:d.boxes-capacity):null};});
  for(const d of rows)if(!cap.has(d.sku)&&d.palletization>0)cap.set(d.sku,{positions:1,palletization:d.palletization});
