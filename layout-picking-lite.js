@@ -1,7 +1,7 @@
 (() => {
   if(window.__pickingLayout)return;
   const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/layout-api';
-  const L={months:[],month:state.currentMonth||'2026-06',items:[],plan:null,family:'',curve:'',cache:new Map(),mounted:false,loading:null};
+  const L={months:[],month:state.currentMonth||'2026-06',items:[],plan:null,family:'',curve:'',cache:new Map(),mounted:false,loading:null,loadedMonth:null};
   const fmt=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1});
   const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
@@ -18,7 +18,8 @@
     if(L.mounted)return true;
     const panel=document.querySelector('[data-layout-panel="picking"]');if(!panel)return false;
     L.mounted=true;
-    panel.innerHTML=`<div class="picking-layout"><div class="picking-toolbar"><div class="filter-group"><label>Mês</label><select id="pickingMonth"></select></div><div class="filter-group"><label>Família</label><select id="pickingFamily"><option value="">Todas</option></select></div><div class="filter-group"><label>Curva</label><select id="pickingCurve"><option value="">Todas</option><option>A</option><option>B</option><option>C</option></select></div><div class="toolbar-spacer"></div><div class="sync-badge" title="O Layout reutiliza a Curva ABC do Picking do mesmo mês"><i></i><strong>Sincronizado com Curva ABC</strong><small>OCP reaproveitado</small></div></div><div class="picking-months" id="pickingMonths"></div><div class="picking-kpis"><div class="picking-kpi"><span>Ruas físicas</span><strong>18</strong></div><div class="picking-kpi"><span>Vagas de rua</span><strong>207</strong><small id="pickUsed"></small></div><div class="picking-kpi"><span>SKUs no layout</span><strong id="pickSkus">—</strong></div><div class="picking-kpi"><span>Múltiplas vagas</span><strong id="pickMulti">—</strong></div></div><div class="panel picking-map-panel"><div class="panel-heading"><div><h2>Mapa do Picking</h2><small class="picking-map-note">207 vagas físicas • Flow Rack complementar • fonte automática: Curva ABC / OCP 03.02.36.01</small></div><div class="picking-legend"><span><i class="a"></i>A</span><span><i class="b"></i>B</span><span><i class="c"></i>C</span></div></div><div class="picking-plan" id="pickingPlan"></div></div><div class="picking-audit"><strong>Base única:</strong> o Layout reutiliza o Picking calculado na Curva ABC. Marketplace, barris, BAGs e ativos de giro ficam fora; cada SKU elegível recebe posição antes da duplicação de alto giro e o Flow Rack recebe a cauda extrema da Curva C.</div></div>`;
+    panel.innerHTML=`<div class="picking-layout"><div class="picking-toolbar"><div class="filter-group"><label>Mês</label><select id="pickingMonth"></select></div><div class="filter-group"><label>Família</label><select id="pickingFamily"><option value="">Todas</option></select></div><div class="filter-group"><label>Curva</label><select id="pickingCurve"><option value="">Todas</option><option>A</option><option>B</option><option>C</option></select></div><div class="toolbar-spacer"></div><button id="printPickingLayout" class="primary-button" type="button" disabled>Imprimir layout</button><div class="sync-badge" title="O Layout reutiliza a Curva ABC do Picking do mesmo mês"><i></i><strong>Sincronizado com Curva ABC</strong><small>OCP reaproveitado</small></div></div><div class="picking-months" id="pickingMonths"></div><div class="picking-kpis"><div class="picking-kpi"><span>Ruas físicas</span><strong>18</strong></div><div class="picking-kpi"><span>Vagas de rua</span><strong>207</strong><small id="pickUsed"></small></div><div class="picking-kpi"><span>SKUs no layout</span><strong id="pickSkus">—</strong></div><div class="picking-kpi"><span>Múltiplas vagas</span><strong id="pickMulti">—</strong></div></div><div class="panel picking-map-panel"><div class="panel-heading"><div><h2>Mapa do Picking</h2><small class="picking-map-note">207 vagas físicas • Flow Rack complementar • fonte automática: Curva ABC / OCP 03.02.36.01</small></div><div class="picking-legend"><span><i class="a"></i>A</span><span><i class="b"></i>B</span><span><i class="c"></i>C</span></div></div><div class="picking-plan" id="pickingPlan"></div></div><div class="picking-audit"><strong>Base única:</strong> o Layout reutiliza o Picking calculado na Curva ABC. Marketplace, barris, BAGs e ativos de giro ficam fora; cada SKU elegível recebe posição antes da duplicação de alto giro e o Flow Rack recebe a cauda extrema da Curva C.</div></div>`;
+    $('printPickingLayout').onclick=printLayout;
     $('pickingMonth').onchange=e=>{L.month=e.target.value;loadMonth().catch(er=>showToast(er.message,true));};
     $('pickingFamily').onchange=e=>{L.family=e.target.value;renderPlan();};
     $('pickingCurve').onchange=e=>{L.curve=e.target.value;renderPlan();};
@@ -29,11 +30,29 @@
   function renderFilters(){const sel=$('pickingFamily');if(!sel)return;const fams=[...new Set(L.items.map(familyName))].sort((a,b)=>a.localeCompare(b,'pt-BR'));const cur=L.family;sel.innerHTML='<option value="">Todas</option>'+fams.map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join('');L.family=fams.includes(cur)?cur:'';sel.value=L.family;}
 
   async function loadMonth(){
+    const month=L.month;
+    $('printPickingLayout').disabled=true;
     renderMonths();
-    if(!monthInfo(L.month)){L.items=[];L.plan=null;renderFilters();renderPlan();return;}
-    let d=L.cache.get(L.month);
-    if(!d){d=await lapi('get',{month:L.month});L.cache.set(L.month,d);}
-    L.items=d.items||[];L.plan=d.plan||null;renderFilters();renderPlan();
+    if(!monthInfo(month)){L.items=[];L.plan=null;L.loadedMonth=null;renderFilters();renderPlan();return;}
+    let d=L.cache.get(month);
+    if(!d){d=await lapi('get',{month});L.cache.set(month,d);}
+    if(month!==L.month)return;
+    L.items=d.items||[];L.plan=d.plan||null;L.loadedMonth=month;renderFilters();renderPlan();
+    $('printPickingLayout').disabled=!L.plan||!L.items.length;
+  }
+
+  async function printLayout(){
+    if(!L.plan||!L.items.length||L.loadedMonth!==L.month)return;
+    const button=$('printPickingLayout'),canvas=$('pickingPlan').querySelector('.croqui-canvas');
+    if(!canvas)return;
+    const clone=canvas.cloneNode(true);
+    clone.querySelectorAll('.filtered-out').forEach(x=>x.classList.remove('filtered-out'));
+    clone.querySelectorAll('[tabindex]').forEach(x=>x.removeAttribute('tabindex'));
+    const snapshot={mapHtml:clone.outerHTML,month:L.loadedMonth,usedSlots:L.plan.used_slots||0,overflow:(L.plan.overflow||[]).length};
+    button.disabled=true;
+    try{const {printPickingLayout}=await import('./layout-picking-print.mjs?v=20261110-1');await printPickingLayout(snapshot);}
+    catch(error){showToast(error.message||'Não foi possível imprimir o layout.',true);}
+    finally{button.disabled=!L.plan||!L.items.length||L.loadedMonth!==L.month;}
   }
 
   function renderSlot(slot,label){const cell=document.createElement('div');if(!slot){cell.className='picking-slot empty';cell.title='Vaga livre';return cell;}cell.className=`picking-slot ${String(slot.curve_class).toLowerCase()} ${slotMatches(slot)?'':'filtered-out'}`;cell.innerHTML=`<span>${esc(slot.sku_code)}</span>`;cell.title=`${label} • posição ${slot.position}\n${slot.sku_code} • ${slot.sku_name}\n${slot.family_label} • Curva ${slot.curve_class}\n${fmt.format(Number(slot.volume_hl||0))} HL`;return cell;}
