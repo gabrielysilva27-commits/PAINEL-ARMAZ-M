@@ -73,7 +73,7 @@
   function ensureLayoutScript() {
     if (window.__pickingLayout) return Promise.resolve(window.__pickingLayout);
     if (layoutScriptPromise) return layoutScriptPromise;
-    layoutScriptPromise = loadScript('layout-picking-lite.js?v=20260916-1').then(() => window.__pickingLayout).catch(error=>{layoutScriptPromise=null;throw error;});
+    layoutScriptPromise = loadScript('layout-picking-lite.js?v=20261110-print-1').then(() => window.__pickingLayout).catch(error=>{layoutScriptPromise=null;throw error;});
     return layoutScriptPromise;
   }
 
