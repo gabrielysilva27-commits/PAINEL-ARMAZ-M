@@ -1,4 +1,4 @@
-import {productLabel} from './product-label.mjs?v=20261110-fit-2';
+import {productLabel} from './product-label.mjs?v=20261110-batch-1';
 import {fittedFont} from './text-fit.mjs';
 import {batchLabels,batchDocument,printBatch} from './batch-print.mjs?v=20261110-batch-1';
 const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/bo-api';

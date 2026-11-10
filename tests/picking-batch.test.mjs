@@ -17,3 +17,7 @@ test('missing OCP description or volume blocks the whole batch rather than dropp
  assert.throws(()=>batchLabels([{code:'9',product:{code:'9',description:'SEM VOLUME'}}]),/códigos: 9/);
  assert.throws(()=>batchLabels([]),/não possui/);
 });
+test('Promax PET labels supply litres and preserve flavour distinctions',()=>{
+ const labels=batchLabels([{code:'13065',product:{code:'13065',description:'H2OH LIMONETO PET 1,5 SHRINK C/06 NPAL',packaging:'026 - PET 1,5'}},{code:'8418',product:{code:'8418',description:'PEPSI COLA PET 1500 CX06',packaging:'PET 1,5'}}]);
+ assert.equal(labels[0].size,'1,5L');assert.equal(labels[0].name,'H2OH LIMONETO');assert.equal(labels[1].name,'PEPSI COLA');assert.equal(labels[1].size,'1,5L');
+});
