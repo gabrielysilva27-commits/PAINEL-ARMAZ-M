@@ -30,16 +30,18 @@ function resetProduct(){sequence++;$('preview').hidden=true;$('originalWrap').hi
 $('codeInput').addEventListener('input',resetProduct);
 $('productForm').onsubmit=async event=>{event.preventDefault();resetProduct();const current=sequence;$('message').textContent='Buscando na OCP…';$('searchButton').disabled=true;try{const {product}=await call('picking_product',{code:$('codeInput').value.trim()});if(current!==sequence)return;if(!product){$('message').textContent='Código não encontrado na base OCP. Nenhuma placa foi gerada.';return;}const label=productLabel(product);$('skuText').textContent=label.code;$('name').firstElementChild.textContent=label.name;$('details').firstElementChild.textContent=label.details;$('size').firstElementChild.textContent=label.size;$('original').textContent=label.original;$('originalWrap').hidden=false;$('preview').hidden=false;$('source').textContent='Base OCP · '+product.reference_date.split('-').reverse().join('/');fitSign();scalePreview();$('printButton').disabled=!label.size;$('message').textContent=label.size?'':'O volume não está identificado na OCP. Verifique o cadastro antes de imprimir.';}catch(error){if(current===sequence)$('message').textContent=error.message;}finally{$('searchButton').disabled=false;}};
 $('printButton').onclick=()=>{if(!$('printButton').disabled)window.print();};
-$('printPickingButton').onclick=async()=>{
- const button=$('printPickingButton');button.disabled=true;$('message').textContent='Preparando as placas do layout…';
+async function printLayoutArea(area){
+ const buttons=[$('printPickingButton'),$('printFlowButton')];buttons.forEach(button=>button.disabled=true);$('message').textContent='Preparando as placas do '+(area==='flow'?'Flow Rack':'picking')+'…';
  try{
-  const response=await fetch('https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/layout-api',{method:'POST',headers:{'Content-Type':'application/json','x-bo-token':token},body:JSON.stringify({action:'picking_plates'})});
+  const response=await fetch('https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/layout-api',{method:'POST',headers:{'Content-Type':'application/json','x-bo-token':token},body:JSON.stringify({action:'picking_plates',area})});
   const data=await response.json();if(!response.ok)throw new Error(data.error||'Não foi possível carregar o layout.');
   const labels=batchLabels(data.positions||[]);
-  $('message').textContent=labels.length+' placas · layout '+data.month.split('-').reverse().join('/')+' · uma folha A4 paisagem por posição.';
+  $('message').textContent=labels.length+' placas · '+(area==='flow'?'Flow Rack':'Picking')+' · layout '+data.month.split('-').reverse().join('/')+' · uma folha A4 paisagem por posição.';
   await printBatch(batchDocument(labels,measure));
- }catch(error){$('message').textContent=error.message;}finally{button.disabled=false;}
-};
+ }catch(error){$('message').textContent=error.message;}finally{buttons.forEach(button=>button.disabled=false);}
+}
+$('printPickingButton').onclick=()=>printLayoutArea('picking');
+$('printFlowButton').onclick=()=>printLayoutArea('flow');
 window.addEventListener('beforeprint',fitSign);window.addEventListener('afterprint',fitSign);
 $('loginForm').onsubmit=async event=>{event.preventDefault();$('loginButton').disabled=true;try{const data=await call('pin_login',{conferencer_id:$('conferencerSelect').value,pin:$('pinInput').value},false);token=data.token;sessionStorage.setItem('bo_token',token);$('pinInput').value='';enter(data.conferencer);}catch(error){$('message').textContent=error.message;}finally{$('loginButton').disabled=false;}};
 $('logout').onclick=async()=>{try{await call('bo_logout');}catch{}token='';sessionStorage.removeItem('bo_token');sessionStorage.removeItem('nri_conf_token');resetProduct();$('workView').hidden=true;$('identity').hidden=true;$('loginView').hidden=false;};

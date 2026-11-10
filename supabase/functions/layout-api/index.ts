@@ -181,7 +181,7 @@ async function requireConferencer(req:Request){
  const {data:session,error}=await db.from("bo_conferencer_sessions").select("conferencer_id").eq("token_hash",await sha256(token)).gt("expires_at",new Date().toISOString()).maybeSingle();if(error)throw error;if(!session)return null;
  const {data:user,error:ue}=await db.from("bo_conferencers").select("id").eq("id",session.conferencer_id).eq("active",true).maybeSingle();if(ue)throw ue;return user;
 }
-async function pickingPlates(){
+async function pickingPlates(area='picking'){
  const current=new Date().toLocaleDateString("sv-SE",{timeZone:"America/Sao_Paulo"}).slice(0,7)+"-01";
  const [layout,abc]=await Promise.all([
   db.from("picking_layout_months").select("reference_month").eq("status","imported").lte("reference_month",current).order("reference_month",{ascending:false}).limit(1),
@@ -190,14 +190,14 @@ async function pickingPlates(){
  if(layout.error)throw layout.error;if(abc.error)throw abc.error;
  const month=[...(layout.data||[]),...(abc.data||[])].map(x=>String(x.reference_month).slice(0,7)).sort().at(-1);
  if(!month)throw new Error("Nenhum layout disponível para impressão.");
- const {plan,source}=await loadMonth(month),positions=platePositions(plan);
+ const {plan,source}=await loadMonth(month),positions=platePositions(plan,area);
  if(!positions.length)throw new Error("O layout não possui posições preenchidas.");
  const codes=[...new Set(positions.map(x=>x.code))];
  const {data:products,error}=await db.rpc("picking_plate_products",{p_codes:codes});if(error)throw error;
  const byCode=new Map((products||[]).map((x:any)=>[String(x.code),x]));
- return {month,source,positions:positions.map(x=>({...x,product:byCode.get(x.code)||null}))};
+ return {month,source,area,positions:positions.map(x=>({...x,product:byCode.get(x.code)||null}))};
 }
-Deno.serve(async(req:Request)=>{if(req.method==="OPTIONS")return new Response("ok",{headers:cors});if(req.method!=="POST")return json({error:"Método não permitido"},405);try{const body=await req.json();if(body?.action==="picking_plates"){if(!await requireConferencer(req))return json({error:"Sessão do conferente inválida ou expirada."},401);return json(await pickingPlates());}const user=await requireSession(req);if(!user)return json({error:"Sessão inválida ou expirada"},401);const action=String(body?.action||"");if(["import","catalog_import"].includes(action)&&user.role!=="admin")return json({error:"Acesso restrito à administração."},403);
+Deno.serve(async(req:Request)=>{if(req.method==="OPTIONS")return new Response("ok",{headers:cors});if(req.method!=="POST")return json({error:"Método não permitido"},405);try{const body=await req.json();if(body?.action==="picking_plates"){if(!await requireConferencer(req))return json({error:"Sessão do conferente inválida ou expirada."},401);return json(await pickingPlates(String(body.area||'picking')));}const user=await requireSession(req);if(!user)return json({error:"Sessão inválida ou expirada"},401);const action=String(body?.action||"");if(["import","catalog_import"].includes(action)&&user.role!=="admin")return json({error:"Acesso restrito à administração."},403);
   if(action==="months"){const [{data:l,error:le},{data:a,error:ae}]=await Promise.all([db.from("picking_layout_months").select("reference_month,source_file,status,generated_at,method_version").order("reference_month"),db.from("abc_months").select("reference_month,status").eq("status","imported").order("reference_month")]);if(le)throw le;if(ae)throw ae;const map=new Map<string,any>();for(const x of a||[])map.set(String(x.reference_month).slice(0,10),{reference_month:x.reference_month,status:"imported",source:"abc"});for(const x of l||[])map.set(String(x.reference_month).slice(0,10),{...x,source:"layout"});return json({months:[...map.values()].sort((x,y)=>String(x.reference_month).localeCompare(String(y.reference_month))),total_slots:TOTAL_SLOTS,street_count:TOTAL_STREETS,slots_per_street:SLOTS,method_version:METHOD_VERSION});}
   if(action==="get"){const out=await loadMonth(String(body.month||""));return json({month:normalizeMonth(String(body.month||"")),total_slots:TOTAL_SLOTS,street_count:TOTAL_STREETS,slots_per_street:SLOTS,method_version:METHOD_VERSION,...out});}
   if(action==="catalog_status"){const {count,error}=await db.from("product_catalog").select("sku_code",{count:"exact",head:true});if(error)throw error;return json({count:count||0});}
