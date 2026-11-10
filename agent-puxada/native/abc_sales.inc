@@ -59,17 +59,24 @@ static bool FillABCSales(HWND hwnd,const std::wstring* values){
   bool geral=false;for(int i=0;i<45;i++){Sleep(80);if(Read031120Value(*quebra)==L"Geral"||Read031120Value(*quebra)==L"GERAL"||Read031120Value(*quebra)==L"geral"){geral=true;break;}if(!ClickControl(*quebra)||!Key(VK_DOWN)||!Key(VK_DOWN,true)||!Key(VK_RETURN)||!Key(VK_RETURN,true))return false;}
   if(!geral)return false;
   // Quebra changes can rebuild the document. Reacquire every field.
-  controls=Controls(hwnd);dateLabel=nullptr;
-  for(const auto& c:controls)if(c.name==L"data"&&c.rect.top>window.top+160&&c.rect.left>window.left+(window.right-window.left)/2)dateLabel=&c;
-  ABC_SALES_ISSUE=L"date-label";if(!dateLabel)return false;
   std::vector<VisibleControl> dates;
-  for(const auto& c:controls)if(c.type==UIA_EditControlTypeId&&c.rect.left>=dateLabel->rect.right-4&&abs((c.rect.top+c.rect.bottom)-(dateLabel->rect.top+dateLabel->rect.bottom))<=24)dates.push_back(c);
+  for(int retry=0;retry<15;retry++){
+    Sleep(200);controls=Controls(hwnd);dates.clear();
+    for(const auto& c:controls){
+      if(c.type!=UIA_EditControlTypeId||c.rect.top<window.top+160||c.rect.left<window.left+(window.right-window.left)/2)continue;
+      const auto value=Read031120Value(c);
+      const bool date=value.size()==10&&value[2]==L'/'&&value[5]==L'/'&&std::all_of(value.begin(),value.end(),[](wchar_t ch){return ch==L'/'||(ch>=L'0'&&ch<=L'9');});
+      if(date)dates.push_back(c);
+    }
+    if(dates.size()==2)break;
+  }
   std::sort(dates.begin(),dates.end(),[](const VisibleControl&a,const VisibleControl&b){return a.rect.left<b.rect.left;});
   ABC_SALES_ISSUE=L"date-fields:"+std::to_wstring(dates.size());if(dates.size()!=2)return false;
+  if(abs(dates[0].rect.top-dates[1].rect.top)>8)return false;
   if(!Fill031120Control(dates[0],values[0])||!Fill031120Control(dates[1],values[1]))return false;
   // All brand/type/packaging ranges remain general, including reused forms.
   std::vector<VisibleControl> ranges;
-  for(const auto& c:controls)if(c.type==UIA_EditControlTypeId&&c.rect.left>=dateLabel->rect.right-4&&c.rect.top>dates[0].rect.bottom&&c.rect.bottom<=dates[0].rect.bottom+140)ranges.push_back(c);
+  for(const auto& c:controls)if(c.type==UIA_EditControlTypeId&&c.rect.left>=dates[0].rect.left-4&&c.rect.top>dates[0].rect.bottom&&c.rect.bottom<=dates[0].rect.bottom+140)ranges.push_back(c);
   std::sort(ranges.begin(),ranges.end(),[](const VisibleControl&a,const VisibleControl&b){if(abs(a.rect.top-b.rect.top)>8)return a.rect.top<b.rect.top;return a.rect.left<b.rect.left;});
   ABC_SALES_ISSUE=L"general-ranges:"+std::to_wstring(ranges.size());if(ranges.size()!=6)return false;
   for(size_t i=0;i<ranges.size();++i)if(!Fill031120Control(ranges[i],i%2?L"999":L"0"))return false;
