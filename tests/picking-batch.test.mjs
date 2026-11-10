@@ -3,7 +3,12 @@ import {platePositions} from '../supabase/functions/layout-api/plate-positions.m
 import {batchLabels,batchDocument} from '../conferente/placas/batch-print.mjs';
 test('street order, repeated codes, empty slots and two-column Flow Rack match positions',()=>{
  const positions=platePositions({caixaria:[{id:'CX1',slots:[{sku_code:'1'},null,{sku_code:'1'}]}],main:[{id:'R1',slots:[{sku_code:'2'}]}],front:[{id:'PF1',slots:[{sku_code:'3'}]}],flow:{items:[{sku_code:'4'},{sku_code:'5'},{sku_code:'6'}]},overflow:[{sku_code:'99'}]});
- assert.deepEqual(positions.map(x=>[x.street,x.position,x.code]),[['CX1',1,'1'],['CX1',3,'1'],['R1',1,'2'],['PF1',1,'3'],['FR1',1,'4'],['FR1',2,'6'],['FR2',1,'5']]);
+ assert.deepEqual(positions.map(x=>[x.street,x.position,x.code]),[['R1',1,'2'],['PF1',1,'3'],['FR1',1,'4'],['FR1',2,'6'],['FR2',1,'5']]);
+});
+test('all caixaria lanes are excluded while the same SKU elsewhere keeps its signs',()=>{
+ const caixaria=Array.from({length:7},(_,i)=>({id:'CX'+(i+1),slots:Array.from({length:12},()=>({sku_code:'13201'}))}));
+ const positions=platePositions({caixaria,main:[{id:'R1',slots:[{sku_code:'13201'},{sku_code:'13201'}]}],front:[],flow:{items:[]}});
+ assert.equal(positions.length,2);assert.ok(positions.every(x=>x.street==='R1'&&x.code==='13201'));
 });
 test('one page per occupied position preserves repetitions and escapes source text',()=>{
  const product={code:'1',description:'PRODUTO ZERO <B> LATA 350ML'};

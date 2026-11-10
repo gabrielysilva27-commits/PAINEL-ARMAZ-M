@@ -1,6 +1,7 @@
 export function platePositions(plan){
  const positions=[];
- for(const street of [...(plan.caixaria||[]),...(plan.main||[]),...(plan.front||[])]){
+ // Caixaria (CX1–CX7) does not use picking signs. Exclude the area, not its SKUs.
+ for(const street of [...(plan.main||[]),...(plan.front||[])]){
   (street.slots||[]).forEach((slot,index)=>{if(slot?.sku_code)positions.push({street:street.id,position:slot.position||index+1,code:String(slot.sku_code)});});
  }
  // Same two-column arrangement used by the Layout's Flow Rack.
