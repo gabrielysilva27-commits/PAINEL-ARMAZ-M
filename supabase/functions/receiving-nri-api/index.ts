@@ -656,8 +656,10 @@ Deno.serve(async(req:Request)=>{
     return json(req,{users:data||[]});
   }
   if(a==="gate_login"){if(!await consumeLoginAttempt("receiving-nri-api",b.user_id))return json(req,{error:"Muitas tentativas. Aguarde 15 minutos."},429);
-    const userId=clean(b.user_id,80),pin=clean(b.pin,10);if(!userId)throw new Error("Selecione seu nome.");if(!/^\d{4}$/.test(pin))throw new Error("Informe o PIN de 4 dígitos.");
-    const {data:g,error}=await db.from("receiving_gate_users").select("id,display_name,pin_hash,active").eq("id",userId).maybeSingle();if(error)throw error;
+    const userId=clean(b.user_id,80),pin=clean(b.pin,12);if(!userId)throw new Error("Selecione seu nome.");
+    const {data:g,error}=await db.from("receiving_gate_users").select("id,display_name,pin_hash,active,master_app_user_id").eq("id",userId).maybeSingle();if(error)throw error;
+    if(g?.master_app_user_id){const {data:admin,error}=await db.from("app_users").select("id").eq("id",g.master_app_user_id).eq("active",true).eq("role","admin").maybeSingle();if(error)throw error;if(!admin)return json(req,{error:"Acesso mestre indisponível."},401);}
+    if(!(g?.master_app_user_id?/^[A-Za-z0-9]{3,12}$/:/^\d{4}$/).test(pin))throw new Error("Informe um PIN válido.");
     if(!g||!g.active||!g.pin_hash||!await verifyGatePin(pin,g.pin_hash))return json(req,{error:"Nome ou PIN da Portaria inválido."},401);
     if(!String(g.pin_hash).startsWith("pbkdf2-sha256$")){const {error:upgradeError}=await db.from("receiving_gate_users").update({pin_hash:await gatePinHash(pin)}).eq("id",g.id).eq("pin_hash",g.pin_hash);if(upgradeError)throw upgradeError;}
     const token=crypto.randomUUID()+crypto.randomUUID();const tokenHash=await hash(token);const expires=new Date(Date.now()+12*60*60*1000).toISOString();

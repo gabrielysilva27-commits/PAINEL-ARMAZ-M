@@ -1,4 +1,4 @@
-import { createPinRecord, verifyPinRecord } from "./pin-crypto.mjs";
+import { createPinRecord, verifyPinRecord, validPinInput } from "./pin-crypto.mjs";
 import { createClient } from "jsr:@supabase/supabase-js@2.57.4";
 import {
   LOCATIONS, MOVEMENT_TYPES, REASONS, RESPONSIBILITIES, SHIFTS,
@@ -114,10 +114,27 @@ const occurrenceSelect="id,bo_number,occurrence_date,occurrence_time,shift,movem
 async function hydrateSources(rows:any[]){
   const ids=[...new Set((rows||[]).map((r:any)=>Number(r.source_occurrence_id)).filter((id:number)=>Number.isInteger(id)&&id>0))];
   if(!ids.length)return rows||[];
-  const {data,error}=await db.from("bo_occurrences").select("id,bo_number,shift,record_kind,confront_state,status").in("id",ids);
+  const {data,error}=await db.from("bo_occurrences").select("id,bo_number,shift,record_kind,confront_state,status,occurrence_date").in("id",ids);
   if(error)throw error;
   const byId=new Map((data||[]).map((r:any)=>[Number(r.id),r]));
   return (rows||[]).map((r:any)=>({...r,source:r.source_occurrence_id?byId.get(Number(r.source_occurrence_id))||null:null}));
+}
+
+async function hydrateOfficials(rows:any[]){
+  const sourceIds=[...new Set((rows||[]).filter((r:any)=>r.record_kind==="turn_c_origin").map((r:any)=>Number(r.id)).filter((id:number)=>Number.isInteger(id)&&id>0))];
+  if(!sourceIds.length)return rows||[];
+  const {data,error}=await db.from("bo_occurrences")
+    .select(occurrenceSelect)
+    .in("source_occurrence_id",sourceIds)
+    .eq("record_kind","turn_a_confront")
+    .order("id",{ascending:false});
+  if(error)throw error;
+  const bySource=new Map<number,any>();
+  for(const official of data||[]){
+    const sourceId=Number(official.source_occurrence_id),current=bySource.get(sourceId);
+    if(!current||(current.status==="cancelled"&&official.status!=="cancelled"))bySource.set(sourceId,official);
+  }
+  return (rows||[]).map((r:any)=>({...r,official:r.record_kind==="turn_c_origin"?bySource.get(Number(r.id))||null:null}));
 }
 
 async function myOccurrences(conferencer:any){
@@ -227,67 +244,165 @@ async function cancelOccurrence(conferencer:any,body:any){
   return data;
 }
 
-async function dashboard(body:any){
-  let query=db.from("bo_occurrences").select(occurrenceSelect).order("occurrence_date",{ascending:false}).order("id",{ascending:false}).limit(500);
-  const status=String(body?.status||"all");if(["pending","validated","returned","cancelled"].includes(status))query=query.eq("status",status);
-  if(/^\d{4}-\d{2}-\d{2}$/.test(String(body?.from||"")))query=query.gte("occurrence_date",body.from);
-  if(/^\d{4}-\d{2}-\d{2}$/.test(String(body?.to||"")))query=query.lte("occurrence_date",body.to);
-  const {data,error}=await query;if(error)throw error;
-  const search=normalizeMatch(body?.search||"");
-  const rows=search?(data||[]).filter((row:any)=>normalizeMatch([row.bo_number,row.subject_type,row.factory_name,row.employee_name,row.employee_function,row.reason,row.location,row.conferencer?.display_name,...(row.items||[]).flatMap((x:any)=>[x.sku_code,x.sku_name])].join(" ")).includes(search)):(data||[]);
-  const counts={pending:0,validated:0,returned:0};for(const row of data||[]){if(row.record_kind==="turn_c_origin")continue;if(row.status in counts)(counts as any)[row.status]++;}
-  return{occurrences:await hydrateSources(rows),counts};
+function historyCutoffDate(){
+  const d=new Date();
+  d.setUTCDate(d.getUTCDate()-30);
+  return d.toISOString().slice(0,10);
 }
+function maxDate(a:string,b:string){return a&&a>b?a:b;}
 
+async function dashboard(body:any){
+  const cutoff=historyCutoffDate();
+  const requestedFrom=/^\d{4}-\d{2}-\d{2}$/.test(String(body?.from||""))?String(body.from):"";
+  const requestedTo=/^\d{4}-\d{2}-\d{2}$/.test(String(body?.to||""))?String(body.to):"";
+  const from=requestedFrom?maxDate(requestedFrom,cutoff):cutoff;
+  const to=requestedTo||"";
+
+  // Controle trabalha com uma ocorrência lógica por linha:
+  // standard = a própria linha; Turno C = origem C. O confronto A é detalhe da origem.
+  let query=db.from("bo_occurrences")
+    .select(occurrenceSelect)
+    .neq("record_kind","turn_a_confront")
+    .gte("occurrence_date",from)
+    .order("occurrence_date",{ascending:false})
+    .order("id",{ascending:false})
+    .limit(500);
+  const status=String(body?.status||"all");
+  if(["pending","validated","returned","cancelled"].includes(status))query=query.eq("status",status);
+  if(to)query=query.lte("occurrence_date",to);
+  const {data,error}=await query;if(error)throw error;
+
+  let countQuery=db.from("bo_occurrences")
+    .select("status,record_kind")
+    .neq("record_kind","turn_a_confront")
+    .gte("occurrence_date",from)
+    .limit(5000);
+  if(to)countQuery=countQuery.lte("occurrence_date",to);
+  const {data:countRows,error:countError}=await countQuery;if(countError)throw countError;
+
+  const logicalRows=await hydrateOfficials(data||[]);
+  const search=normalizeMatch(body?.search||"");
+  const rows=search?logicalRows.filter((row:any)=>{
+    const official=row.official||null;
+    const fields=[
+      row.bo_number,row.subject_type,row.factory_name,row.employee_name,row.employee_function,row.reason,row.location,row.conferencer?.display_name,
+      ...(row.items||[]).flatMap((x:any)=>[x.sku_code,x.sku_name]),
+      official?.bo_number,official?.subject_type,official?.factory_name,official?.employee_name,official?.employee_function,official?.reason,official?.location,official?.conferencer?.display_name,
+      ...(official?.items||[]).flatMap((x:any)=>[x.sku_code,x.sku_name]),
+    ];
+    return normalizeMatch(fields.join(" ")).includes(search);
+  }):logicalRows;
+
+  const counts={pending:0,validated:0,returned:0};
+  for(const row of countRows||[]){if(row.status in counts)(counts as any)[row.status]++;}
+  return{occurrences:rows,counts,history_cutoff:cutoff};
+}
 async function reviewOccurrence(user:any,body:any){
   const id=Number(body?.id),decision=String(body?.decision||"");
   if(!Number.isInteger(id)||id<=0||!["validated","returned"].includes(decision))throw new Error("Decisão inválida.");
-  const {data:row,error:re}=await db.from("bo_occurrences").select("id,record_kind").eq("id",id).maybeSingle();
+  const {data:row,error:re}=await db.from("bo_occurrences").select("id,record_kind,confront_state,status").eq("id",id).maybeSingle();
   if(re)throw re;if(!row)throw new Error("B.O. não encontrado.");
-  if(row.record_kind==="turn_c_origin")throw new Error("O B.O. do Turno C é registro de origem. Valide apenas o confronto oficial do Turno A.");
+  let targetId=Number(row.id);
+  if(row.record_kind==="turn_c_origin"){
+    if(row.confront_state!=="completed")throw new Error("Este B.O. do Turno C ainda aguarda confronto do Turno A.");
+    const {data:official,error:oe}=await db.from("bo_occurrences")
+      .select("id,status")
+      .eq("source_occurrence_id",row.id)
+      .eq("record_kind","turn_a_confront")
+      .neq("status","cancelled")
+      .order("id",{ascending:false})
+      .limit(1)
+      .maybeSingle();
+    if(oe)throw oe;if(!official)throw new Error("Confronto oficial do Turno A não encontrado.");
+    targetId=Number(official.id);
+  }
   const comment=cleanText(body?.comment,2000);
   if(decision==="returned"&&!comment)throw new Error("Informe o motivo da devolução.");
   const values={status:decision,validation_comment:comment||null,validated_by:user.id,validated_at:new Date().toISOString(),updated_at:new Date().toISOString()};
-  const {data,error}=await db.from("bo_occurrences").update(values).eq("id",id).eq("status","pending").select("id,bo_number,status").maybeSingle();
+  const {data,error}=await db.from("bo_occurrences").update(values).eq("id",targetId).eq("status","pending").select("id,bo_number,status,source_occurrence_id").maybeSingle();
   if(error)throw error;if(!data)throw new Error("O B.O. já foi tratado ou não existe.");return data;
 }
 
 async function bulkValidateOccurrences(user:any,body:any){
   const ids=[...new Set((Array.isArray(body?.ids)?body.ids:[]).map((x:any)=>Number(x)).filter((id:number)=>Number.isInteger(id)&&id>0))].slice(0,500);
   if(!ids.length)throw new Error("Selecione ao menos um B.O. para validar.");
+
+  const {data:selectedRows,error:selectedError}=await db.from("bo_occurrences")
+    .select("id,record_kind,confront_state,status")
+    .in("id",ids);
+  if(selectedError)throw selectedError;
+
+  const targetBySelected=new Map<number,number>();
+  const confrontedOrigins=(selectedRows||[]).filter((row:any)=>row.status==="pending"&&row.record_kind==="turn_c_origin"&&row.confront_state==="completed").map((row:any)=>Number(row.id));
+  for(const row of selectedRows||[]){
+    if(row.status!=="pending")continue;
+    if(row.record_kind!=="turn_c_origin")targetBySelected.set(Number(row.id),Number(row.id));
+  }
+
+  if(confrontedOrigins.length){
+    const {data:officials,error:officialError}=await db.from("bo_occurrences")
+      .select("id,source_occurrence_id,status")
+      .in("source_occurrence_id",confrontedOrigins)
+      .eq("record_kind","turn_a_confront")
+      .neq("status","cancelled")
+      .order("id",{ascending:false});
+    if(officialError)throw officialError;
+    const latestBySource=new Map<number,any>();
+    for(const official of officials||[]){
+      const sourceId=Number(official.source_occurrence_id);
+      if(!latestBySource.has(sourceId))latestBySource.set(sourceId,official);
+    }
+    for(const sourceId of confrontedOrigins){
+      const official=latestBySource.get(sourceId);
+      if(official&&official.status==="pending")targetBySelected.set(sourceId,Number(official.id));
+    }
+  }
+
+  const targetIds=[...new Set(targetBySelected.values())];
+  if(!targetIds.length)return{validated:[],validated_count:0,skipped_count:ids.length};
+
   const now=new Date().toISOString();
   const values={status:"validated",validation_comment:null,validated_by:user.id,validated_at:now,updated_at:now};
   const {data,error}=await db.from("bo_occurrences")
     .update(values)
-    .in("id",ids)
+    .in("id",targetIds)
     .eq("status","pending")
-    .neq("record_kind","turn_c_origin")
-    .select("id,bo_number,status");
+    .select("id,bo_number,status,source_occurrence_id");
   if(error)throw error;
+
   const validated=data||[];
-  return{validated,validated_count:validated.length,skipped_count:Math.max(0,ids.length-validated.length)};
+  const successfulTargets=new Set(validated.map((row:any)=>Number(row.id)));
+  const validatedLogical=[...targetBySelected.entries()].filter(([,targetId])=>successfulTargets.has(Number(targetId))).length;
+  return{validated,validated_count:validatedLogical,skipped_count:Math.max(0,ids.length-validatedLogical)};
 }
 
 async function validatedForExport(body:any){
+  const cutoff=historyCutoffDate();
   const all:any[]=[];
   for(let from=0;;from+=500){
-    let query=db.from("bo_occurrences").select(occurrenceSelect).eq("status","validated").neq("record_kind","turn_c_origin").order("occurrence_date",{ascending:true}).order("id",{ascending:true}).range(from,from+499);
-    if(/^\d{4}-\d{2}-\d{2}$/.test(String(body?.from||"")))query=query.gte("occurrence_date",body.from);
-    if(/^\d{4}-\d{2}-\d{2}$/.test(String(body?.to||"")))query=query.lte("occurrence_date",body.to);
+    let query=db.from("bo_occurrences").select(occurrenceSelect).eq("status","validated").neq("record_kind","turn_c_origin").gte("occurrence_date",cutoff).order("occurrence_date",{ascending:true}).order("id",{ascending:true}).range(from,from+499);
     const {data,error}=await query;if(error)throw error;all.push(...(data||[]));if((data||[]).length<500)break;
   }
   // Use the validated confrontation quantities once, attributed to the originating shift.
   const exportRows=await hydrateSources(all);
+  const requestedFrom=/^\d{4}-\d{2}-\d{2}$/.test(String(body?.from||""))?String(body.from):"";
+  const from=requestedFrom?maxDate(requestedFrom,cutoff):cutoff;
+  const to=/^\d{4}-\d{2}-\d{2}$/.test(String(body?.to||""))?String(body.to):"";
+  const filteredRows=exportRows.filter((row:any)=>{
+    const logicalDate=row.record_kind==="turn_a_confront"&&row.source?.occurrence_date?row.source.occurrence_date:row.occurrence_date;
+    return (!from||logicalDate>=from)&&(!to||logicalDate<=to);
+  });
   const pa:any[]=[],daily:any[]=[];
-  for(const row of exportRows)for(const item of row.items||[]){
+  for(const row of filteredRows)for(const item of row.items||[]){
     const qty=Number(item.discarded_qty??0),factor=item.factor_hecto==null||item.factor_hecto_commercial==null?null:Number(item.factor_hecto)*Number(item.factor_hecto_commercial),cost=item.average_cost==null?null:Number(item.average_cost);
     const validator=row.validator?.display_name||row.validator?.username||"";
     const subjectType=row.subject_type||"Funcionário";
     const subjectName=subjectType==="Funcionário"?row.employee_name:(subjectType==="Fábrica"?(row.factory_name||"Fábrica"):"Armazém");
     const subjectFunction=subjectType==="Funcionário"?row.employee_function:"";
     const exportShift=row.record_kind==="turn_a_confront"&&row.source?.record_kind==="turn_c_origin"?row.source.shift:row.shift;
+    const exportDate=row.record_kind==="turn_a_confront"&&row.source?.occurrence_date?row.source.occurrence_date:row.occurrence_date;
     pa.push({
-      "Data":row.occurrence_date,
+      "Data":exportDate,
       "Responsável":subjectName,
       "Código":item.sku_code,
       "Descrição do produto":item.sku_name,
@@ -301,10 +416,10 @@ async function validatedForExport(body:any){
     daily.push({
       "Código":item.sku_code,"Produto":item.sku_name,"Situação":situationFromReason(row.reason),"Quantidade":qty,
       "Responsável":subjectName,"Função":subjectFunction,"Área":row.location,"Turno":exportShift,
-      "B.O.":row.bo_number,"Data":row.occurrence_date,"Motivo":row.reason,
+      "B.O.":row.bo_number,"Data":exportDate,"Motivo":row.reason,
     });
   }
-  return{pa,daily,occurrence_count:all.length,item_count:pa.length};
+  return{pa,daily,occurrence_count:filteredRows.length,item_count:pa.length};
 }
 
 async function issuePins(rows:any[]){
@@ -334,18 +449,20 @@ Deno.serve(async(req:Request)=>{
     }
     if(action==="pin_login"){
       const id=cleanText(body?.conferencer_id,60),pin=cleanText(body?.pin,12);
-      const {data:row,error:readError}=await db.from("bo_conferencers").select("id,display_name,pin_salt,pin_hash,failed_attempts,locked_until,active").eq("id",id).eq("active",true).maybeSingle();
+      const {data:row,error:readError}=await db.from("bo_conferencers").select("id,display_name,pin_salt,pin_hash,failed_attempts,locked_until,active,master_app_user_id").eq("id",id).eq("active",true).maybeSingle();
       if(readError){console.error("PIN credential read failed",{code:readError.code});return json(req,{error:"Não foi possível validar o acesso agora. Tente novamente."},503);}
       const locked=!!row?.locked_until&&Date.parse(row.locked_until)>Date.now();
       let verification={valid:false,legacy:false};
-      if(row&&!locked&&/^\d{6}$/.test(pin)){
+      let masterActive=true;
+      if(row?.master_app_user_id){const {data:admin,error}=await db.from("app_users").select("id").eq("id",row.master_app_user_id).eq("active",true).eq("role","admin").maybeSingle();if(error)throw error;masterActive=!!admin;}
+      if(row&&!locked&&masterActive&&validPinInput(pin,row)){
         try{verification=await verifyPinRecord(pin,row);}catch(error){console.error("PIN cryptographic validation failed",{name:error instanceof Error?error.name:"unknown"});return json(req,{error:"Não foi possível validar o acesso agora. Tente novamente."},503);}
       }
       if(!row||!verification.valid){
         if(row&&!locked){const attempts=Number(row.failed_attempts||0)+1;const {error}=await db.from("bo_conferencers").update({failed_attempts:attempts,locked_until:attempts>=MAX_PIN_ATTEMPTS?new Date(Date.now()+LOCK_MINUTES*60000).toISOString():null,updated_at:new Date().toISOString()}).eq("id",row.id);if(error)throw error;}
         return json(req,{error:locked?"Acesso temporariamente bloqueado. Aguarde 15 minutos.":"Conferente ou PIN inválido."},locked?429:401);
       }
-      const update=verification.legacy?await pinRecord(pin):{failed_attempts:0,locked_until:null,updated_at:new Date().toISOString()};
+      const update=verification.legacy?await pinRecord(pin,{master:!!row.master_app_user_id}):{failed_attempts:0,locked_until:null,updated_at:new Date().toISOString()};
       // Compare the credential read above so a concurrent administrative reset wins.
       const {data:confirmed,error:confirmError}=await db.from("bo_conferencers").update(update).eq("id",row.id).eq("pin_hash",row.pin_hash).eq("pin_salt",row.pin_salt).eq("active",true).select("id").maybeSingle();
       if(confirmError)throw confirmError;
@@ -357,8 +474,14 @@ Deno.serve(async(req:Request)=>{
       return json(req,{token,expires_at:expiresAt,conferencer:{id:row.id,display_name:row.display_name}});
     }
 
-    if(["bo_session","catalog_search","employee_search","submit","my_occurrences","confront_queue","confront_submit","resubmit","update_occurrence","delete_occurrence","bo_logout"].includes(action)){
+    if(["bo_session","picking_product","catalog_search","employee_search","submit","my_occurrences","confront_queue","confront_submit","resubmit","update_occurrence","delete_occurrence","bo_logout"].includes(action)){
       const conferencer=await requireBoSession(req);if(!conferencer)return json(req,{error:"PIN expirado. Identifique-se novamente."},401);
+      if(action==="picking_product"){
+        const code=String(body.code||"").replace(/^0+(?=\d)/,"");
+        if(!/^\d{1,12}$/.test(code))return json(req,{error:"Informe um código válido."},400);
+        const {data,error}=await db.rpc("picking_plate_product",{p_code:code});if(error)throw error;
+        return json(req,{product:data?.[0]||null});
+      }
       if(action==="bo_session")return json(req,{conferencer:{id:conferencer.id,display_name:conferencer.display_name}});
       if(action==="bo_logout"){await db.from("bo_conferencer_sessions").delete().eq("id",conferencer.session_id);return json(req,{ok:true});}
       if(action==="catalog_search"){
@@ -388,8 +511,23 @@ Deno.serve(async(req:Request)=>{
     if(action==="admin_delete_occurrence"){
       if(user.role!=="admin")return json(req,{error:"Somente administradores podem excluir B.O.s."},403);
       const id=Number(body?.id);if(!Number.isInteger(id)||id<=0)throw new Error("B.O. inválido.");
-      const {data,error}=await db.rpc("admin_delete_bo_occurrence",{p_id:id,p_deleted_by:user.id});if(error)throw error;
-      return json(req,{ok:true,reference:data});
+      const {data:selected,error:selectError}=await db.from("bo_occurrences").select("id,bo_number,record_kind,source_occurrence_id,status").eq("id",id).maybeSingle();
+      if(selectError)throw selectError;if(!selected)throw new Error("B.O. não encontrado.");
+      const logicalId=selected.record_kind==="turn_a_confront"&&selected.source_occurrence_id?Number(selected.source_occurrence_id):Number(selected.id);
+      const {data:logical,error:logicalError}=await db.from("bo_occurrences").select("id,bo_number,record_kind,status").eq("id",logicalId).maybeSingle();
+      if(logicalError)throw logicalError;if(!logical)throw new Error("B.O. de origem não encontrado.");
+      const now=new Date().toISOString();
+      if(logical.record_kind==="turn_c_origin"){
+        const {error:childError}=await db.from("bo_occurrences").update({status:"cancelled",cancelled_at:now,updated_at:now})
+          .eq("source_occurrence_id",logicalId).eq("record_kind","turn_a_confront").neq("status","cancelled");
+        if(childError)throw childError;
+      }
+      const {data:cancelled,error:cancelError}=await db.from("bo_occurrences").update({status:"cancelled",cancelled_at:now,updated_at:now})
+        .eq("id",logicalId).neq("status","cancelled").select("id,bo_number,status").maybeSingle();
+      if(cancelError)throw cancelError;
+      const {error:auditError}=await db.from("admin_delete_audit").insert({module:"BO",entity_type:"bo_occurrence",entity_id:String(logicalId),reference:logical.bo_number,deleted_by:user.id});
+      if(auditError)throw auditError;
+      return json(req,{ok:true,reference:logical.bo_number,occurrence:cancelled||logical});
     }
     if(!isValidator(user))return json(req,{error:"Sem autorização para acessar o Controle de B.O."},403);
     if(action==="dashboard")return json(req,await dashboard(body));
