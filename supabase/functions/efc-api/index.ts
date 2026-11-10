@@ -1,5 +1,5 @@
 import {ocpRetryGate} from './ocp-cadence.mjs';
-import {pickingSupply} from './picking-supply.mjs';
+import {pickingSupply,supplyCapacities} from './picking-supply.mjs';
 import {ocpRules,withoutIgnoredMaps} from './ocp-exceptions.mjs';
 import {withOcpInputs} from './ocp-inputs.mjs';
 import {ocpDay,ocpJob,ocpHeadersValid,ocpNumber} from './ocp-source.mjs';
@@ -169,9 +169,9 @@ Deno.serve(async req=>{
  if(month>'2026-09'){
  const layoutResponse=await fetch('https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/layout-api',{method:'POST',headers:{'Content-Type':'application/json','x-session-token':req.headers.get('x-session-token')||''},body:JSON.stringify({action:'get',month}),signal:AbortSignal.timeout(30000)});
  const layout=await layoutResponse.json();if(!layoutResponse.ok)throw Error('Layout do Picking indisponível: '+(layout.error||layoutResponse.status));
- // Layout already excludes Marketplace, BAGs and barrels. Never invent a slot.
+ // Start from real layout positions; eligible unregistered products use 1P.
  data.capacity=(layout.items||[]).filter((x:any)=>Number(x.assigned_slots)>0).map((x:any)=>({sku:String(x.sku_code),positions:Number(x.assigned_slots),palletization:null,source:'Layout do Picking '+month}));
- const supplySkus=[...new Set([...(data.capacity||[]).map((x:any)=>x.sku),...data.ocp.map((x:any)=>x.product)])];const [catalog,supplyDays]=await Promise.all([all(()=>db.from('product_catalog').select('sku_code,sku_name,boxes_per_pallet').in('sku_code',supplySkus).order('sku_code')),all(()=>db.from('efc_ocp_days').select('reference_date,status').gte('reference_date',from).lt('reference_date',next).order('reference_date'))]);const supply=pickingSupply(withoutIgnoredMaps(data.ocp,ocpExceptions),data.capacity||[],catalog,supplyDays);data.picking_rows=supply.rows;data.picking_days=supply.daily;}
+ const supplySkus=[...new Set([...(data.capacity||[]).map((x:any)=>x.sku),...data.ocp.map((x:any)=>x.product)])];const [catalog,supplyDays,marketplace]=await Promise.all([all(()=>db.from('product_catalog').select('sku_code,sku_name,boxes_per_pallet,packaging,subtype').in('sku_code',supplySkus).order('sku_code')),all(()=>db.from('efc_ocp_days').select('reference_date,status').gte('reference_date',from).lt('reference_date',next).order('reference_date')),all(()=>db.from('abc_marketplace_products').select('sku_code').eq('active',true).order('sku_code'))]);data.capacity=supplyCapacities(layout.items||[],data.ocp,catalog,marketplace);const supply=pickingSupply(withoutIgnoredMaps(data.ocp,ocpExceptions),data.capacity||[],catalog,supplyDays);data.picking_rows=supply.rows;data.picking_days=supply.daily;}
  data.segmentations=segmentationEmails.map((m:any)=>({...m,date:m.reference_date,rows:withoutIgnoredMaps(m.rows.map((r:any)=>({...r,date:m.reference_date})),ocpExceptions)}));
  data.events=frozenEvents(mergeEvents(data.events||[],events,shared),cycles);
  const covered=new Set(pcd.map((r:any)=>r.reference_date)),planned=(data.pcd||[]).filter((p:any)=>!covered.has(p.date));for(const file of pcd){const snapshot=cycles.find((c:any)=>c.reference_date===file.reference_date);if(snapshot)planned.push(...snapshot.plans);else planned.push(...file.rows);}for(const p of planned){const matching=data.events.filter((e:any)=>e.emission===p.date&&e.plate===String(p.plate).replace(/[^A-Z0-9]/gi,'').toUpperCase());const fleets=[...new Set(matching.map((e:any)=>e.fleet).filter(Boolean))];if(!p.fleet&&fleets.length===1)p.fleet=fleets[0];}data.pcd=withoutIgnoredMaps(planned,ocpExceptions);

@@ -1,6 +1,15 @@
 const sku=v=>String(v??'').replace(/^0+(?=\d)/,'');
 const up=v=>v>0?Math.ceil(v*10-1e-8)/10:0;
 const sum=(rows,key)=>rows.reduce((s,r)=>s+(Number(r[key])||0),0);
+export function supplyCapacities(layout,ocp,catalog,marketplace){
+ const excluded=new Set(marketplace.map(x=>sku(x.sku_code))),products=new Map(catalog.map(p=>[sku(p.sku_code),p]));
+ const positions=new Map(layout.map(x=>[sku(x.sku_code),Number(x.assigned_slots)||1]));
+ const codes=new Set([...positions.keys(),...ocp.map(x=>sku(x.product))]);
+ return [...codes].filter(code=>{
+  const p=products.get(code),text=String((p?.sku_name||'')+' '+(p?.packaging||'')+' '+(p?.subtype||'')).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+  return code&&!excluded.has(code)&&!/(BARRIL|\bKEG\b|\bCHOPP?\b.*\b(?:10|20|30|50)\s*L\b|BAG|\bSACO\b|VASILHAME|ATIVO DE GIRO|MATERIAL)/.test(text);
+ }).map(code=>({sku:code,positions:Math.max(1,positions.get(code)||1),palletization:null,source:positions.has(code)?'Layout do Picking':'Padrão 1P sem posição cadastrada'}));
+}
 // Reabastecimento!D7: excess in pallets; CI10/CJ10: demand below
 // capacity, otherwise demand minus capacity. Both are workbook estimates.
 export function pickingSupply(ocp,capacities,catalog,days){
