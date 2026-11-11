@@ -305,7 +305,7 @@
     $('adminView').classList.remove('hidden');
     $('pageTitle').textContent='Administração';$('pageSubtitle').textContent='Acessos, credenciais e configurações do Painel Armazém.';
     $('adminView').innerHTML=shell();
-    $('adminPeople').onclick=()=>import('./admin-people.mjs?v=20261111-1').then(m=>m.openPeopleAdmin({onSaved:({group})=>['conferencers','forklift','gate'].includes(group)?loadUnifiedPins():undefined})).catch(e=>showToast(e.message||'Não foi possível abrir os cadastros.',true));
+    $('adminPeople').onclick=()=>import('./admin-people.mjs?v=20261111-compact-2').then(m=>m.openPeopleAdmin({onSaved:({group})=>['conferencers','forklift','gate'].includes(group)?loadUnifiedPins():undefined})).catch(e=>showToast(e.message||'Não foi possível abrir os cadastros.',true));
     bindAccess('adminConf',CONFERENTE_URL,CONFERENTE_QR,'Portal do Conferente — B.O. + NRI + Temperatura','QR_Portal_Conferentes.png');
     bindAccess('adminGate',PORTARIA_URL,PORTARIA_QR,'Portaria — Entrada de Carreta','QR_Portaria_Recebimento.png');
     bindAccess('adminFork',EMPILHADOR_URL,EMPILHADOR_QR,'Empilhadores — Descarga + Guarda','QR_Empilhadores_Descarga_Guarda.png');
