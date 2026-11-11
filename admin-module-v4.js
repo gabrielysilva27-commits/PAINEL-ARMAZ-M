@@ -34,7 +34,6 @@
   }
   const pinDirectory={conferencers:[],gate:[],forklift:[]};
   function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-  function userInitials(){return (window.state?.user?.display_name||window.state?.user?.username||'ADM').split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase();}
   function ensureView(){
     if(mounted)return;
     const main=document.querySelector('main');if(!main)return;
@@ -46,9 +45,7 @@
     return '<section class="admin-card"><div class="admin-access"><div><p class="eyebrow">'+tag+'</p><h2>'+title+'</h2><p>'+desc+'</p><div class="admin-url">'+url+'</div><div class="admin-actions"><button class="primary" id="'+prefix+'Copy">Copiar link</button><button id="'+prefix+'Open">Abrir</button><button id="'+prefix+'Print">Imprimir QR</button><button id="'+prefix+'Download">Baixar QR</button></div></div><img class="admin-qr" src="'+qr+'" alt="QR Code '+title+'" /></div></section>';
   }
   function shell(){
-    const u=window.state?.user||{};
     return '<div class="admin-module">'+
-      '<section class="admin-card"><div class="admin-profile-line"><div class="admin-avatar">'+esc(userInitials())+'</div><div><strong>'+esc(u.display_name||u.username||'Administrador')+'</strong><small>ADMINISTRAÇÃO</small></div></div><p>Configurações administrativas e acessos operacionais do Painel Armazém.</p></section>'+
       '<section class="admin-card"><p class="eyebrow">PESSOAS E EQUIPES</p><h2>Cadastro de pessoas</h2><p>Adicione ou edite colaboradores, função, turno e situação. Inclui responsáveis do B.O., conferentes, empilhadores, portaria, Repack, produtividade e usuários do painel.</p><div class="admin-actions"><button class="primary" id="adminPeople">Gerenciar pessoas</button></div></section>'+
       '<div class="admin-role-access-grid">'+
         accessCard('CONFERENTES','Portal do conferente','Um único QR para B.O. Digital, Recebimento / NRI e Temperatura.',''+CONFERENTE_URL,CONFERENTE_QR,'adminConf')+
