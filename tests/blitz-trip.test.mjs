@@ -4,6 +4,16 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {buildTrips,tripStats,resolveTrip} from '../supabase/functions/blitz-api/blitz-trip-core.mjs';
 const date='2026-11-10';
+test('historical reported daily totals remain two, repeated item rows do not multiply them; new dates count maps',()=>{
+ const trips=buildTrips([raw('1'),{...raw('2'),reference_date:'2026-11-11'}]);
+ const old={reference_date:date,trailer:'312',map_number:'1',plate:'TTZ5E13',historical_trips_checked:2};
+ const s=tripStats([old,old,{reference_date:'2026-11-11',trailer:'312',map_number:'2',plate:'TTZ5E13'}],[],trips,[date,'2026-11-11']);
+ assert.equal(s.trips_checked,3);assert.equal(s.daily[0].trips_checked,2);assert.equal(s.daily[1].trips_checked,1);
+});
+test('old reported totals do not require inventing missing map identities',()=>{
+ const s=tripStats([{reference_date:date,trailer:'312',historical_trips_checked:2}],[],[],[date]);
+ assert.equal(s.trips_checked,2);assert.equal(s.pending_maps,0);assert.equal(s.checked_trips.length,0);
+});
 const raw=(map,vehicle='312',plate='TTZ-5E13')=>({reference_date:date,vehicle,map_number:map,is_entrada_cdd:true,headers:['Mapa','Placa'],raw_values:[map,plate]});
 test('same plate on two maps means two trips; repeated phases and formatted map/plate do not duplicate',()=>{
  const trips=buildTrips([raw('001'),raw('1','312','TTZ5E13'),raw('2'),{...raw('3'),is_entrada_cdd:false},raw('4','189')]);

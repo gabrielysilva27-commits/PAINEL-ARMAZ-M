@@ -23,17 +23,21 @@ export function resolveTrip(check,trips){
  return candidates.length===1?candidates[0]:null;
 }
 export function tripStats(checks,workbookRows,trips,coverageDates=[]){
- const days=new Map(),pending=new Map(),groups=new Map(),byChecker={};
+ const days=new Map(),pending=new Map(),groups=new Map(),byChecker={},historical=new Map(),historicalCheckers=new Map();
  const day=date=>{if(!days.has(date))days.set(date,{date,trips_day:coverageDates.includes(date)?0:null,trips_checked:0,packages_checked:0,pending_maps:0});return days.get(date)};
  for(const t of trips)day(t.date).trips_day=(day(t.date).trips_day||0)+1;
  for(const c of [...workbookRows,...checks]){
   const t=resolveTrip(c,trips),d=day(c.reference_date);
-  if(!t){const key=[c.reference_date,mapKey(c.trailer),String(c.check_time||'').slice(0,5),norm(c.checker)].join('|');pending.set(key,{date:c.reference_date,trailer:c.trailer});continue;}
+  const legacy=c.historical_trips_checked!=null;
+  if(legacy){historical.set(c.reference_date,Math.max(historical.get(c.reference_date)||0,Number(c.historical_trips_checked)||0));if(!historicalCheckers.has(c.reference_date))historicalCheckers.set(c.reference_date,new Set());historicalCheckers.get(c.reference_date).add(c.checker||'Sem conferente');}
+  if(!t){if(!legacy){const key=[c.reference_date,mapKey(c.trailer),String(c.check_time||'').slice(0,5),norm(c.checker)].join('|');pending.set(key,{date:c.reference_date,trailer:c.trailer});}continue;}
   const key=tripIdentity(t),g=groups.get(key)||{...t,packages_checked:0,checker:c.checker};
   g.packages_checked=Math.max(g.packages_checked,Number(c.packages_checked)||0);groups.set(key,g);
  }
  for(const g of groups.values()){const d=day(g.date);d.trips_checked++;d.packages_checked+=g.packages_checked;byChecker[g.checker||'Sem conferente']=(byChecker[g.checker||'Sem conferente']||0)+1;}
  for(const p of pending.values())day(p.date).pending_maps++;
+ // Old fields were daily reported totals, repeated on item lines. They are not map counts.
+ for(const [date,count] of historical){const d=day(date),extra=Math.max(0,count-d.trips_checked),names=historicalCheckers.get(date),name=names.size===1?[...names][0]:'Histórico sem identificação individual';byChecker[name]=(byChecker[name]||0)+extra;d.trips_checked=Math.max(d.trips_checked,count);d.historical_trips_checked=count;}
  const daily=[...days.values()].sort((a,b)=>a.date.localeCompare(b.date));
- return {daily,trips_day:daily.reduce((s,d)=>s+(d.trips_day||0),0),trips_checked:groups.size,packages_checked:daily.reduce((s,d)=>s+d.packages_checked,0),pending_maps:pending.size,by_checker:byChecker,checked_trips:[...groups.values()].map(({date,map_number,plate})=>({date,map_number,plate})),source:'03.11.20 — ENTRADA CDD/FAB; data + mapa + placa'};
+ return {daily,trips_day:daily.reduce((s,d)=>s+(d.trips_day||0),0),trips_checked:daily.reduce((s,d)=>s+d.trips_checked,0),packages_checked:daily.reduce((s,d)=>s+d.packages_checked,0),pending_maps:pending.size,by_checker:byChecker,checked_trips:[...groups.values()].map(({date,map_number,plate})=>({date,map_number,plate})),source:'Viagens: 03.11.20. Aferidas antigas: total diário informado; novas: data + mapa + placa.'};
 }

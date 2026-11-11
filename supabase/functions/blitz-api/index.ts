@@ -47,7 +47,7 @@ Deno.serve(async(req:Request)=>{if(req.method==="OPTIONS")return new Response("o
  if(cache?.workbook_rows){const rows=cache.workbook_rows as any[];effectiveCache=summarizeWorkbook(rows,checks||[],String(cache.source||"Planilha Blitz").replace(/^Aba Lançamento Perda — /,""));const keys=new Set((checks||[]).map(checkIdentity));workbookRows=rows.filter(r=>!keys.has(checkIdentity(r)));}
  if(effectiveCache){const {workbook_rows,...summary}=effectiveCache;effectiveCache=summary;}
  let statsChecks=checks||[];
- if(user.is_conferencer){const {data,error}=await db.from("blitz_pull_checks").select("reference_date,trailer,plate,map_number,check_time,packages_checked").gte("reference_date",start).lt("reference_date",end);if(error)throw error;statsChecks=data||[];}
+ if(user.is_conferencer){const {data,error}=await db.from("blitz_pull_checks").select("reference_date,trailer,plate,map_number,check_time,packages_checked,historical_trips_checked").gte("reference_date",start).lt("reference_date",end);if(error)throw error;statsChecks=data||[];}
  const stats=source.coverage.dates.length?tripStats(statsChecks,workbookRows,source.trailers,source.coverage.dates):null;
  return json({month,cache:effectiveCache,checks:checks||[],losses,workbook_rows:workbookRows,trailers:source.trailers,source_031120:source.coverage,trip_stats:stats});
 }if(action==="save_check"){const d=body.check||{},losses=(body.losses||[]).map(normalizeLoss).filter((x:any)=>x.quantity_units>0&&(x.sku_code||x.reason));if(!d.reference_date)return json({error:"Informe a data."},400);let existing:any=null;
