@@ -49,6 +49,7 @@
     const u=window.state?.user||{};
     return '<div class="admin-module">'+
       '<section class="admin-card"><div class="admin-profile-line"><div class="admin-avatar">'+esc(userInitials())+'</div><div><strong>'+esc(u.display_name||u.username||'Administrador')+'</strong><small>ADMINISTRAÇÃO</small></div></div><p>Configurações administrativas e acessos operacionais do Painel Armazém.</p></section>'+
+      '<section class="admin-card"><p class="eyebrow">PESSOAS E EQUIPES</p><h2>Cadastro de pessoas</h2><p>Adicione ou edite colaboradores, função, turno e situação. Inclui responsáveis do B.O., conferentes, empilhadores, portaria, Repack, produtividade e usuários do painel.</p><div class="admin-actions"><button class="primary" id="adminPeople">Gerenciar pessoas</button></div></section>'+
       '<div class="admin-role-access-grid">'+
         accessCard('CONFERENTES','Portal do conferente','Um único QR para B.O. Digital, Recebimento / NRI e Temperatura.',''+CONFERENTE_URL,CONFERENTE_QR,'adminConf')+
         accessCard('PORTARIA','Entrada de carreta','Entrada e acompanhamento da carreta com nome e PIN individual.',''+PORTARIA_URL,PORTARIA_QR,'adminGate')+
@@ -307,6 +308,7 @@
     $('adminView').classList.remove('hidden');
     $('pageTitle').textContent='Administração';$('pageSubtitle').textContent='Acessos, credenciais e configurações do Painel Armazém.';
     $('adminView').innerHTML=shell();
+    $('adminPeople').onclick=()=>import('./admin-people.mjs?v=20261111-1').then(m=>m.openPeopleAdmin({onSaved:({group})=>['conferencers','forklift','gate'].includes(group)?loadUnifiedPins():undefined})).catch(e=>showToast(e.message||'Não foi possível abrir os cadastros.',true));
     bindAccess('adminConf',CONFERENTE_URL,CONFERENTE_QR,'Portal do Conferente — B.O. + NRI + Temperatura','QR_Portal_Conferentes.png');
     bindAccess('adminGate',PORTARIA_URL,PORTARIA_QR,'Portaria — Entrada de Carreta','QR_Portaria_Recebimento.png');
     bindAccess('adminFork',EMPILHADOR_URL,EMPILHADOR_QR,'Empilhadores — Descarga + Guarda','QR_Empilhadores_Descarga_Guarda.png');
