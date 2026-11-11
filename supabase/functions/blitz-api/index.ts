@@ -1,4 +1,5 @@
 import { validateRows, summarizeWorkbook, checkIdentity } from "./blitz-import-core.mjs";
+import { TRUCK_PLATES, buildTrips, tripStats } from "./blitz-trip-core.mjs";
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2.57.4";
 const db=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,{auth:{persistSession:false}});
@@ -16,19 +17,16 @@ async function requireConferencer(req:Request){
 function monthStart(v:string){if(!/^\d{4}-\d{2}$/.test(v))throw new Error("Mês inválido");return `${v}-01`;}
 function nextMonth(v:string){const [y,m]=v.split("-").map(Number);return new Date(Date.UTC(y,m,1)).toISOString().slice(0,10);}
 function normalizeLoss(x:any){return{invoice:String(x.invoice||"").trim()||null,factory:String(x.factory||"").trim()||null,sku_code:String(x.sku_code||"").trim()||null,sku_name:String(x.sku_name||"").trim()||null,quantity_units:Number(x.quantity_units||0),reason:String(x.reason||"").trim()||null};}
-const TRUCK_PLATES:Record<string,string>={"229":"KYI-8259","231":"LSN-7312","246":"LSZ-9355","264":"KZM-9D84","271":"LMZ-4G31","289":"RIX-8E72","298":"RKK-8G53","312":"TTZ5E13"};
 async function availableTrailers(month:string){
  const {data,error}=await db.from("receiving_pull_daily").select("pull_date,vehicle_counts,imported_at").gte("pull_date",monthStart(month)).lt("pull_date",nextMonth(month)).order("pull_date",{ascending:true});
  if(error)throw error;
- const trailers:any[]=[];
- for(const row of data||[]){
-  for(const [vehicle,count] of Object.entries(row.vehicle_counts||{})){
-   const trips=Number(count);
-   if(!vehicle.trim()||!Number.isFinite(trips)||trips<=0)continue;
-   trailers.push({date:row.pull_date,vehicle,plate:TRUCK_PLATES[vehicle]||null,route:null,trips,source:"receiving_pull_daily"});
-  }
+ const rows:any[]=[];
+ for(let offset=0;;offset+=1000){
+  const {data:page,error:e}=await db.from("report_031120_current").select("reference_date,vehicle,map_number,is_entrada_cdd,headers,raw_values").gte("reference_date",monthStart(month)).lt("reference_date",nextMonth(month)).eq("is_entrada_cdd",true).in("vehicle",Object.keys(TRUCK_PLATES)).order("reference_date").order("row_no").range(offset,offset+999);
+  if(e)throw e;rows.push(...(page||[]));if((page||[]).length<1000)break;
  }
- return {trailers:trailers.sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.vehicle).localeCompare(String(b.vehicle),undefined,{numeric:true})),coverage:{dates:(data||[]).map(r=>r.pull_date),updated_at:(data||[]).map(r=>r.imported_at).sort().at(-1)||null}};
+ const trailers=buildTrips(rows);
+ return {trailers,coverage:{dates:[...new Set([...(data||[]).map(r=>r.pull_date),...trailers.map(t=>t.date)])],updated_at:(data||[]).map(r=>r.imported_at).sort().at(-1)||null}};
 }
 Deno.serve(async(req:Request)=>{if(req.method==="OPTIONS")return new Response("ok",{headers:cors});if(req.method!=="POST")return json({error:"Método não permitido"},405);try{const raw=await req.text();if(raw.length>6000000)return json({error:"Arquivo excede o limite de importação."},413);const body=JSON.parse(raw);const action=String(body?.action||"");const user:any=req.headers.has("x-bo-token")?await requireConferencer(req):await requireSession(req);if(!user)return json({error:"Sessão inválida ou expirada"},401);if(action==="import_workbook"){
  if(user.is_conferencer)return json({error:"Importação disponível somente no painel de gestão."},403);
@@ -48,8 +46,17 @@ Deno.serve(async(req:Request)=>{if(req.method==="OPTIONS")return new Response("o
  const source=await availableTrailers(month);let effectiveCache=cache,workbookRows:any[]=[];
  if(cache?.workbook_rows){const rows=cache.workbook_rows as any[];effectiveCache=summarizeWorkbook(rows,checks||[],String(cache.source||"Planilha Blitz").replace(/^Aba Lançamento Perda — /,""));const keys=new Set((checks||[]).map(checkIdentity));workbookRows=rows.filter(r=>!keys.has(checkIdentity(r)));}
  if(effectiveCache){const {workbook_rows,...summary}=effectiveCache;effectiveCache=summary;}
- return json({month,cache:effectiveCache,checks:checks||[],losses,workbook_rows:workbookRows,trailers:source.trailers,source_031120:source.coverage});
+ let statsChecks=checks||[];
+ if(user.is_conferencer){const {data,error}=await db.from("blitz_pull_checks").select("reference_date,trailer,plate,map_number,check_time,packages_checked").gte("reference_date",start).lt("reference_date",end);if(error)throw error;statsChecks=data||[];}
+ const stats=source.coverage.dates.length?tripStats(statsChecks,workbookRows,source.trailers,source.coverage.dates):null;
+ return json({month,cache:effectiveCache,checks:checks||[],losses,workbook_rows:workbookRows,trailers:source.trailers,source_031120:source.coverage,trip_stats:stats});
 }if(action==="save_check"){const d=body.check||{},losses=(body.losses||[]).map(normalizeLoss).filter((x:any)=>x.quantity_units>0&&(x.sku_code||x.reason));if(!d.reference_date)return json({error:"Informe a data."},400);let existing:any=null;
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(String(d.reference_date))||!String(d.map_number||'').trim())return json({error:"Selecione a data e o mapa da viagem."},400);
+ if(d.packages_checked!==''&&d.packages_checked!=null&&(!Number.isSafeInteger(Number(d.packages_checked))||Number(d.packages_checked)<0))return json({error:"Quantidade de vasilhame inválida."},400);
  if(d.check_key){const {data,error}=await db.from("blitz_pull_checks").select("conferencer_id").eq("check_key",String(d.check_key)).maybeSingle();if(error)throw error;if(!data)return json({error:"Lançamento não encontrado."},404);existing=data;if(user.is_conferencer&&data.conferencer_id!==user.id)return json({error:"Este lançamento não pertence ao seu acesso."},403);}
- const check_key=d.check_key||crypto.randomUUID();const check={check_key,reference_date:d.reference_date,check_time:d.check_time||null,trailer:String(d.trailer||"").trim()||null,driver:String(d.driver||"").trim()||null,checker:user.is_conferencer?user.display_name:String(d.checker||user.display_name||"").trim()||null,trips_day:d.trips_day?Number(d.trips_day):null,trips_checked:d.trips_checked?Number(d.trips_checked):null,packages_checked:d.packages_checked?Number(d.packages_checked):null,notes:String(d.notes||"").trim()||null,created_by:user.is_conferencer?null:user.id,conferencer_id:user.is_conferencer?user.id:existing?.conferencer_id||null,updated_at:new Date().toISOString()};const {error:e1}=await db.from("blitz_pull_checks").upsert(check,{onConflict:"check_key"});if(e1)throw e1;if(d.check_key){const {error:del}=await db.from("blitz_pull_losses").delete().eq("check_key",check_key);if(del)throw del;}if(losses.length){const rows=losses.map((l:any)=>({...l,loss_key:crypto.randomUUID(),check_key,reference_date:d.reference_date}));const {error:e2}=await db.from("blitz_pull_losses").insert(rows);if(e2)throw e2;}return json({ok:true,check_key});}if(action==="delete_check"){if(user.role!=="admin")return json({error:"Somente ADM pode excluir."},403);const {error}=await db.from("blitz_pull_checks").delete().eq("check_key",String(body.check_key||""));if(error)throw error;return json({ok:true});}return json({error:"Ação inválida"},400);}catch(e){console.error(e);return json({error:e instanceof Error?e.message:"Erro interno"},500);}});
+ const check_key=d.check_key||crypto.randomUUID();
+ const check={check_key,reference_date:d.reference_date,check_time:d.check_time||null,trailer:String(d.trailer||"").trim()||null,plate:String(d.plate||'').trim()||null,map_number:String(d.map_number).trim(),driver:String(d.driver||"").trim()||null,checker:user.is_conferencer?user.display_name:String(d.checker||user.display_name||"").trim()||null,packages_checked:d.packages_checked===''||d.packages_checked==null?null:Number(d.packages_checked),notes:String(d.notes||"").trim()||null,created_by:user.is_conferencer?null:user.id,conferencer_id:user.is_conferencer?user.id:existing?.conferencer_id||null};
+ const {error}=await db.rpc('blitz_save_trip',{p_check:check,p_losses:losses,p_expected_updated_at:d.updated_at||null});
+ if(error)return json({error:error.message},['23505','40001'].includes(error.code)?409:400);
+ return json({ok:true,check_key});}if(action==="delete_check"){if(user.role!=="admin")return json({error:"Somente ADM pode excluir."},403);const {error}=await db.from("blitz_pull_checks").delete().eq("check_key",String(body.check_key||""));if(error)throw error;return json({ok:true});}return json({error:"Ação inválida"},400);}catch(e){console.error(e);return json({error:e instanceof Error?e.message:"Erro interno"},500);}});
 
