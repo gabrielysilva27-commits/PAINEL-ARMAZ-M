@@ -1,6 +1,6 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import {createClient} from 'jsr:@supabase/supabase-js@2.57.4';
-import {validateItems,validateCount,norm} from './conciliacao-core.mjs';
+import {validateItems,validateCount,countFields,norm} from './conciliacao-core.mjs';
 const db=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false}});
 const headers={'Access-Control-Allow-Origin':'https://painel-armaz-m.gabrielysilva27.workers.dev','Access-Control-Allow-Headers':'content-type,x-session-token,x-bo-token','Access-Control-Allow-Methods':'POST,OPTIONS','Content-Type':'application/json','Cache-Control':'no-store'};
 const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers});
@@ -39,7 +39,13 @@ Deno.serve(async(req:Request)=>{
    return json({batch,items,can_manage:user.can_manage,conferencer_id:user.is_conferencer?user.id:null});
   }
   const payload:any={batch_id:batch.id};
-  if(action==='save_item'){
+  if(action==='save_list'){
+   if(!user.is_conferencer)throw fail('Conte pelo portal dos conferentes.',403);
+   if(!Array.isArray(body.entries)||!body.entries.length||body.entries.length>2000)throw fail('Nenhuma contagem para salvar.');
+   const ids=new Set();for(const e of body.entries){if(!validId(e.item_id)||!Number.isSafeInteger(e.revision)||ids.has(e.item_id))throw fail('Produto ou versão inválidos.');ids.add(e.item_id);}
+   const rows:any[]=[];for(let offset=0;;offset+=1000){const {data,error}=await db.from('stock_recount_items').select('id,instruction').eq('batch_id',batch.id).order('id').range(offset,offset+999);if(error)throw error;rows.push(...(data||[]));if((data||[]).length<1000)break;}
+   payload.entries=body.entries.map((e:any)=>{const item=rows.find(i=>i.id===e.item_id);if(!item)throw fail('Produto fora desta recontagem.');const counts=validateCount(e.counts||{},item.instruction,false);return{item_id:e.item_id,revision:e.revision,counts,complete:countFields(item.instruction).every(k=>counts[k]!=null),comments:String(e.comments||'').slice(0,1000)};});
+  }else if(action==='save_item'){
    if(!user.is_conferencer)throw fail('Conte pelo portal dos conferentes.',403);
    if(!validId(body.item_id)||!Number.isSafeInteger(body.revision))throw fail('Produto ou versão inválidos.');
    const {data:item,error}=await db.from('stock_recount_items').select('instruction').eq('id',body.item_id).eq('batch_id',batch.id).maybeSingle();if(error)throw error;if(!item)throw fail('Produto não encontrado.',404);
