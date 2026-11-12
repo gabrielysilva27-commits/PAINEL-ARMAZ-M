@@ -14,22 +14,24 @@ async function auth(req:Request){
  return u?{...u,is_conferencer:conf,can_manage:!conf&&manager(u)}:null;
 }
 const validId=(v:any)=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v||''));
+const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const safeItem='id,batch_id,source_sheet,source_row,sku_code,sku_name,unit_text,instruction,pallets,layers,boxes,units,status,revision,round,counted_by,counted_at,completed_at,comments,return_note,conferencer:bo_conferencers(display_name)';
-async function getBatch(id:string,user:any){const {data:b,error}=await db.from('stock_recount_batches').select('*').eq('id',id).maybeSingle();if(error)throw error;if(!b||(!user.can_manage&&b.status==='draft'))throw fail('Recontagem não encontrada.',404);return b;}
+async function getBatch(id:string,user:any){const {data:b,error}=await db.from('stock_recount_batches').select('*').eq('id',id).eq('reference_date',today()).maybeSingle();if(error)throw error;if(!b||(!user.can_manage&&b.status==='draft'))throw fail('Recontagem não encontrada.',404);return b;}
 Deno.serve(async(req:Request)=>{
  if(req.method==='OPTIONS')return new Response('ok',{headers});if(req.method!=='POST')return json({error:'Método não permitido.'},405);
  try{
   const user=await auth(req);if(!user)return json({error:'Sessão inválida ou expirada.'},401);if(!user.can_manage&&!user.is_conferencer)return json({error:'Acesso restrito ao Controle e ADM.'},403);
   const text=await req.text();if(text.length>5000000)throw fail('Arquivo muito grande.',413);const body=JSON.parse(text),action=String(body.action||'');
+  const {error:cleanupError}=await db.rpc('stock_recount_cleanup');if(cleanupError)throw cleanupError;
   if(action==='list'){
-   let q=db.from('stock_recount_batches').select('id,reference_date,title,source_filename,status,revision,created_at').order('reference_date',{ascending:false}).order('created_at',{ascending:false}).limit(100);
+   let q=db.from('stock_recount_batches').select('id,reference_date,title,source_filename,status,revision,created_at').eq('reference_date',today()).order('created_at',{ascending:false}).limit(100);
    if(!user.can_manage)q=q.neq('status','draft');const {data,error}=await q;if(error)throw error;
    const ids=(data||[]).map((b:any)=>b.id);let progress:any[]=[];if(ids.length){const {data:p,error:pe}=await db.from('stock_recount_progress').select('*').in('batch_id',ids);if(pe)throw pe;progress=p||[];}
    return json({can_manage:user.can_manage,conferencer_id:user.is_conferencer?user.id:null,batches:(data||[]).map((b:any)=>{const p=progress.find(x=>x.batch_id===b.id);return {...b,item_count:p?.item_count||0,completed_count:p?.completed_count||0};})});
   }
   if(action==='create'){
    if(!user.can_manage)throw fail('Somente Controle ou ADM.',403);
-   const date=String(body.reference_date||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date)throw fail('Data inválida.');
+   const date=String(body.reference_date||'');if(date!==today())throw fail('A conciliação deve ser da data de hoje.');
    const items=validateItems(body.items),payload={items,reference_date:date,title:String(body.title||'Recontagem de estoque').trim().slice(0,160),filename:String(body.filename||'Recontagem.xlsx').slice(0,200),source_hash:await hash(JSON.stringify(items))};
    const {data,error}=await db.rpc('stock_recount_write',{p_action:'create',p_body:payload,p_app_user:user.id,p_conferencer:null});if(error)throw Object.assign(Error(error.code==='23505'?'Esta lista já foi importada nesta data. Abra a contagem existente.':error.message),{status:error.code==='23505'?409:400});return json({batches:data});
   }
