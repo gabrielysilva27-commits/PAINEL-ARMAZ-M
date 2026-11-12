@@ -31,7 +31,7 @@ Deno.serve(async(req:Request)=>{
    if(!user.can_manage)throw fail('Somente Controle ou ADM.',403);
    const date=String(body.reference_date||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date)throw fail('Data inválida.');
    const items=validateItems(body.items),payload={items,reference_date:date,title:String(body.title||'Recontagem de estoque').trim().slice(0,160),filename:String(body.filename||'Recontagem.xlsx').slice(0,200),source_hash:await hash(JSON.stringify(items))};
-   const {data,error}=await db.rpc('stock_recount_write',{p_action:'create',p_body:payload,p_app_user:user.id,p_conferencer:null});if(error)throw Object.assign(Error(error.message),{status:error.code==='23505'?409:400});return json({batch:data});
+   const {data,error}=await db.rpc('stock_recount_write',{p_action:'create',p_body:payload,p_app_user:user.id,p_conferencer:null});if(error)throw Object.assign(Error(error.code==='23505'?'Esta lista já foi importada nesta data. Abra a contagem existente.':error.message),{status:error.code==='23505'?409:400});return json({batches:data});
   }
   if(!validId(body.batch_id))throw fail('Recontagem inválida.');const batch=await getBatch(body.batch_id,user);
   if(action==='detail'){
