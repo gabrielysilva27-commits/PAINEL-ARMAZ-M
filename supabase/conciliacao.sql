@@ -1,6 +1,7 @@
 create table if not exists public.stock_recount_batches(
  id uuid primary key default gen_random_uuid(),reference_date date not null,title text not null,
  source_filename text not null,source_hash text not null,
+ source_sheet text,
  status text not null default 'draft' check(status in('draft','open','submitted','closed')),
  revision integer not null default 0,created_by uuid not null references public.app_users(id),
  created_at timestamptz not null default now(),updated_at timestamptz not null default now(),
@@ -41,7 +42,7 @@ grant select on public.stock_recount_progress to service_role;
 create or replace function public.stock_recount_write(p_action text,p_body jsonb,p_app_user uuid default null,p_conferencer uuid default null)
 returns jsonb language plpgsql security invoker set search_path=public as $$
 declare b public.stock_recount_batches;i public.stock_recount_items;old jsonb;u public.app_users;
- manager boolean:=false;row jsonb;ids uuid[];n integer;v text;key text;allowed text[];complete boolean;
+ manager boolean:=false;row jsonb;ids uuid[];n integer;v text;key text;allowed text[];complete boolean;sheet_name text;batches jsonb:='[]';
 begin
  if p_app_user is not null then
   select * into u from app_users where id=p_app_user and active;
@@ -51,14 +52,17 @@ begin
  if p_action='create' then
   if not manager then raise exception 'Somente Controle ou ADM.' using errcode='42501';end if;
   if jsonb_array_length(p_body->'items') not between 1 and 2000 then raise exception 'Lista de produtos inválida.';end if;
-  insert into stock_recount_batches(reference_date,title,source_filename,source_hash,created_by)
-  values((p_body->>'reference_date')::date,p_body->>'title',p_body->>'filename',p_body->>'source_hash',p_app_user) returning * into b;
-  for row in select * from jsonb_array_elements(p_body->'items') loop
+  for sheet_name in select distinct value->>'source_sheet' from jsonb_array_elements(p_body->'items') order by 1 loop
+  insert into stock_recount_batches(reference_date,title,source_filename,source_hash,source_sheet,created_by)
+  values((p_body->>'reference_date')::date,left(p_body->>'title',140)||' · '||sheet_name,p_body->>'filename',(p_body->>'source_hash')||':'||sheet_name,sheet_name,p_app_user) returning * into b;
+  for row in select * from jsonb_array_elements(p_body->'items') where value->>'source_sheet'=sheet_name loop
    insert into stock_recount_items(batch_id,source_sheet,source_row,sku_code,sku_name,unit_text,instruction,source_difference,source_frozen,source_recount,source_ok)
    values(b.id,row->>'source_sheet',(row->>'source_row')::integer,row->>'sku_code',row->>'sku_name',row->>'unit_text',row->>'instruction',row->>'source_difference',row->>'source_frozen',row->>'source_recount',(row->>'source_ok')::boolean);
   end loop;
-  insert into stock_recount_events(batch_id,action,app_user_id,after_value) values(b.id,'create',p_app_user,jsonb_build_object('filename',b.source_filename,'items',jsonb_array_length(p_body->'items')));
-  return to_jsonb(b);
+  insert into stock_recount_events(batch_id,action,app_user_id,after_value) values(b.id,'create',p_app_user,jsonb_build_object('filename',b.source_filename,'sheet',sheet_name,'items',(select count(*) from stock_recount_items where batch_id=b.id)));
+  batches:=batches||jsonb_build_array(to_jsonb(b));
+  end loop;
+  return batches;
  end if;
  select * into b from stock_recount_batches where id=(p_body->>'batch_id')::uuid for update;
  if not found then raise exception 'Recontagem não encontrada.';end if;
