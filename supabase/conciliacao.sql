@@ -66,6 +66,16 @@ begin
  end if;
  select * into b from stock_recount_batches where id=(p_body->>'batch_id')::uuid for update;
  if not found then raise exception 'Recontagem não encontrada.';end if;
+ if p_action='save_list' then
+  if p_conferencer is null then raise exception 'Use o portal do conferente.' using errcode='42501';end if;
+  if b.status<>'open' then raise exception 'Esta recontagem não está aberta.' using errcode='40001';end if;
+  if coalesce(jsonb_array_length(p_body->'entries'),0) not between 1 and 2000 then raise exception 'Nenhuma contagem para salvar.';end if;
+  if (select count(distinct value->>'item_id') from jsonb_array_elements(p_body->'entries'))<>jsonb_array_length(p_body->'entries') then raise exception 'Produto repetido na lista.';end if;
+  for row in select * from jsonb_array_elements(p_body->'entries') loop
+   perform public.stock_recount_write('save_item',row||jsonb_build_object('batch_id',b.id),null,p_conferencer);
+  end loop;
+  return jsonb_build_object('id',b.id,'saved_count',jsonb_array_length(p_body->'entries'));
+ end if;
  if p_action='save_item' then
   if p_conferencer is null then raise exception 'Use o portal do conferente para contar.' using errcode='42501';end if;
   if b.status<>'open' then raise exception 'Esta recontagem não está aberta.' using errcode='40001';end if;
