@@ -5,3 +5,13 @@
 .rc-savebar [data-rc="top"]{min-width:0;background:#f6f8fa}.rc-savebar{flex-wrap:wrap}.rc-savebar [data-rc="unsaved"]:empty{display:none}@media(max-width:480px){.rc-savebar{gap:8px}.rc-savebar [data-rc="unsaved"]{flex-basis:100%;margin:0}.rc-savebar button{flex:1;min-width:0!important;padding:10px 8px}}
 
 .recon .rc-floating-message{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);z-index:50;width:max-content;max-width:min(560px,calc(100vw - 28px));padding:14px 18px;border:1px solid #bcdac7;box-shadow:0 8px 28px #17253826;font-size:14px;font-weight:600;pointer-events:none}.recon .rc-floating-message.error{border-color:#e9bbb5}@media(max-width:480px){.recon .rc-floating-message{bottom:130px;max-width:calc(100vw - 24px);font-size:13px}}
+
+/* Importação: controles proporcionais, centrados e sem arquivo cortado. */
+.recon .rc-upload{container-type:inline-size}
+.recon .rc-upload-fields{width:min(100%,1080px);margin-inline:auto;grid-template-columns:150px 185px minmax(180px,1fr) minmax(280px,1.35fr);align-items:end;gap:12px}
+.recon .rc-upload-fields>label{min-width:0}
+.recon .rc-upload-fields input,.recon .rc-upload-fields select{width:100%;min-height:42px}
+.recon .rc-upload-fields input[type=file]{padding:8px;min-width:0;overflow:hidden;text-overflow:ellipsis}
+@container (max-width:850px){.recon .rc-upload-fields{grid-template-columns:minmax(120px,1fr) minmax(160px,1fr) minmax(200px,1.5fr)}.recon .rc-upload-fields>label:last-child{grid-column:1/-1}}
+@container (max-width:590px){.recon .rc-upload-fields{grid-template-columns:repeat(2,minmax(0,1fr))}.recon .rc-upload-fields>label:nth-child(n+3){grid-column:1/-1}}
+@container (max-width:400px){.recon .rc-upload-fields{grid-template-columns:1fr}.recon .rc-upload-fields>label:nth-child(n){grid-column:auto}}
