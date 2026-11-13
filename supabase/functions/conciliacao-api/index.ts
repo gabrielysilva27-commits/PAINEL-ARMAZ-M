@@ -24,7 +24,7 @@ Deno.serve(async(req:Request)=>{
   const text=await req.text();if(text.length>5000000)throw fail('Arquivo muito grande.',413);const body=JSON.parse(text),action=String(body.action||'');
   const {error:cleanupError}=await db.rpc('stock_recount_cleanup');if(cleanupError)throw cleanupError;
   if(action==='list'){
-   let q=db.from('stock_recount_batches').select('id,reference_date,title,source_filename,status,revision,created_at').eq('reference_date',today()).order('created_at',{ascending:false}).limit(100);
+   let q=db.from('stock_recount_batches').select('id,reference_date,title,source_filename,kind,status,revision,created_at').eq('reference_date',today()).order('created_at',{ascending:false}).limit(100);
    if(!user.can_manage)q=q.neq('status','draft');const {data,error}=await q;if(error)throw error;
    const ids=(data||[]).map((b:any)=>b.id);let progress:any[]=[];if(ids.length){const {data:p,error:pe}=await db.from('stock_recount_progress').select('*').in('batch_id',ids);if(pe)throw pe;progress=p||[];}
    return json({can_manage:user.can_manage,conferencer_id:user.is_conferencer?user.id:null,batches:(data||[]).map((b:any)=>{const p=progress.find(x=>x.batch_id===b.id);return {...b,item_count:p?.item_count||0,completed_count:p?.completed_count||0};})});
@@ -32,7 +32,8 @@ Deno.serve(async(req:Request)=>{
   if(action==='create'){
    if(!user.can_manage)throw fail('Somente Controle ou ADM.',403);
    const date=String(body.reference_date||'');if(date!==today())throw fail('A conciliação deve ser da data de hoje.');
-   const items=validateItems(body.items),payload={items,reference_date:date,title:String(body.title||'Recontagem de estoque').trim().slice(0,160),filename:String(body.filename||'Recontagem.xlsx').slice(0,200),source_hash:await hash(JSON.stringify(items))};
+   const kind=String(body.kind||'CHEIO');if(!['CHEIO','DEVOLUCAO'].includes(kind))throw fail('Selecione Cheio ou Devolução.');
+   const items=validateItems(body.items),payload={items,kind,reference_date:date,title:String(body.title||'Recontagem de estoque').trim().slice(0,160),filename:String(body.filename||'Recontagem.xlsx').slice(0,200),source_hash:await hash(JSON.stringify(items))};
    const {data,error}=await db.rpc('stock_recount_write',{p_action:'create',p_body:payload,p_app_user:user.id,p_conferencer:null});if(error)throw Object.assign(Error(error.code==='23505'?'Esta lista já foi importada nesta data. Abra a contagem existente.':error.message),{status:error.code==='23505'?409:400});return json({batches:data});
   }
   if(!validId(body.batch_id))throw fail('Recontagem inválida.');const batch=await getBatch(body.batch_id,user);
