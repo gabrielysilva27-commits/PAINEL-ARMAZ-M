@@ -12,9 +12,10 @@ export function validateItems(items){
 }
 export function parseRecountWorkbook(wb,XLSX){
  const items=[],warnings=[];
- for(const sheet of wb.SheetNames){
+ for(const [sheetIndex,sheet] of wb.SheetNames.entries()){
+  if(wb.Workbook?.Sheets?.[sheetIndex]?.Hidden)continue;
   const headerRows=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,defval:'',raw:true,range:'A1:Z30'});let columns=null,start=0;
-  for(let i=0;i<Math.min(30,headerRows.length);i++){const h=headerRows[i].map(norm);if(h.includes('produto')&&h.includes('recontar')){columns={sku_code:h.indexOf('produto'),sku_name:h.indexOf('descricao'),unit_text:h.findIndex(x=>['un','und','unidade'].includes(x)),instruction:h.indexOf('recontar'),source_difference:h.indexOf('diferenca'),source_frozen:h.findIndex(x=>['congelada','diferenca congelamento'].includes(x)),source_recount:h.indexOf('recontagem'),source_ok:h.indexOf('ok')};start=i+1;break;}}
+  for(let i=0;i<Math.min(30,headerRows.length);i++){const h=headerRows[i].map(norm),request=h.findIndex(x=>x==='recontar'||/^recontar - [123][ªa]$/.test(x));if(h.includes('produto')&&request>=0){columns={sku_code:h.indexOf('produto'),sku_name:h.indexOf('descricao'),unit_text:h.findIndex(x=>['un','und','unidade'].includes(x)),instruction:request,source_difference:h.findIndex(x=>['diferenca','diferenca - 1ª'].includes(x)),source_frozen:h.findIndex(x=>['congelada','diferenca congelamento'].includes(x)),source_recount:h.indexOf('recontagem'),source_ok:h.indexOf('ok')};start=i+1;break;}}
   if(!columns){if(/^cheio\s*\d+$/i.test(sheet))warnings.push('Aba '+sheet+': sem cabeçalho de recontagem; não importada.');continue;}
   const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,defval:'',raw:true});
   for(let i=start;i<rows.length;i++){const row=rows[i],sku=row[columns.sku_code];if(sku===''||sku==null)continue;const item={source_sheet:sheet,source_row:i+1};for(const [key,col]of Object.entries(columns))item[key]=col>=0?row[col]??'':'';const request=String(item.instruction).trim();if(!request||/^[-–—]+$/.test(request)){continue;}items.push(item);}
