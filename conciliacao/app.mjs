@@ -1,4 +1,4 @@
-import {mountConciliacao} from '../conciliacao.mjs?v=20261113-auto-13';
+import {mountConciliacao} from '../conciliacao.mjs?v=20261113-replace-14';
 const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/bo-api',$=id=>document.getElementById(id);
 let token=sessionStorage.getItem('conciliacao_token')||sessionStorage.getItem('blitz_conf_token')||sessionStorage.getItem('nri_conf_token')||sessionStorage.getItem('bo_token')||'';
 async function call(action,payload={},authenticated=false){const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json',...(authenticated?{'x-bo-token':token}:{})},body:JSON.stringify({action,...payload})});const d=await r.json();if(!r.ok)throw Error(d.error||'Não foi possível acessar.');return d;}
