@@ -1,5 +1,6 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2.57.4";
+import { mayStart020501 } from "./scheduled-cadence.mjs";
 const db=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,{auth:{persistSession:false}});
 const ORIGIN="https://painel-armaz-m.gabrielysilva27.workers.dev";
 const enc=new TextEncoder();
@@ -461,6 +462,16 @@ async function claimAgentJob(node:any,b:any){
     }else req=inserted.data;
   }
 
+  // A solicitação agendada permanece pendente, mas não reabre o Promax antes de
+  // uma hora desde a tentativa anterior, inclusive após falha ou perda de lease.
+  if(req.request_type==='scheduled'){
+    const {data:lastRun,error:le}=await db.from("receiving_pull_agent_runs")
+      .select("started_at,completed_at").order("started_at",{ascending:false}).limit(1).maybeSingle();
+    if(le)throw le;
+    const {data:settings,error:se}=await db.from("receiving_pull_agent").select("sync_interval_minutes").eq("id",1).single();
+    if(se)throw se;
+    if(!mayStart020501(req.request_type,lastRun,Date.now(),settings.sync_interval_minutes))return null;
+  }
   const now=new Date().toISOString(),dateFrom=req.date_from||await oldestPullDate(),dateTo=req.date_to||todayBr(),lease=futureIso(30);
   const {data:claimed,error:ce}=await db.from("receiving_pull_sync_requests").update({status:"running",started_at:now,date_from:dateFrom,date_to:dateTo,message:null,claimed_by_node_id:node.id,lease_expires_at:lease}).eq("id",req.id).eq("status","pending").is("claimed_by_node_id",null).select("*").maybeSingle();if(ce)throw ce;if(!claimed)return null;
   const {data:run,error:rune}=await db.from("receiving_pull_agent_runs").insert({request_id:claimed.id,agent_node_id:node.id,date_from:dateFrom,date_to:dateTo,status:"running",hostname:node.hostname,agent_version:node.agent_version}).select("*").single();if(rune)throw rune;
