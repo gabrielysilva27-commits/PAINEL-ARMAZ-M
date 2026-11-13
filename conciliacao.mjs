@@ -1,4 +1,4 @@
-import {parseRecountWorkbook,countFields,norm} from './conciliacao-core.mjs?v=20261113-1';
+import {parseRecountWorkbook,countFields,norm} from './conciliacao-core.mjs?v=20261113-2';
 const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/conciliacao-api';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dates=v=>String(v||'').split('-').reverse().join('/');
