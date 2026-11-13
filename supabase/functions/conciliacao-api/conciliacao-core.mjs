@@ -16,7 +16,7 @@ export function parseRecountWorkbook(wb,XLSX){
   const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,defval:'',raw:true});let columns=null,start=0;
   for(let i=0;i<Math.min(30,rows.length);i++){const h=rows[i].map(norm);if(h.includes('produto')&&h.includes('recontar')){columns={sku_code:h.indexOf('produto'),sku_name:h.indexOf('descricao'),unit_text:h.findIndex(x=>['un','und','unidade'].includes(x)),instruction:h.indexOf('recontar'),source_difference:h.indexOf('diferenca'),source_frozen:h.indexOf('congelada'),source_recount:h.indexOf('recontagem'),source_ok:h.indexOf('ok')};start=i+1;break;}}
   if(!columns){warnings.push('Aba '+sheet+': sem cabeçalho de recontagem; não importada.');continue;}
-  for(let i=start;i<rows.length;i++){const row=rows[i],sku=row[columns.sku_code];if(sku===''||sku==null)continue;const item={source_sheet:sheet,source_row:i+1};for(const [key,col]of Object.entries(columns))item[key]=col>=0?row[col]??'':'';if(!String(item.instruction).trim()){warnings.push('Aba '+sheet+', linha '+(i+1)+': sem pedido em Recontar; não importada.');continue;}items.push(item);}
+  for(let i=start;i<rows.length;i++){const row=rows[i],sku=row[columns.sku_code];if(sku===''||sku==null)continue;const item={source_sheet:sheet,source_row:i+1};for(const [key,col]of Object.entries(columns))item[key]=col>=0?row[col]??'':'';const request=String(item.instruction).trim();if(!request||/^[-–—]+$/.test(request)){continue;}items.push(item);}
  }
  return {items:validateItems(items),warnings};
 }
