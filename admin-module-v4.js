@@ -3,6 +3,7 @@
   const BO_URL='https://painel-armaz-m.gabrielysilva27.workers.dev/bo/';
   const NRI_API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/receiving-nri-api';
   const PUTAWAY_API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/putaway-api';
+  const REPACK_API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/repack-api';
   const PORTARIA_URL='https://painel-armaz-m.gabrielysilva27.workers.dev/portaria/';
   const RECEBIMENTO_URL='https://painel-armaz-m.gabrielysilva27.workers.dev/recebimento/';
   const CONFERENTE_URL='https://painel-armaz-m.gabrielysilva27.workers.dev/conferente/';
@@ -32,7 +33,12 @@
     const r=await fetch(PUTAWAY_API,{method:'POST',headers:{'Content-Type':'application/json','x-session-token':token},body:JSON.stringify({action,...payload})});
     const d=await r.json().catch(()=>({error:'Resposta inválida'}));if(!r.ok)throw new Error(d.error||'Erro na Administração');return d;
   }
-  const pinDirectory={conferencers:[],gate:[],forklift:[]};
+  async function repackCall(action,payload={}){
+    const token=window.state?.token||localStorage.getItem('pa_session')||'';
+    const r=await fetch(REPACK_API,{method:'POST',headers:{'Content-Type':'application/json','x-session-token':token},body:JSON.stringify({action,...payload})});
+    const d=await r.json().catch(()=>({error:'Resposta inválida'}));if(!r.ok)throw new Error(d.error||'Erro no Repack');return d;
+  }
+  const pinDirectory={conferencers:[],gate:[],forklift:[],repack:[]};
   function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function ensureView(){
     if(mounted)return;
@@ -53,25 +59,26 @@
         accessCard('EMPILHADORES','Descarga e Guarda','Um único QR para iniciar/finalizar descarga e executar as Ordens de Guarda.',''+EMPILHADOR_URL,EMPILHADOR_QR,'adminFork')+
       '</div>'+
       '<div class="admin-module-grid">'+
-        '<section class="admin-card admin-pin-console"><p class="eyebrow">SEGURANÇA OPERACIONAL</p><h2>Credenciais e PINs</h2><p>Conferentes, Portaria e Empilhadores ficam no mesmo controle. Selecione o grupo e a pessoa; não é necessário manter uma lista aberta nome a nome.</p>'+
+        '<section class="admin-card admin-pin-console"><p class="eyebrow">SEGURANÇA OPERACIONAL</p><h2>Credenciais e PINs</h2><p>Conferentes, Portaria, Empilhadores e Repack ficam no mesmo controle. Selecione o grupo e a pessoa.</p>'+
           '<div id="adminPinSummary" class="admin-pin-summary"><span>Carregando credenciais...</span></div>'+
-          '<div class="admin-pin-validator"><label>Equipe<select id="adminPinGroup"><option value="conferencers">Conferentes</option><option value="gate">Portaria</option><option value="forklift">Empilhadores</option></select></label><label>Pessoa<select id="adminPinPerson"></select></label></div>'+
+          '<div class="admin-pin-validator"><label>Equipe<select id="adminPinGroup"><option value="conferencers">Conferentes</option><option value="gate">Portaria</option><option value="forklift">Empilhadores</option><option value="repack">Repack</option></select></label><label>Pessoa<select id="adminPinPerson"></select></label></div>'+
           '<div id="adminPinSelected" class="admin-pin-selected"></div>'+
-          '<div class="admin-actions"><button class="primary" id="adminPinAction">Gerar / redefinir PIN</button><button id="adminPinMissing">Gerar pendentes do grupo</button><button id="adminPinOpenForklift">Abrir tela dos empilhadores</button></div>'+
+          '<div id="adminRepackCreate" class="admin-repack-create" hidden><input id="adminRepackWorkerName" maxlength="120" placeholder="Nome do ajudante"><button id="adminRepackAdd">Cadastrar e gerar PIN</button></div>'+
+          '<div class="admin-actions"><button class="primary" id="adminPinAction">Gerar / redefinir PIN</button><button id="adminPinMissing">Gerar pendentes do grupo</button><button id="adminRepackDeactivate" hidden>Desativar ajudante</button><button id="adminPinOpenForklift">Abrir tela dos empilhadores</button></div>'+
           '<div id="adminPinUnifiedIssued"></div>'+
         '</section>'+'<section class="admin-card"><p class="eyebrow">PUXADA · PROMAX</p><h2>Agente Puxada</h2><p>Um único agente lógico pode rodar em dois computadores. O primeiro PC que pegar uma sincronização bloqueia a tarefa para o outro, evitando duplicidade.</p><div id="adminAgentStatus" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div><div id="adminAgentNodes" class="admin-pin-list"></div><div id="adminAgentIssued"></div><label style="display:grid;gap:6px;margin-top:12px;font-size:11px;font-weight:700">Intervalo automático<select id="adminAgentInterval"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select></label><div class="admin-actions"><button id="adminAgentSaveInterval">Salvar intervalo</button><button class="primary" id="adminAgentSyncNow">Sincronizar agora</button><button id="adminAgentRefresh">Atualizar status</button><button id="adminAgentRoutines">Rotinas do agente</button></div><p style="font-size:10px;color:var(--muted)">Após a instalação inicial, o agente se atualiza automaticamente. Cada PC mantém seu próprio token; novas automações são distribuídas pelo atualizador sem reinstalação manual.</p></section>'+
       '</div></div>';
   }
 
   function groupLabel(group){
-    return group==='conferencers'?'Conferentes':group==='gate'?'Portaria':'Empilhadores';
+    return group==='conferencers'?'Conferentes':group==='gate'?'Portaria':group==='repack'?'Repack':'Empilhadores';
   }
   function activePeople(group){
     return (pinDirectory[group]||[]).filter(x=>x.active!==false);
   }
   function renderPinSummary(){
     if(!$('adminPinSummary'))return;
-    $('adminPinSummary').innerHTML=['conferencers','gate','forklift'].map(group=>{
+    $('adminPinSummary').innerHTML=['conferencers','gate','forklift','repack'].map(group=>{
       const people=activePeople(group),ready=people.filter(x=>x.pin_ready).length;
       const cls=people.length&&ready===people.length?'good':ready?'partial':'pending';
       return '<button type="button" class="admin-pin-summary-item '+cls+'" data-pin-group-summary="'+group+'"><span>'+groupLabel(group)+'</span><strong>'+ready+'/'+people.length+'</strong><small>'+(ready===people.length&&people.length?'Configurados':(people.length-ready)+' pendente(s)')+'</small></button>';
@@ -80,6 +87,9 @@
   }
   function renderPinPeople(){
     const group=$('adminPinGroup').value,people=activePeople(group),select=$('adminPinPerson');
+    $('adminRepackCreate').hidden=group!=='repack';
+    $('adminRepackDeactivate').hidden=group!=='repack';
+    $('adminPinOpenForklift').hidden=group!=='forklift';
     select.innerHTML=people.length?people.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.display_name)+'</option>').join(''):'<option value="">Nenhuma pessoa ativa</option>';
     renderPinSelected();
   }
@@ -105,10 +115,11 @@
   }
   async function loadUnifiedPins(){
     try{
-      const [c,g,f]=await Promise.all([boCall('pin_status'),nriCall('gate_pin_status'),putawayCall('forklift_admin_list')]);
+      const [c,g,f,r]=await Promise.all([boCall('pin_status'),nriCall('gate_pin_status'),putawayCall('forklift_admin_list'),repackCall('admin_workers')]);
       pinDirectory.conferencers=(c.conferencers||[]).map(x=>({...x,group:'conferencers'}));
       pinDirectory.gate=(g.users||[]).map(x=>({...x,group:'gate'}));
       pinDirectory.forklift=(f.operators||[]).map(x=>({...x,group:'forklift'}));
+      pinDirectory.repack=(r.workers||[]).map(x=>({...x,group:'repack'}));
       renderPinSummary();renderPinPeople();
     }catch(e){
       if($('adminPinSummary'))$('adminPinSummary').innerHTML='<p class="form-error">'+esc(e.message)+'</p>';
@@ -126,6 +137,8 @@
         const d=await boCall('reset_pin',{id:person.id});issued=d.issued;
       }else if(group==='gate'){
         const d=await nriCall(person.pin_ready?'gate_reset_pin':'gate_generate_pin',{id:person.id});issued=d.issued;
+      }else if(group==='repack'){
+        const d=await repackCall('admin_worker_reset_pin',{id:person.id});issued=d.issued;
       }else{
         const d=await putawayCall('forklift_admin_reset_pin',{id:person.id});issued=d.operator;
       }
@@ -143,6 +156,8 @@
         const d=await boCall('generate_missing_pins');issued.push(...(d.issued||[]));
       }else if(group==='gate'){
         for(const person of missing){const d=await nriCall('gate_generate_pin',{id:person.id});if(d.issued)issued.push(d.issued)}
+      }else if(group==='repack'){
+        for(const person of missing){const d=await repackCall('admin_worker_reset_pin',{id:person.id});if(d.issued)issued.push(d.issued)}
       }else{
         for(const person of missing){const d=await putawayCall('forklift_admin_reset_pin',{id:person.id});if(d.operator)issued.push(d.operator)}
       }
@@ -305,11 +320,13 @@
     $('adminView').classList.remove('hidden');
     $('pageTitle').textContent='Administração';$('pageSubtitle').textContent='Acessos, credenciais e configurações do Painel Armazém.';
     $('adminView').innerHTML=shell();
-    $('adminPeople').onclick=()=>import('./admin-people.mjs?v=20261111-compact-2').then(m=>m.openPeopleAdmin({onSaved:({group})=>['conferencers','forklift','gate'].includes(group)?loadUnifiedPins():undefined})).catch(e=>showToast(e.message||'Não foi possível abrir os cadastros.',true));
+    $('adminPeople').onclick=()=>import('./admin-people.mjs?v=20261111-compact-2').then(m=>m.openPeopleAdmin({onSaved:({group})=>['conferencers','forklift','gate','repack'].includes(group)?loadUnifiedPins():undefined})).catch(e=>showToast(e.message||'Não foi possível abrir os cadastros.',true));
     bindAccess('adminConf',CONFERENTE_URL,CONFERENTE_QR,'Portal do Conferente — B.O. + NRI + Temperatura','QR_Portal_Conferentes.png');
     bindAccess('adminGate',PORTARIA_URL,PORTARIA_QR,'Portaria — Entrada de Carreta','QR_Portaria_Recebimento.png');
     bindAccess('adminFork',EMPILHADOR_URL,EMPILHADOR_QR,'Empilhadores — Descarga + Guarda','QR_Empilhadores_Descarga_Guarda.png');
     $('adminPinGroup').onchange=renderPinPeople;$('adminPinPerson').onchange=renderPinSelected;$('adminPinAction').onclick=issueSelectedPin;$('adminPinMissing').onclick=issueMissingForGroup;$('adminPinOpenForklift').onclick=()=>window.open(RECEBIMENTO_URL+'guarda.html','_blank','noopener,noreferrer');$('adminAgentSaveInterval').onclick=saveAgentInterval;$('adminAgentSyncNow').onclick=syncAgentNow;$('adminAgentRefresh').onclick=loadAgentAdmin;$('adminAgentRoutines').onclick=()=>import('./agent-routines.mjs?v=20261110-2').then(m=>m.openAgentRoutines()).catch(()=>showToast('Não foi possível abrir as rotinas. Tente novamente.',true));
+    $('adminRepackAdd').onclick=async()=>{const input=$('adminRepackWorkerName'),name=input.value.trim();if(!name)return showToast('Informe o nome do ajudante.',true);try{const d=await repackCall('admin_worker_create',{display_name:name});input.value='';await loadUnifiedPins();$('adminPinGroup').value='repack';renderPinPeople();$('adminPinPerson').value=d.worker.id;renderPinSelected();showUnifiedIssued(d.issued)}catch(e){showToast(e.message,true)}};
+    $('adminRepackDeactivate').onclick=async()=>{const person=selectedPinPerson();if(!person||!confirm('Desativar '+person.display_name+' no Repack?'))return;try{await repackCall('admin_worker_toggle',{id:person.id,active:false});await loadUnifiedPins();$('adminPinGroup').value='repack';renderPinPeople();showToast('Ajudante desativado. O histórico foi preservado.')}catch(e){showToast(e.message,true)}};
     await Promise.all([loadUnifiedPins(),loadAgentAdmin()]);
   }
   function bind(){

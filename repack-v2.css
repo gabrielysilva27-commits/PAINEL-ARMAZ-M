@@ -37,6 +37,9 @@ main:has(#repackView:not(.hidden)) #pageSubtitle{display:none}
 .repack-pill.ok{background:#e7f7ef;color:#1b7650}
 .repack-pill.bad{background:#fff0e5;color:#a75212}
 .repack-target{display:block;margin-top:3px;color:#888}
+.repack-daily-note{font-size:12px;color:#6b7280;margin:0 0 12px}
+.repack-day-missing{background:#fffaf4}
+.repack-daily-panel td:last-child{min-width:180px}
 
 #repackView .table-wrap{width:100%;max-width:100%;min-width:0;overflow:visible}
 #repackView table{width:100%;max-width:100%;min-width:0;border-collapse:collapse;table-layout:auto}

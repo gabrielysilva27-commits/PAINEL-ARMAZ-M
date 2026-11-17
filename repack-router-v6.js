@@ -25,7 +25,7 @@
     if(!r.ok)throw new Error(d.error||'Falha no módulo Repack');
     return d;
   }
-  function ensureAssets(){if(!$('repackCss')){const l=document.createElement('link');l.id='repackCss';l.rel='stylesheet';l.href='repack-v2.css?v=20260929-2';document.head.appendChild(l)}}
+  function ensureAssets(){if(!$('repackCss')){const l=document.createElement('link');l.id='repackCss';l.rel='stylesheet';l.href='repack-v2.css?v=20261117-daily';document.head.appendChild(l)}}
   function ensureView(){let v=$('repackView');if(v)return v;v=document.createElement('section');v.id='repackView';v.className='view hidden';document.querySelector('main')?.appendChild(v);return v}
   function addNav(){
     if(document.querySelector('[data-view="repack"]'))return;
@@ -44,15 +44,13 @@
     try{
       const month=S.month,requestId=++S.requestId;
       const d=await call('dashboard',{month});if(requestId!==S.requestId||month!==S.month)return;S.data=d.dashboard;
-      if(role()==='admin'){try{S.adminWorkers=(await call('admin_workers')).workers||[]}catch{S.adminWorkers=null}}
       render();
     }catch(e){ensureView().innerHTML='<div class="repack-empty"><strong>Não foi possível carregar o Repack</strong><span>'+esc(e.message)+'</span></div>'}finally{S.loading=false}
   }
   async function refreshLive(){
     const root=$('repackView');
     if(S.loading||S.refreshing||!S.data||!root||root.classList.contains('hidden')||document.hidden)return;
-    // Leave an unfinished worker registration and open PIN issuance intact.
-    if($('repackWorkerName')?.value.trim()||root.contains(document.activeElement)&&document.activeElement?.matches('input,select'))return;
+    if(root.contains(document.activeElement)&&document.activeElement?.matches('input,select'))return;
     S.refreshing=true;const month=S.month,requestId=S.requestId;
     try{
       const d=await call('dashboard',{month});
@@ -123,9 +121,10 @@
         ${activityTable(a)}
       </section>
 
+      <section class="panel repack-daily-panel"><div class="panel-heading"><h2>Apontamentos por dia</h2></div>${dailyTable()}</section>
+
       <section class="panel repack-trend"><div class="panel-heading"><h2>Evolução 2026</h2></div>${trendTable(trend,meta)}</section>
 
-      ${role()==='admin'?adminSection():''}
     `;
     bind();
   }
@@ -136,6 +135,19 @@
       const x=a[k]||aggBlank(),avg=k==='bombona'?dailyAverage(x):(x.tasks?x.seconds/x.tasks:0),rate=x.boxes?x.seconds/x.boxes:0,unit=k==='bombona'?'un.':'cx';
       return`<tr><td><strong>${channelNames[k]}</strong></td><td>${nfi.format(x.tasks)}</td><td>${nfi.format(x.boxes)} ${unit}</td><td>${fmtDuration(x.seconds)}</td><td>${fmtDuration(avg)}</td><td>${fmtPerBox(rate)} ${rate?'/ '+unit:''}</td></tr>`
     }).join('')}</tbody></table></div>`
+  }
+  function dailyTable(){
+    const [year,month]=S.month.split('-').map(Number),today=dayKey(new Date()),last=Math.min(new Date(year,month,0).getDate(),S.month===today.slice(0,7)?Number(today.slice(8)):31);
+    const days=new Map();
+    for(const task of S.data?.selected_tasks||[]){const key=dayKey(task.started_at);if(!days.has(key))days.set(key,[]);days.get(key).push(task)}
+    const through=currentDataThrough(),firstTimer=[...(S.data?.selected_tasks||[])].map(t=>dayKey(t.started_at)).sort()[0];
+    const rows=[];
+    for(let n=1;n<=last;n++){
+      const key=`${S.month}-${String(n).padStart(2,'0')}`,tasks=days.get(key)||[],people=[...new Set(tasks.map(t=>`${t.worker?.display_name||'Responsável não identificado'} (${t.channel==='bombona'?'Despejo':'Repack'})`))],repack=tasks.filter(t=>t.channel!=='bombona'),despejo=tasks.filter(t=>t.channel==='bombona');
+      const legacy=through&&key<=String(through).slice(0,10),unknown=legacy||!firstTimer||key<firstTimer;
+      rows.push(`<tr class="${tasks.length||unknown?'':'repack-day-missing'}"><td><strong>${String(n).padStart(2,'0')}/${String(month).padStart(2,'0')}</strong></td><td>${tasks.length?nfi.format(tasks.length):unknown?'Sem detalhe diário':'Sem apontamento no cronômetro'}</td><td>${repack.length?`${nfi.format(repack.reduce((sum,t)=>sum+Number(t.quantity_boxes||0),0))} cx · ${fmtDuration(repack.reduce((sum,t)=>sum+Number(t.duration_seconds||0),0))}`:'—'}</td><td>${despejo.length?`${nfi.format(despejo.reduce((sum,t)=>sum+Number(t.quantity_boxes||0),0))} un. · ${fmtDuration(despejo.reduce((sum,t)=>sum+Number(t.duration_seconds||0),0))}`:'—'}</td><td>${tasks.length?esc(people.join(', ')):'—'}</td></tr>`);
+    }
+    return `<p class="repack-daily-note">${through?'Base anterior consolidada até '+esc(String(through).slice(0,10).split('-').reverse().join('/'))+'. ':''}A visão diária começa com os cronômetros registrados; períodos anteriores não permitem identificar responsáveis ou ausência de trabalho.</p><div class="table-wrap"><table><thead><tr><th>Dia</th><th>Apontamentos</th><th>Repack</th><th>Despejo</th><th>Responsáveis por atividade</th></tr></thead><tbody>${rows.reverse().join('')}</tbody></table></div>`;
   }
   function activeTimers(){const rows=S.data?.active_tasks||[];if(!rows.length)return'<div class="repack-empty compact"><strong>Nenhum cronômetro ativo</strong><span>As tarefas iniciadas pelos ajudantes aparecerão aqui em tempo real.</span></div>';return`<div class="repack-active-list">${rows.map(t=>`<div class="repack-active"><div><strong>${esc(t.worker?.display_name||'Ajudante')}</strong><span>${esc(channelNames[t.channel]||t.channel)}${t.packaging_code?' · '+esc(t.packaging_code):''}</span></div><div><b data-repack-elapsed="${esc(t.started_at)}">${elapsed(t.started_at)}</b><small>desde ${localTime(t.started_at)}</small></div></div>`).join('')}</div>`}
   function elapsed(start){const s=Math.max(0,Math.floor((Date.now()-new Date(start).getTime())/1000)),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;return`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`}
@@ -154,14 +166,8 @@
       return`<tr><td>${localDate(t.started_at)} ${localTime(t.started_at)}</td><td>${esc(t.worker?.display_name||'—')}</td><td>${esc(channelNames[t.channel]||t.channel)}</td><td>${esc(t.packaging_code||'—')}</td><td>${nf.format(qty)} ${unit}</td><td>${fmtDuration(t.duration_seconds)}</td><td>${fmtPerBox(rate)}${rate?' / '+unit:''}</td><td>${isDes?'<span class="repack-target">Meta avaliada na média diária</span>':`<span class="repack-pill ${rate&&rate<=tar?'ok':'bad'}">${rate&&rate<=tar?'OK':'Acima'}</span><small class="repack-target">${fmtPerBox(tar)}</small>`}</td></tr>`
     }).join('')}</tbody></table></div>`
   }
-  function adminSection(){const list=S.adminWorkers||S.data?.workers||[];return`<section class="panel repack-admin"><div class="panel-heading"><h2>Equipe Repack</h2></div>${S.pinIssue?`<div class="repack-pin"><div><span>PIN emitido para ${esc(S.pinIssue.display_name)}</span><strong>${esc(S.pinIssue.pin)}</strong><small>Copie agora. Por segurança, depois ele só pode ser redefinido.</small></div><button class="outline-button" id="repackCopyPin">Copiar PIN</button></div>`:''}<div class="repack-create"><input id="repackWorkerName" placeholder="Nome do ajudante" maxlength="120"><button class="primary-button" id="repackWorkerCreate">Cadastrar e gerar PIN</button></div><div class="repack-worker-list">${list.length?list.map(w=>`<div class="repack-worker"><div><strong>${esc(w.display_name)}</strong><span>${w.active?'Ativo':'Inativo'}${w.pin_ready===false?' · sem PIN':''}</span></div><div><button class="outline-button" data-repack-reset="${esc(w.id)}">Redefinir PIN</button><button class="outline-button" data-repack-toggle="${esc(w.id)}" data-active="${w.active?'1':'0'}">${w.active?'Desativar':'Ativar'}</button></div></div>`).join(''):'<div class="repack-empty compact">Nenhum ajudante cadastrado.</div>'}</div></section>`}
-  async function refreshAdmin(){if(role()!=='admin')return;S.adminWorkers=(await call('admin_workers')).workers||[];render()}
   function bind(){
     $('repackMonth')?.addEventListener('change',e=>{S.month=e.target.value;load()});$('repackRefresh')?.addEventListener('click',load);
-    $('repackWorkerCreate')?.addEventListener('click',async()=>{const name=$('repackWorkerName')?.value.trim();if(!name)return window.showToast?.('Informe o nome do ajudante.',true);try{const d=await call('admin_worker_create',{display_name:name});S.pinIssue=d.issued;await refreshAdmin()}catch(e){window.showToast?.(e.message,true)}});
-    document.querySelectorAll('[data-repack-reset]').forEach(b=>b.addEventListener('click',async()=>{if(!confirm('Redefinir o PIN deste ajudante? O PIN anterior deixará de funcionar.'))return;try{const d=await call('admin_worker_reset_pin',{id:b.dataset.repackReset});S.pinIssue=d.issued;await refreshAdmin()}catch(e){window.showToast?.(e.message,true)}}));
-    document.querySelectorAll('[data-repack-toggle]').forEach(b=>b.addEventListener('click',async()=>{try{await call('admin_worker_toggle',{id:b.dataset.repackToggle,active:b.dataset.active!=='1'});await refreshAdmin()}catch(e){window.showToast?.(e.message,true)}}));
-    $('repackCopyPin')?.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(S.pinIssue?.pin||'');window.showToast?.('PIN copiado.')}catch{window.showToast?.('Copie o PIN manualmente.',true)}});
     clearInterval(window.__repackTicker);window.__repackTicker=setInterval(()=>document.querySelectorAll('[data-repack-elapsed]').forEach(el=>el.textContent=elapsed(el.dataset.repackElapsed)),1000);
   }
   ensureAssets();ensureView();setTimeout(addNav,520);
