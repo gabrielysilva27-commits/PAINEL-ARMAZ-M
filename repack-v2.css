@@ -41,7 +41,7 @@ main:has(#repackView:not(.hidden)) #pageSubtitle{display:none}
 .repack-day-missing{background:#fffaf4}
 .repack-daily-panel td:last-child{min-width:180px}
 
-#repackView .table-wrap{width:100%;max-width:100%;min-width:0;overflow:visible}
+#repackView .table-wrap{width:100%;max-width:100%;max-height:none;min-width:0;overflow-x:auto;overflow-y:visible}
 #repackView table{width:100%;max-width:100%;min-width:0;border-collapse:collapse;table-layout:auto}
 #repackView th,#repackView td{padding:10px 9px;white-space:normal;overflow-wrap:anywhere;line-height:1.25}
 #repackView th{font-size:11px}
