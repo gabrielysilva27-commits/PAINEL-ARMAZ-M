@@ -45,7 +45,7 @@
       '</div><div style="display:flex;justify-content:flex-end;margin-top:10px"><label style="display:grid;gap:5px;font-size:12px;font-weight:700">Data do Informativo<input id="boDailyDate" type="date" value="'+today()+'" style="border:1px solid #d7d8dd;border-radius:9px;padding:9px 10px"></label></div>'+
       '<div class="bo-table-wrap"><table class="bo-table"><thead><tr><th class="bo-select-col"><label class="bo-select-all" title="Selecionar todos os B.O.s visíveis"><input id="boSelectAll" type="checkbox"><span>Todos</span></label></th><th>B.O.</th><th>Data/Hora</th><th>Conferente</th><th>Origem</th><th>Turno</th><th>Motivo</th><th>Local</th><th>Status</th><th>Ação</th></tr></thead><tbody id="boTableBody"></tbody></table></div><div class="bo-empty hidden" id="boEmpty">Nenhum B.O. encontrado.</div><p class="bo-export-note">A PA e o Informativo são derivados automaticamente dos B.O.s validados. Não há nova digitação.</p></section>'+
       '</div>'+
-      '<dialog id="boReviewDialog" class="bo-review-dialog"><div class="bo-review-inner"><div class="bo-review-header"><div><p class="eyebrow">B.O. · MOVIMENTAÇÕES DE ESTOQUE</p><h2 id="boDialogTitle"></h2></div><button id="boDialogClose" aria-label="Fechar">×</button></div><div class="bo-dialog-tools"><button class="bo-btn-secondary" id="boPrint">Imprimir / PDF</button></div><div id="boDialogBody"></div></div></dialog>'+
+      '<dialog id="boReviewDialog" class="bo-review-dialog"><div class="bo-review-inner"><div class="bo-review-header"><div><p class="eyebrow">B.O. · MOVIMENTAÇÕES DE ESTOQUE</p><h2 id="boDialogTitle"></h2></div><button id="boDialogClose" aria-label="Fechar">×</button></div><div class="bo-dialog-tools"><button class="bo-btn-secondary" id="boPrint">Imprimir B.O. + entrevista / PDF</button><button class="bo-btn-secondary" id="boPrintInterview" style="display:none">Só entrevista / PDF</button></div><div id="boDialogBody"></div></div></dialog>'+
       '<dialog id="boInformativoDialog" class="bo-informativo-dialog"><div class="bo-review-inner"><div class="bo-review-header"><div><p class="eyebrow">INFORMATIVO DE QUEBRA DIÁRIA</p><h2 id="boInfDialogTitle"></h2></div><button id="boInfClose" aria-label="Fechar">×</button></div><div class="bo-dialog-tools"><button class="bo-btn-secondary" id="boInfPrint">Imprimir / PDF</button><button class="bo-btn-primary" id="boInfDownload">Baixar XLSX</button></div><div id="boInfBody"></div></div></dialog>';
   }
 
@@ -56,7 +56,7 @@
     let t;$('boSearch').oninput=()=>{clearTimeout(t);t=setTimeout(load,250);};
     $('boRefresh').onclick=load;$('boPrintSelected').onclick=printSelectedBos;$('boExportPa').onclick=exportPaXlsx;$('boPreviewDaily').onclick=previewDaily;
     $('boSelectAll').onchange=e=>{if(e.target.checked)rows.forEach(r=>selectedIds.add(Number(r.id)));else selectedIds.clear();syncSelectionUi();renderRowSelection();};
-    $('boDialogClose').onclick=()=>$('boReviewDialog').close();$('boPrint').onclick=printBo;$('boInfClose').onclick=()=>$('boInformativoDialog').close();
+    $('boDialogClose').onclick=()=>$('boReviewDialog').close();$('boPrint').onclick=printBo;$('boPrintInterview').onclick=printInterview;$('boInfClose').onclick=()=>$('boInformativoDialog').close();
     $('boInfPrint').onclick=printInformativo;$('boInfDownload').onclick=exportDailyXlsx;
   }
 
@@ -128,6 +128,8 @@
     }
     if(selected.status==='pending'&&selected.record_kind!=='turn_c_origin'&&permissions&&permissions.can_validate)paper+='<label style="display:grid;gap:6px;margin-top:16px;font-weight:700;font-size:12px">Comentário do Controle<textarea id="boReviewComment" rows="3" placeholder="Obrigatório somente para devolver ao conferente"></textarea></label><div class="bo-review-actions"><button class="bo-btn-danger" id="boReturnButton">Devolver para correção</button><button class="bo-btn-primary" id="boValidateButton">Validar B.O.</button></div>';
     $('boDialogBody').innerHTML=paper;
+    $('boPrint').textContent=selected.interview_report?'Imprimir B.O. + entrevista / PDF':'Imprimir / PDF';
+    $('boPrintInterview').style.display=selected.interview_report?'':'none';
     if($('boReturnButton'))$('boReturnButton').onclick=()=>review('returned');if($('boValidateButton'))$('boValidateButton').onclick=()=>review('validated');
     $('boReviewDialog').showModal();
   }
@@ -186,6 +188,22 @@
     }catch(e){showToast(e.message,true);}
   }
 
+  function interviewHtml(row){
+    if(!row?.interview_report)return '';
+    const report=String(row.interview_report),lines=report.split('\n');
+    const value=label=>lines.find(line=>line.startsWith(label))?.slice(label.length)||'';
+    const structured=lines[0]==='ENTREVISTA DE QUEBRAS';
+    const responses=structured?lines.filter(line=>/^\d+\. /.test(line)):[];
+    const entries=structured?responses.map(line=>{
+      const match=line.match(/^(\d+)\. (.*?) — (Sim|Não|N\/A)(?: \| (.*))?$/);
+      return match?'<div class="interview-print-row"><strong>'+esc(match[1]+'. '+match[2])+'</strong><span>'+esc(match[3])+(match[4]?' · '+esc(match[4]):'')+'</span></div>':'<p>'+esc(line)+'</p>';
+    }).join(''):'<p class="interview-print-legacy">'+esc(report)+'</p>';
+    return '<section class="interview-print-document"><header><small>ANEXO DO B.O. '+esc(row.bo_number)+'</small><h1>ENTREVISTA DE QUEBRAS</h1></header>'+
+      '<div class="interview-print-meta"><span><b>Data da entrevista:</b> '+esc(structured?fmtDate(value('Entrevista: ')):'—')+'</span><span><b>Data da quebra:</b> '+esc(structured?fmtDate(value('Quebra: ')):fmtDate(row.occurrence_date))+'</span><span><b>Área:</b> '+esc(structured?value('Área: '):row.location)+'</span><span><b>Funcionário:</b> '+esc(structured?value('Funcionário: '):row.employee_name)+'</span><span><b>Função:</b> '+esc(structured?value('Função: '):row.employee_function)+'</span></div>'+
+      '<div class="interview-print-answers">'+entries+'</div>'+
+      (structured?'<div class="interview-print-considerations"><b>Considerações:</b> '+esc(value('Considerações: '))+'</div>':'')+
+      '<div class="interview-print-signatures"><div><span>Funcionário</span><small>'+esc(row.employee_name||'')+'</small></div><div><span>Gestor</span><small>'+esc(value('Gestor: '))+'</small></div><div><span>Técnico de controle</span><small>'+esc(value('Técnico de controle: '))+'</small></div></div></section>';
+  }
   function printSheet(title,content,landscape=false){
     if(!content)return;
     const iframe=document.createElement('iframe');
@@ -199,7 +217,7 @@
     iframe.style.background='#fff';
     document.body.appendChild(iframe);
     const screenCss=document.getElementById('boControlCssEmbedded')?.textContent||'';
-    const printCss='@page{size:A4 '+(landscape?'landscape':'portrait')+';margin:10mm}html,body{margin:0!important;padding:0!important;background:#fff!important;color:#111!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}.bo-batch-page{page-break-after:always;break-after:page}.bo-batch-page:last-child{page-break-after:auto;break-after:auto}.bo-paper{width:100%!important;max-width:none!important;margin:0!important}.bo-review-actions,.bo-dialog-tools,button{display:none!important}';
+    const printCss='@page{size:A4 '+(landscape?'landscape':'portrait')+';margin:10mm}html,body{margin:0!important;padding:0!important;background:#fff!important;color:#111!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}.bo-batch-page{break-after:page}.bo-batch-page:last-child{break-after:auto}.bo-paper{width:100%!important;max-width:none!important;margin:0!important}.bo-review-actions,.bo-dialog-tools,button{display:none!important}.interview-print-document{break-before:page;box-sizing:border-box;font:11px Arial,sans-serif;color:#111}.interview-print-document:first-child{break-before:auto}.interview-print-document header{border-bottom:2px solid #222;padding-bottom:5mm}.interview-print-document h1{font-size:19px;margin:2mm 0}.interview-print-meta{display:grid;grid-template-columns:1fr 1fr;gap:2mm;padding:4mm 0;border-bottom:1px solid #aaa}.interview-print-row{display:grid;grid-template-columns:3fr 1fr;gap:5mm;border-bottom:1px solid #ddd;padding:1.8mm 0;break-inside:avoid}.interview-print-answers{margin-top:3mm}.interview-print-considerations{margin-top:5mm;min-height:12mm;white-space:pre-wrap}.interview-print-legacy{white-space:pre-wrap}.interview-print-signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:8mm;margin-top:12mm;break-inside:avoid}.interview-print-signatures>div{border-top:1px solid #333;text-align:center;padding-top:2mm}.interview-print-signatures small{display:block}';
     const doc=iframe.contentDocument||iframe.contentWindow.document;
     doc.open();
     doc.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'+screenCss+'\n'+printCss+'</style></head><body>'+content+'</body></html>');
@@ -232,12 +250,13 @@
   function printBo(){
     const paper=$('boDialogBody')&&$('boDialogBody').querySelector('.bo-paper');
     if(!paper)return showToast('Abra um B.O. antes de imprimir.',true);
-    printSheet(selected&&selected.bo_number?selected.bo_number:'B.O.',paper.outerHTML,false);
+    printSheet(selected&&selected.bo_number?selected.bo_number:'B.O.',paper.outerHTML+interviewHtml(selected),false);
   }
+  function printInterview(){if(selected?.interview_report)printSheet('Entrevista · '+selected.bo_number,interviewHtml(selected),false);}
   function printSelectedBos(){
     const chosen=rows.filter(r=>selectedIds.has(Number(r.id)));
     if(!chosen.length)return showToast('Selecione pelo menos um B.O. para imprimir.',true);
-    const content=chosen.map(r=>'<section class="bo-batch-page">'+paperHtml(r)+'</section>').join('');
+    const content=chosen.map(r=>'<section class="bo-batch-page">'+paperHtml(r)+interviewHtml(r)+'</section>').join('');
     printSheet(chosen.length+' B.O.s selecionados',content,false);
   }
 
