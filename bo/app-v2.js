@@ -16,7 +16,7 @@
   function today(){return new Date().toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'});}
   function nowTime(){return new Date().toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'});}
   function needsInterview(){return subjectType==='Funcionário'&&$('reasonSelect').value.startsWith('Quebra ao ');}
-  function updateInterview(){const required=needsInterview();$('interviewWrap').classList.toggle('hidden',!required);$('interviewReport').required=required;}
+  function updateInterview(){const required=needsInterview();$('interviewWrap').classList.toggle('hidden',!required);window.BoInterview?.update();}
   function setSubjectType(value){subjectType=value||'Funcionário';$('subjectOptions').querySelectorAll('button[data-value]').forEach(b=>b.classList.toggle('active',b.dataset.value===subjectType));const isEmployee=subjectType==='Funcionário',isFactory=subjectType==='Fábrica';$('employeeFields').classList.toggle('hidden',!isEmployee);$('factoryWrap').classList.toggle('hidden',!isFactory);$('warehouseHint').classList.toggle('hidden',subjectType!=='Armazém');$('employeeInput').required=isEmployee;$('employeeFunction').required=isEmployee;$('factoryInput').required=isFactory;if(!isEmployee){$('employeeInput').value='';$('employeeFunction').value='';$('employeeResults').classList.add('hidden');}if(!isFactory)$('factoryInput').value='';updateInterview();}
   function initSelects(){for(const v of LOCATIONS)$('locationSelect').add(new Option(v,v));for(const v of REASONS)$('reasonSelect').add(new Option(v,v));for(const v of RESPONSIBILITIES)$('responsibilitySelect').add(new Option(v,v));}
   function segmented(id,setter){$(id).addEventListener('click',e=>{const b=e.target.closest('button[data-value]');if(!b)return;$(id).querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));setter(b.dataset.value||'');});}
@@ -84,7 +84,7 @@
   }
   function resetForm(clearEditing=true){
     if(clearEditing){editingOccurrence=null;confrontSource=null;}
-    $('boForm').reset();shift='';movement='';subjectType='Funcionário';$('shiftOptions').querySelectorAll('button').forEach(x=>x.classList.remove('active'));$('movementOptions').querySelectorAll('button').forEach(x=>x.classList.remove('active'));$('occurrenceDate').value=today();$('occurrenceTime').value=nowTime();$('employeeFunction').value='';$('itemsList').innerHTML='';addItem();$('formError').textContent='';setSubjectType('Funcionário');updateEditingUi();updateShiftFlowNotice();
+    $('boForm').reset();window.BoInterview?.reset();shift='';movement='';subjectType='Funcionário';$('shiftOptions').querySelectorAll('button').forEach(x=>x.classList.remove('active'));$('movementOptions').querySelectorAll('button').forEach(x=>x.classList.remove('active'));$('occurrenceDate').value=today();$('occurrenceTime').value=nowTime();$('employeeFunction').value='';$('itemsList').innerHTML='';addItem();$('formError').textContent='';setSubjectType('Funcionário');updateEditingUi();updateShiftFlowNotice();
   }
   function editOccurrence(row){
     confrontSource=null;editingOccurrence=row;
@@ -128,6 +128,7 @@
     updateEditingUi();show('formView');window.scrollTo({top:0,behavior:'smooth'});
   }
   function collect(){
+    if(needsInterview()&&!$('interviewReport').value.trim()){window.BoInterview?.open();throw new Error('Preencha a entrevista de quebras antes de enviar o B.O.');}
     if(!shift)throw new Error('Selecione o turno.');if(!movement)throw new Error('Selecione Entrada ou Saída.');
     const items=[...$('itemsList').children].map(card=>({sku_code:card.querySelector('.sku-input').value,total_qty:card.querySelector('.qty-total').value,repacked_qty:card.querySelector('.qty-repacked').value,discarded_qty:card.querySelector('.qty-discarded').value,invoice_number:card.querySelector('.invoice-number').value,lot_number:card.querySelector('.lot-number').value,expiry_date:card.querySelector('.expiry-date').value}));
     return{occurrence_date:$('occurrenceDate').value,occurrence_time:$('occurrenceTime').value,shift,movement_type:movement,location:$('locationSelect').value,subject_type:subjectType,factory_name:$('factoryInput').value,employee_name:$('employeeInput').value,employee_function:$('employeeFunction').value,reason:$('reasonSelect').value,responsibility:$('responsibilitySelect').value,comments:$('comments').value,interview_report:$('interviewReport').value,items};

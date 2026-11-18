@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles-v2.css?v=20260925-4" />
+  <link rel="stylesheet" href="interview-form.css?v=20261118-1" />
 </head>
 <body>
   <main class="bo-app">
@@ -70,7 +71,7 @@
           <div id="warehouseHint" class="origin-hint hidden">A ocorrência será registrada como responsabilidade do <strong>Armazém</strong>.</div>
           <label>Motivo<select id="reasonSelect" required></select></label>
           <label>Responsável<select id="responsibilitySelect" required></select></label>
-          <label id="interviewWrap" class="hidden">Entrevista / relato obrigatório<textarea id="interviewReport" rows="4" placeholder="Registre a entrevista realizada com o funcionário..."></textarea></label>
+          <div id="interviewWrap" class="interview-entry hidden"><span class="field-title">Entrevista / relato obrigatório</span><button class="secondary" id="openInterview" type="button">Preencher entrevista de quebras</button><span id="interviewStatus" class="muted">Preencha o formulário antes de enviar o B.O.</span><textarea id="interviewReport" class="hidden" aria-hidden="true" tabindex="-1"></textarea></div>
         </section>
 
         <section class="form-section">
@@ -137,6 +138,8 @@
   </template>
 
   <div id="toast" class="toast hidden"></div>
-  <script src="app-v2.js?v=20260929-5"></script>
+  <dialog id="interviewDialog" class="interview-dialog" aria-labelledby="interviewTitle"><form id="interviewForm" novalidate><header><div><p class="eyebrow">DOCUMENTO DA OCORRÊNCIA</p><h2 id="interviewTitle">Entrevista de quebras</h2></div><button id="interviewClose" class="ghost" type="button" aria-label="Fechar entrevista">×</button></header><div id="interviewFields" class="interview-fields"></div><p id="interviewError" class="error" role="alert"></p><footer><button id="interviewCancel" class="secondary" type="button">Voltar ao B.O.</button><button class="primary" type="submit">Salvar entrevista</button></footer></form></dialog>
+  <script src="interview-form.js?v=20261118-1"></script>
+  <script src="app-v2.js?v=20261118-interview-1"></script>
 <script src="../portal-pin.js?v=20261110-1"></script></body>
 </html>
