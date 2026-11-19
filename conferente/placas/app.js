@@ -1,3 +1,4 @@
+import {flowDocument,requestFlowDates} from './flow-print.mjs?v=20261119-1';
 import {productLabel} from './product-label.mjs?v=20261110-batch-1';
 import {fittedFont} from './text-fit.mjs';
 import {batchLabels,batchDocument,printBatch} from './batch-print.mjs?v=20261110-batch-1';
@@ -37,7 +38,11 @@ async function printLayoutArea(area){
   const data=await response.json();if(!response.ok)throw new Error(data.error||'Não foi possível carregar o layout.');
   const labels=batchLabels(data.positions||[]);
   $('message').textContent=labels.length+' placas · '+(area==='flow'?'Flow Rack':'Picking')+' · layout '+data.month.split('-').reverse().join('/')+' · uma folha A4 paisagem por posição.';
-  await printBatch(batchDocument(labels,measure));
+  if(area==='flow'){
+   const dates=await requestFlowDates(labels);
+   if(!dates){$('message').textContent='Impressão do Flow Rack cancelada.';return;}
+   await printBatch(flowDocument(labels,dates,measure));
+  }else await printBatch(batchDocument(labels,measure));
  }catch(error){$('message').textContent=error.message;}finally{buttons.forEach(button=>button.disabled=false);}
 }
 $('printPickingButton').onclick=()=>printLayoutArea('picking');
