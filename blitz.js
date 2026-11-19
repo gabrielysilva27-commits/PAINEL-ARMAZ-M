@@ -32,10 +32,23 @@ function table(headers,rows,empty='Sem registros neste mês.'){return `<div clas
 function pairs(obj){return Object.entries(obj||{}).sort((a,b)=>Number(b[1])-Number(a[1])).map(([k,v])=>[bes(k),bn(v)])}
 function reasonRows(s){return Object.entries(s.byReason||{}).sort((a,b)=>Number(b[1])-Number(a[1])).map(([reason,units])=>[bes(reason),bn(s.byReasonCounts[reason]??null),bn(units)+' un']);}
 function dayRows(s){return (s.daily||[]).map(d=>[String(d.date||'').split('-').reverse().join('/'),bn(d.trips_day),bn(d.trips_checked)+(d.pending_maps?` <small>(${bn(d.pending_maps)} mapa pendente)</small>`:''),d.trips_day?bn(100*d.trips_checked/d.trips_day)+'%':'—',bn(d.packages_checked),bn(d.loss_lines),bn(d.loss_units)])}
-function currentRows(){const losses=B.data?.losses||[],checks=B.data?.checks||[];return losses.map(l=>{const c=checks.find(x=>x.check_key===l.check_key)||{};return[String(l.reference_date||'').split('-').reverse().join('/'),bes(c.trailer||''),bes(c.checker||''),bes(l.invoice||''),bes(l.sku_code||''),bes(l.sku_name||''),bn(l.quantity_units),bes(l.reason||'')]}).concat((B.data?.workbook_rows||[]).filter(r=>r.quantity_units>0).map(r=>[r.reference_date.split('-').reverse().join('/'),bes(r.trailer),bes(r.checker),bes(r.invoice),bes(r.sku_code),bes(r.sku_name),bn(r.quantity_units),bes(r.reason)]))}
+function currentRows(){const losses=B.data?.losses||[],checks=B.data?.checks||[];const byKey = new Map();
+ for (const check of checks) {
+   if (!byKey.has(check.check_key)) byKey.set(check.check_key, check);
+ }
+ return losses.map(l=>{const c=byKey.get(l.check_key)||{};return[String(l.reference_date||'').split('-').reverse().join('/'),bes(c.trailer||''),bes(c.checker||''),bes(l.invoice||''),bes(l.sku_code||''),bes(l.sku_name||''),bn(l.quantity_units),bes(l.reason||'')]}).concat((B.data?.workbook_rows||[]).filter(r=>r.quantity_units>0).map(r=>[r.reference_date.split('-').reverse().join('/'),bes(r.trailer),bes(r.checker),bes(r.invoice),bes(r.sku_code),bes(r.sku_name),bn(r.quantity_units),bes(r.reason)]))}
 function productRows(s){return (s.products||[]).slice(0,20).map(x=>[bes(x.sku),bes(x.product),bes(x.reason),bn(x.qty)])}
 const emailHeaders=['Data','NF','Fábrica','Código','Produto','Qtd em Unidade','Motivo','Horário','Carreta','Mapa','Motorista','Conferente','Qtd de Viagem no dia','Qtd de Viagem aferida no dia','Qtd de vasilhame aferido'];
-function emailRows(date){return (B.data?.checks||[]).filter(c=>c.reference_date===date).flatMap(c=>{const items=(B.data?.losses||[]).filter(l=>l.check_key===c.check_key);return (items.length?items:[{}]).map(l=>[date.split('-').reverse().join('/'),l.invoice||'',l.factory||'',l.sku_code||'',l.sku_name||'',l.quantity_units==null?'':bn(l.quantity_units),l.reason||'',String(c.check_time||'').slice(0,5),c.trailer||'',c.map_number||'Mapa pendente',c.driver||'',c.checker||'',bn(dailyStat(date)?.trips_day),bn(dailyStat(date)?.trips_checked),c.packages_checked==null?'':bn(c.packages_checked)])})}
+function emailRows(date){
+ const checks = (B.data?.checks || []).filter(check => check.reference_date === date);
+ if (!checks.length) return [];
+ const stat = dailyStat(date);
+ const lossesByCheck = new Map();
+ for (const loss of B.data?.losses || []) {
+   if (!lossesByCheck.has(loss.check_key)) lossesByCheck.set(loss.check_key, []);
+   lossesByCheck.get(loss.check_key).push(loss);
+ }
+ return checks.flatMap(c=>{const items=lossesByCheck.get(c.check_key)||[];return (items.length?items:[{}]).map(l=>[date.split('-').reverse().join('/'),l.invoice||'',l.factory||'',l.sku_code||'',l.sku_name||'',l.quantity_units==null?'':bn(l.quantity_units),l.reason||'',String(c.check_time||'').slice(0,5),c.trailer||'',c.map_number||'Mapa pendente',c.driver||'',c.checker||'',bn(stat?.trips_day),bn(stat?.trips_checked),c.packages_checked==null?'':bn(c.packages_checked)])})}
 function renderEmail(){be('blitzEmailPreview').innerHTML=table(emailHeaders,emailRows(be('blitzEmailDate').value).map(r=>r.map(bes)),'Sem lançamentos para esta data.');}
 async function copyBlitzEmail(){const rows=emailRows(be('blitzEmailDate').value);if(!rows.length){window.showToast?.('Sem lançamentos para esta data.',true);return;}const cell=(v,header)=>`<${header?'th':'td'} style="border:1px solid #888;padding:6px;text-align:center;background:${header?'#70a8dc':'#eee'};font:12px Arial;color:#111">${bes(v)}</${header?'th':'td'}>`;const html='<table style="border-collapse:collapse"><thead><tr>'+emailHeaders.map(v=>cell(v,true)).join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(v=>cell(v,false)).join('')+'</tr>').join('')+'</tbody></table>';const text=[emailHeaders,...rows].map(r=>r.map(v=>String(v).replace(/[\t\r\n]/g,' ')).join('\t')).join('\n');try{if(window.ClipboardItem&&navigator.clipboard.write)await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([text],{type:'text/plain'})})]);else await navigator.clipboard.writeText(text);window.showToast?.('Quadro copiado para colar no e-mail.');}catch(e){window.showToast?.('Não foi possível copiar. Tente novamente.',true);}}
 const blitzProductCache=new Map();
