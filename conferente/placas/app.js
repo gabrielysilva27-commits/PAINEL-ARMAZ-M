@@ -1,4 +1,4 @@
-import {flowDocument,requestFlowDates} from './flow-print.mjs?v=20261119-1';
+import {flowDocument,requestFlowProducts} from './flow-print.mjs?v=20261119-selective-2';
 import {productLabel} from './product-label.mjs?v=20261110-batch-1';
 import {fittedFont} from './text-fit.mjs';
 import {batchLabels,batchDocument,printBatch} from './batch-print.mjs?v=20261110-batch-1';
@@ -38,15 +38,20 @@ async function printLayoutArea(area){
   const data=await response.json();if(!response.ok)throw new Error(data.error||'Não foi possível carregar o layout.');
   const labels=batchLabels(data.positions||[]);
   $('message').textContent=labels.length+' placas · '+(area==='flow'?'Flow Rack':'Picking')+' · layout '+data.month.split('-').reverse().join('/')+' · uma folha A4 paisagem por posição.';
-  if(area==='flow'){
-   const dates=await requestFlowDates(labels);
-   if(!dates){$('message').textContent='Impressão do Flow Rack cancelada.';return;}
-   await printBatch(flowDocument(labels,dates,measure));
-  }else await printBatch(batchDocument(labels,measure));
+  await printBatch(batchDocument(labels,measure));
  }catch(error){$('message').textContent=error.message;}finally{buttons.forEach(button=>button.disabled=false);}
 }
 $('printPickingButton').onclick=()=>printLayoutArea('picking');
-$('printFlowButton').onclick=()=>printLayoutArea('flow');
+$('printFlowButton').onclick=async()=>{
+ const selection=await requestFlowProducts(async code=>{
+  const {product}=await call('picking_product',{code});
+  if(!product)throw new Error('Código '+code+' não encontrado na OCP.');
+  return batchLabels([{code,product}])[0];
+ });
+ if(!selection)return;
+ try{await printBatch(flowDocument(selection.labels,selection.dates,measure));}
+ catch(error){$('message').textContent=error.message;}
+};
 window.addEventListener('beforeprint',fitSign);window.addEventListener('afterprint',fitSign);
 $('loginForm').onsubmit=async event=>{event.preventDefault();$('loginButton').disabled=true;try{const data=await call('pin_login',{conferencer_id:$('conferencerSelect').value,pin:$('pinInput').value},false);token=data.token;sessionStorage.setItem('bo_token',token);$('pinInput').value='';enter(data.conferencer);}catch(error){$('message').textContent=error.message;}finally{$('loginButton').disabled=false;}};
 $('logout').onclick=async()=>{try{await call('bo_logout');}catch{}token='';sessionStorage.removeItem('bo_token');sessionStorage.removeItem('nri_conf_token');resetProduct();$('workView').hidden=true;$('identity').hidden=true;$('loginView').hidden=false;};
