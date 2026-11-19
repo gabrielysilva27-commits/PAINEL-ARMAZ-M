@@ -123,7 +123,7 @@
     $('pageTitle').textContent=which==='nri'?'Recebimento / NRI':'Puxada · Físico × Sistema';$('pageSubtitle').textContent=which==='nri'?'Da entrada da carreta à identificação dos paletes.':'Cruzamento do físico conferido às cegas com a quantidade do sistema.';
     root.innerHTML=shell(which);ensureDialogs(root);
     if(which==='nri'){let t;$('rxpSearch').oninput=()=>{clearTimeout(t);t=setTimeout(loadNri,250)};$('rxpStatus').onchange=loadNri;$('rxpPrintFilter').onchange=loadNri;$('rxpRefresh').onclick=loadNri;$('rxpNew').onclick=()=>openReceiptForm();$('rxpOpenConf').onclick=()=>window.open(CONF_URL,'_blank','noopener,noreferrer');$('rxpPrintPendingCard').onclick=()=>{$('rxpStatus').value='conference_completed';$('rxpPrintFilter').value='pending_print';loadNri()};await loadNri()}
-    else{let t;$('pullSearch').oninput=()=>{clearTimeout(t);t=setTimeout(loadPull,250)};$('pullStatus').onchange=loadPull;$('pullRefresh').onclick=async()=>{await Promise.all([loadAgentStatus(),load020501Status()]);await loadPull()};$('pullAgentSync').onclick=requestAgentSync;$('pullImportButton').onclick=()=>$('pullImportFile').click();$('pullImportFile').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;const b=$('pullImportButton');try{b.disabled=true;b.textContent='Importando...';const x=await import020501File(file);showToast('02.05.01 importado: '+x.documents+' NF(s), '+x.aggregated_rows+' produtos consolidados.');await load020501Status();await loadPull()}catch(err){showToast(err.message,true)}finally{b.disabled=false;b.textContent='Importar manual';e.target.value=''}};await Promise.all([loadAgentStatus(),load020501Status()]);await loadPull()}
+    else{let t;$('pullSearch').oninput=()=>{clearTimeout(t);t=setTimeout(loadPull,250)};$('pullStatus').onchange=loadPull;$('pullRefresh').onclick=async()=>{await Promise.all([loadAgentStatus(),load020501Status(),loadPull()])};$('pullAgentSync').onclick=requestAgentSync;$('pullImportButton').onclick=()=>$('pullImportFile').click();$('pullImportFile').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;const b=$('pullImportButton');try{b.disabled=true;b.textContent='Importando...';const x=await import020501File(file);showToast('02.05.01 importado: '+x.documents+' NF(s), '+x.aggregated_rows+' produtos consolidados.');await load020501Status();await loadPull()}catch(err){showToast(err.message,true)}finally{b.disabled=false;b.textContent='Importar manual';e.target.value=''}};await Promise.all([loadAgentStatus(),load020501Status(),loadPull()])}
   }
   async function loadNri(){
     try{
@@ -153,9 +153,13 @@
           '<td><div class="rxp-row-actions"><button class="rxp-btn" data-detail="'+r.id+'">Visualizar</button> '+action+(isAdmin()?'<button class="rxp-btn trash" data-delete-receipt="'+r.id+'" title="Excluir recebimento" aria-label="Excluir recebimento">🗑</button>':'')+'</div></td></tr>';
       }).join('');
       $('rxpEmpty').classList.toggle('hidden',visible.length>0);
-      $('rxpBody').querySelectorAll('[data-detail]').forEach(b=>b.onclick=()=>detail(Number(b.dataset.detail)));
-      $('rxpBody').querySelectorAll('[data-print]').forEach(b=>b.onclick=()=>previewNri(Number(b.dataset.print)));
-      $('rxpBody').querySelectorAll('[data-delete-receipt]').forEach(b=>b.onclick=()=>deleteReceiptAdmin(Number(b.dataset.deleteReceipt)));
+      $('rxpBody').onclick = event => {
+        const button = event.target.closest('button');
+        if (!button) return;
+        if (button.hasAttribute('data-detail')) detail(Number(button.dataset.detail));
+        else if (button.hasAttribute('data-print')) previewNri(Number(button.dataset.print));
+        else if (button.hasAttribute('data-delete-receipt')) deleteReceiptAdmin(Number(button.dataset.deleteReceipt));
+      };
     }catch(e){showToast(e.message,true)}
   }
   async function deleteReceiptAdmin(id){
