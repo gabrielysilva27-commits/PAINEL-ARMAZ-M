@@ -38,12 +38,20 @@ Deno.serve(async(req:Request)=>{if(req.method==="OPTIONS")return new Response("o
  const month=String(body.month||new Date().toLocaleDateString("sv-SE",{timeZone:"America/Sao_Paulo"}).slice(0,7));const start=monthStart(month),end=nextMonth(month);
  let cq=db.from("blitz_pull_checks").select("*").gte("reference_date",start).lt("reference_date",end).order("reference_date",{ascending:false}).order("check_time",{ascending:false});
  if(user.is_conferencer)cq=cq.eq("conferencer_id",user.id);
- const [{data:checks,error:ce},{data:cache,error:cacheError}]=await Promise.all([cq,user.is_conferencer?Promise.resolve({data:null,error:null}):db.from("blitz_pull_summary_cache").select("*").eq("reference_month",start).maybeSingle()]);
- if(ce)throw ce;if(cacheError)throw cacheError;
- let losses:any[]=[];
+ const emptyResult = {data:null,error:null};
+ const [checksResult, cacheResult, lossesResult, source] = await Promise.all([
+   cq,
+   user.is_conferencer ? emptyResult : db.from("blitz_pull_summary_cache").select("*").eq("reference_month",start).maybeSingle(),
+   user.is_conferencer ? emptyResult : db.from("blitz_pull_losses").select("*").gte("reference_date",start).lt("reference_date",end).order("reference_date",{ascending:false}),
+   availableTrailers(month)
+ ]);
+ for (const result of [checksResult,cacheResult,lossesResult]) {
+   if (result.error) throw result.error;
+ }
+ const checks=checksResult.data, cache=cacheResult.data;
+ let losses:any[]=lossesResult.data||[];
  if(user.is_conferencer){const keys=(checks||[]).map(c=>c.check_key);if(keys.length){const {data,error}=await db.from("blitz_pull_losses").select("*").in("check_key",keys).order("reference_date",{ascending:false});if(error)throw error;losses=data||[];}}
- else{const {data,error}=await db.from("blitz_pull_losses").select("*").gte("reference_date",start).lt("reference_date",end).order("reference_date",{ascending:false});if(error)throw error;losses=data||[];}
- const source=await availableTrailers(month);let effectiveCache=cache,workbookRows:any[]=[];
+ let effectiveCache=cache,workbookRows:any[]=[];
  if(cache?.workbook_rows){const rows=cache.workbook_rows as any[];effectiveCache=summarizeWorkbook(rows,checks||[],String(cache.source||"Planilha Blitz").replace(/^Aba Lançamento Perda — /,""));const keys=new Set((checks||[]).map(checkIdentity));workbookRows=rows.filter(r=>!keys.has(checkIdentity(r)));}
  if(effectiveCache){const {workbook_rows,...summary}=effectiveCache;effectiveCache=summary;}
  let statsChecks=checks||[];
