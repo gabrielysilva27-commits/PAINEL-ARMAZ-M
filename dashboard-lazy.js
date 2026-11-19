@@ -2,7 +2,7 @@
   let navigation=0;
   document.addEventListener('click',event=>{if(event.target.closest?.('.nav-link'))navigation++;},true);
   const entries=[
-    {id:'efc',label:'Carregamento / EFC',js:'./efc.js?v=20261110-mixed-pallets-1',css:'efc.css?v=20261006-boxes-average'},
+    {id:'efc',label:'Carregamento / EFC',js:'./efc.js?v=20261119-direct-open',css:'efc.css?v=20261006-boxes-average'},
     {id:'productivity',label:'Produtividade / WLP',js:'./productivity.js?v=20261007-audit-1',css:'productivity.css?v=20261006-team-1'}
   ];
   function mount(){
@@ -19,10 +19,17 @@
           const link=document.createElement('link');link.rel='stylesheet';link.href=entry.css;link.dataset.lazyStyle=entry.id;document.head.appendChild(link);
         }
         // Let the existing module install its own navigation and all its handlers.
-        button.removeAttribute('data-view');
+        if(entry.id!=='efc')button.removeAttribute('data-view');
         pending=import(entry.js);
         try{
-          await pending;
+          const module=await pending;
+          if(entry.id==='efc'){
+            button.disabled=false;
+            button.textContent=entry.label;
+            button.onclick=module.open;
+            if(turn===navigation)module.open();
+            return;
+          }
           const actual=nav.querySelector('[data-view="'+entry.id+'"]');
           if(!actual)throw new Error('Não foi possível iniciar o módulo.');
           button.remove();
