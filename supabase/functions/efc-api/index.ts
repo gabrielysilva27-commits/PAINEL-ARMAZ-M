@@ -12,6 +12,33 @@ const H={'Access-Control-Allow-Origin':'https://painel-armaz-m.gabrielysilva27.w
 const reply=(x:unknown,status=200)=>new Response(JSON.stringify(x),{status,headers:H});
 async function hash(t:string){const b=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t)));return btoa(String.fromCharCode(...b)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,'');}
 function check(e:any){if(e)throw e;}
+async function readDashboardSources(from:string, before:string, next:string) {
+ const shared:any[] = [], ocp:any[] = [];
+ async function append(start:string, previous:string, end:string) {
+   const result = await db.rpc('efc_dashboard_sources_fast', {p_from:start, p_before:previous, p_to:end});
+   const days = (Date.parse(end)-Date.parse(start))/86400000;
+   if (result.error?.code === '57014' && days > 1) {
+     const middle = new Date(Date.parse(start)+Math.floor(days/2)*86400000).toISOString().slice(0,10);
+     await append(start, previous, middle);
+     await append(middle, middle, end);
+     return;
+   }
+   check(result.error);
+   for (const row of result.data.shared) shared.push(row);
+   for (const row of result.data.ocp) ocp.push(row);
+ }
+ for (let start=from; start<next;) {
+   const boundary = new Date(Date.parse(start)+7*86400000).toISOString().slice(0,10);
+   const end = boundary < next ? boundary : next;
+   await append(start, start===from ? before : start, end);
+   start=end;
+ }
+ ocp.sort((a,b) => {
+   const x=String(a.payload.map), y=String(b.payload.map);
+   return x<y ? -1 : x>y ? 1 : Number(a.payload.row_no)-Number(b.payload.row_no);
+ });
+ return {data:{shared,ocp},error:null};
+}
 async function all(make:()=>any){const rows:any[]=[];for(let n=0;n<50000;n+=1000){const {data,error}=await make().range(n,n+999);check(error);rows.push(...data);if(data.length<1000)return rows;}throw Error('Limite de consulta excedido');}
 async function agentNode(req:Request){const t=req.headers.get('x-agent-token');if(!t)return null;const {data,error}=await db.from('receiving_pull_agent_nodes').select('id').eq('token_hash',await hash(t)).eq('active',true).eq('slot_code','ADM').maybeSingle();check(error);return data;}
 async function activeCycles(){
@@ -159,7 +186,7 @@ Deno.serve(async req=>{
  if(b.action==='request_scan'){if(u.role!=='admin')return reply({error:'Acesso administrativo necessário'},403);return reply({ok:true,message:'O EFC acompanha os MAPAS a partir das 21h do dia anterior, retomando ao ligar o PC até identificar todos os carregamentos.'});}
  if(b.action!=='dashboard')return reply({error:'Ação inválida'},400);
  const from=month+'-01',next=new Date(Date.UTC(2026,Number(month.slice(5)),1)).toISOString().slice(0,10),before=new Date(Date.parse(from+'T12:00:00Z')-2*86400000).toISOString().slice(0,10);
- const [chunks,patches,events,pcd,agent,history,currentSources,cycles]=await Promise.all([all(()=>db.from('efc_archive').select('*').eq('month',month).order('kind').order('chunk')),all(()=>db.from('efc_adjustments').select('*').eq('month',month).order('record_id')),all(()=>db.from('efc_agent_events').select('id,payload').gte('reference_date',before).lt('reference_date',next).order('id')),all(()=>db.from('efc_agent_map_files').select('*').gte('reference_date',from).lt('reference_date',next).order('reference_date')),db.from('efd_agent_config').select('status,last_scan_at,last_error').eq('id',1).single(),db.from('efc_workbook_history').select('payload').eq('month',month).maybeSingle(),db.rpc('efc_dashboard_sources_fast',{p_from:from,p_before:before,p_to:next}),all(()=>db.from('efc_night_cycles').select('*').gte('reference_date',from).lt('reference_date',next).order('reference_date'))]);check(agent.error);check(history.error);check(currentSources.error);const shared=currentSources.data?.shared||[],ocp=currentSources.data?.ocp||[];
+ const [chunks,patches,events,pcd,agent,history,currentSources,cycles]=await Promise.all([all(()=>db.from('efc_archive').select('*').eq('month',month).order('kind').order('chunk')),all(()=>db.from('efc_adjustments').select('*').eq('month',month).order('record_id')),all(()=>db.from('efc_agent_events').select('id,payload').gte('reference_date',before).lt('reference_date',next).order('id')),all(()=>db.from('efc_agent_map_files').select('*').gte('reference_date',from).lt('reference_date',next).order('reference_date')),db.from('efd_agent_config').select('status,last_scan_at,last_error').eq('id',1).single(),db.from('efc_workbook_history').select('payload').eq('month',month).maybeSingle(),readDashboardSources(from, before, next),all(()=>db.from('efc_night_cycles').select('*').gte('reference_date',from).lt('reference_date',next).order('reference_date'))]);check(agent.error);check(history.error);check(currentSources.error);const shared=currentSources.data?.shared||[],ocp=currentSources.data?.ocp||[];
  let data:any={};for(const c of chunks){data[c.kind]??=[];data[c.kind].push(...c.payload);}for(const p of patches){const row=data[p.kind]?.find((x:any)=>x.id===p.record_id);if(row){Object.assign(row,p.patch);row.adjustment_reason=p.reason;}}
  const [segmentationEmails,segmentationScans]=await Promise.all([all(()=>db.from('efc_segmentation_emails').select('id,reference_date,received_at,rows,status,issue').gte('reference_date',from).lt('reference_date',next).order('reference_date').order('id')),db.from('efc_segmentation_scans').select('messages,review,errors,last_error,updated_at').order('updated_at',{ascending:false}).limit(1).maybeSingle()]);check(segmentationScans.error);
  data.ocp=ocp.map((r:any)=>({...r.payload,date:r.reference_date,source:r.source_file}));
