@@ -12,23 +12,51 @@ export function flowDocument(labels,dates,measure){
  }).join('');
  return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Flow Rack</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:Arial,sans-serif;color:#000;background:#fff}section{width:281mm;height:193mm;border:2px solid #000;padding:6mm;display:grid;grid-template-rows:24mm 64mm 30mm 1fr;overflow:hidden;break-inside:avoid;break-after:page}section:last-child{break-after:auto}.code{font-size:65px;font-weight:900}.name,.details{display:flex;align-items:center;font-weight:900;line-height:1.04;overflow-wrap:anywhere}.expiry{border-top:3px solid #000;display:flex;align-items:center;justify-content:center;font-size:145px;font-weight:900;white-space:nowrap}</style></head><body>'+pages+'</body></html>';
 }
-export function requestFlowDates(labels){
+export function requestFlowProducts(lookup){
  return new Promise(resolve=>{
   const dialog=document.createElement('dialog');
   dialog.style.cssText='width:min(720px,94vw);max-height:85vh;border:1px solid #ddd;border-radius:14px;padding:20px';
   const form=document.createElement('form');
-  const heading=document.createElement('h2');heading.textContent='Validades do Flow Rack';form.append(heading);
-  const inputs=labels.map(label=>{
-   const row=document.createElement('label');row.style.cssText='display:grid;grid-template-columns:1fr 170px;gap:12px;align-items:center;margin:12px 0';
-   const text=document.createElement('span');text.textContent=label.street+' · posição '+label.position+' · '+label.code+' · '+label.name+' · '+label.size;
-   const input=document.createElement('input');input.type='date';input.required=true;input.style.cssText='padding:10px;font:inherit';row.append(text,input);form.append(row);return input;
-  });
+  const heading=document.createElement('h2');heading.textContent='Placas do Flow Rack';
+  const list=document.createElement('div');
+  const error=document.createElement('p');error.setAttribute('role','alert');
+  const add=document.createElement('button');add.type='button';add.textContent='+ Produto';
+  function addRow(){
+   const row=document.createElement('div');row.style.cssText='display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin:14px 0';
+   const selected=document.createElement('input');selected.type='checkbox';selected.checked=true;selected.setAttribute('aria-label','Imprimir esta placa');
+   function field(title,type){
+    const label=document.createElement('label');label.style.cssText='display:grid;gap:5px;flex:1 1 140px';
+    const caption=document.createElement('span');caption.textContent=title;
+    const input=document.createElement('input');input.type=type;input.style.cssText='padding:10px;font:inherit;width:100%;box-sizing:border-box';label.append(caption,input);row.append(label);return input;
+   }
+   row.append(selected);
+   const code=field('Código do produto','text');code.inputMode='numeric';code.pattern='[0-9]{1,12}';code.maxLength=12;code.required=true;
+   const date=field('Validade','date');date.required=true;
+   selected.onchange=()=>{code.required=selected.checked;date.required=selected.checked;};
+   const remove=document.createElement('button');remove.type='button';remove.textContent='Remover';remove.onclick=()=>row.remove();row.append(remove);
+   row.flowFields={selected,code,date};list.append(row);
+  }
+  add.onclick=addRow;
   const actions=document.createElement('div');actions.style.cssText='display:flex;gap:10px;justify-content:flex-end';
   const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancelar';cancel.onclick=()=>dialog.close();
-  const print=document.createElement('button');print.type='submit';print.textContent='Imprimir Flow Rack';actions.append(cancel,print);form.append(actions);
-  let result=null;
-  form.onsubmit=event=>{event.preventDefault();if(!form.reportValidity())return;result=inputs.map(input=>input.value);dialog.close();};
-  dialog.onclose=()=>{dialog.remove();resolve(result);};
-  dialog.append(form);document.body.append(dialog);dialog.showModal();
+  const print=document.createElement('button');print.type='submit';print.textContent='Imprimir selecionadas';actions.append(cancel,print);
+  form.append(heading,list,add,error,actions);
+  let result=null,closed=false;
+  form.onsubmit=async event=>{
+   event.preventDefault();error.textContent='';
+   if(!form.reportValidity())return;
+   const entries=[...list.children].map(row=>row.flowFields).filter(row=>row.selected.checked).map(row=>({code:row.code.value.trim(),date:row.date.value}));
+   if(!entries.length){error.textContent='Selecione pelo menos uma placa.';return;}
+   print.disabled=true;add.disabled=true;
+   try{
+    const labels=[];
+    for(const entry of entries)labels.push(await lookup(entry.code));
+    if(closed)return;
+    result={labels,dates:entries.map(entry=>entry.date)};dialog.close();
+   }catch(e){if(!closed)error.textContent=e.message;}
+   finally{print.disabled=false;add.disabled=false;}
+  };
+  dialog.onclose=()=>{closed=true;dialog.remove();resolve(result);};
+  addRow();dialog.append(form);document.body.append(dialog);dialog.showModal();
  });
 }
