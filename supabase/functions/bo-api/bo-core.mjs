@@ -35,7 +35,8 @@ export function normalizeMatch(value) {
 }
 
 export function needsInterview(reason) {
-  return normalizeMatch(reason).startsWith("quebra ao ");
+  const value = normalizeMatch(reason);
+  return value.startsWith("quebra ao ") || ["falha no manuseio", "falha de manuseio", "falha manobrista"].includes(value);
 }
 
 export function isValidator(user) {
