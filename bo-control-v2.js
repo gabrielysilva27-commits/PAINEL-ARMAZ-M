@@ -69,8 +69,6 @@
   }
 
   function flowStatus(row){
-    if(row.record_kind==='turn_c_origin')return row.confront_state==='completed'?{text:'Turno C · confrontado',cls:'confronted'}:{text:'Turno C · aguarda confronto',cls:'c-await'};
-    if(row.record_kind==='turn_a_confront')return {text:'Turno A · oficial',cls:'official'};
     return {text:statusLabel(row.status),cls:row.status};
   }
   function isBulkEligible(row){return row&&row.status==='pending'&&(row.record_kind!=='turn_c_origin'||row.confront_state==='completed');}
