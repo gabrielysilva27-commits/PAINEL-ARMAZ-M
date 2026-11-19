@@ -8,7 +8,7 @@
     if(loading)return loading;
     loading=new Promise((resolve,reject)=>{
       if(!$('boControlCssEmbedded')){
-        const st=document.createElement('style');st.id='boControlCssEmbedded';st.textContent=CONTROL_CSS;document.head.appendChild(st);
+        const st=document.createElement('style');st.id='boControlCssEmbedded';st.textContent=CONTROL_CSS+".bo-control-toolbar{grid-template-columns:minmax(220px,1fr) minmax(150px,210px);align-items:end}.bo-control-actions{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap}.bo-control-actions button{border:1px solid #d7d8dd;border-radius:9px;padding:10px 14px;min-height:42px;font:inherit;font-weight:700;cursor:pointer}.bo-control-actions button:disabled{opacity:.55;cursor:not-allowed}@media(max-width:700px){.bo-control-toolbar{grid-template-columns:1fr}.bo-control-actions button{flex:1 1 180px}}";document.head.appendChild(st);
       }
       const sc=document.createElement('script');sc.id='boControlJsEmbedded';
       sc.src='bo-control-v2.js?v=20261118-interview-document';sc.async=true;
