@@ -5,12 +5,13 @@ export function flowDocument(labels,dates,measure){
  const pages=labels.map((label,index)=>{
   const date=dates[index];
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||new Date(date+'T12:00:00Z').toISOString().slice(0,10)!==date)throw new Error('Informe uma data válida para cada posição.');
-  const nameSize=fittedFont(label.name,990,235,125,measure);
+  const nameSize=fittedFont(label.name,990,275,150,measure);
+  const codeSize=fittedFont(label.code,990,170,170,measure,1);
   const details=label.details+' · '+label.size;
   const detailSize=fittedFont(details,990,100,70,measure);
-  return '<section><div class="code">'+escape(label.code)+'</div><div class="name" style="font-size:'+nameSize+'px">'+escape(label.name)+'</div><div class="details" style="font-size:'+detailSize+'px">'+escape(details)+'</div><div class="expiry">'+date.split('-').reverse().join('/')+'</div></section>';
+  return '<section><div class="code" style="font-size:'+codeSize+'px">'+escape(label.code)+'</div><div class="name" style="font-size:'+nameSize+'px">'+escape(label.name)+'</div><div class="details" style="font-size:'+detailSize+'px">'+escape(details)+'</div><div class="expiry">'+date.split('-').reverse().join('/')+'</div></section>';
  }).join('');
- return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Flow Rack</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:Arial,sans-serif;color:#000;background:#fff}section{width:281mm;height:193mm;border:2px solid #000;padding:6mm;display:grid;grid-template-rows:24mm 64mm 30mm 1fr;overflow:hidden;break-inside:avoid;break-after:page}section:last-child{break-after:auto}.code{font-size:65px;font-weight:900}.name,.details{display:flex;align-items:center;font-weight:900;line-height:1.04;overflow-wrap:anywhere}.expiry{border-top:3px solid #000;display:flex;align-items:center;justify-content:center;font-size:145px;font-weight:900;white-space:nowrap}</style></head><body>'+pages+'</body></html>';
+ return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Flow Rack</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:Arial,sans-serif;color:#000;background:#fff}section{width:281mm;height:193mm;border:2px solid #000;padding:6mm;display:grid;grid-template-rows:48mm 76mm 30mm 1fr;overflow:hidden;break-inside:avoid;break-after:page}section:last-child{break-after:auto}.code{display:flex;align-items:center;font-weight:900;line-height:1;white-space:nowrap}.name,.details{display:flex;align-items:center;font-weight:900;line-height:1.04;overflow-wrap:anywhere}.expiry{border-top:3px solid #000;display:flex;align-items:center;justify-content:center;font-size:65px;font-weight:900;white-space:nowrap}</style></head><body>'+pages+'</body></html>';
 }
 export function requestFlowProducts(lookup){
  return new Promise(resolve=>{
