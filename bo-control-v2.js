@@ -39,13 +39,20 @@
     return '<div class="bo-control-shell">'+
       '<section class="bo-control-kpis"><article class="bo-kpi pending"><span>Pendentes</span><strong id="boCountPending">—</strong></article><article class="bo-kpi validated"><span>Validados</span><strong id="boCountValidated">—</strong></article><article class="bo-kpi returned"><span>Devolvidos</span><strong id="boCountReturned">—</strong></article></section>'+
       '<section class="bo-control-panel"><div class="bo-control-toolbar">'+
-      '<label>Buscar<input id="boSearch" placeholder="B.O., funcionário, fábrica, código ou produto" /></label>'+
-      '<label>Status<select id="boStatus"><option value="pending">Pendentes</option><option value="validated">Validados</option><option value="returned">Devolvidos</option><option value="cancelled">Excluídos</option><option value="all">Todos</option></select></label>'+
-      '<div class="bo-control-actions"><button class="bo-btn-secondary" id="boRefresh">Atualizar</button><button class="bo-btn-secondary" id="boPrintSelected" disabled>Imprimir selecionados (0)</button><button class="bo-btn-secondary" id="boExportPa">PA (.xlsx)</button><button class="bo-btn-secondary" id="boPreviewDaily">Visualizar Informativo</button></div>'+
-      '</div><div style="display:flex;justify-content:flex-end;margin-top:10px"><label style="display:grid;gap:5px;font-size:12px;font-weight:700">Data do Informativo<input id="boDailyDate" type="date" value="'+today()+'" style="border:1px solid #d7d8dd;border-radius:9px;padding:9px 10px"></label></div>'+
+      '<div class="bo-control-filters">'+
+      '<label class="bo-search-field">Buscar<input id="boSearch" placeholder="B.O., funcionário, fábrica, código ou produto" /></label>'+
+      '<label class="bo-date-field">Data do B.O.<input id="boOccurrenceDate" type="date" /></label>'+
+      '<label class="bo-status-field">Status<select id="boStatus"><option value="pending">Pendentes</option><option value="validated">Validados</option><option value="returned">Devolvidos</option><option value="cancelled">Excluídos</option><option value="all">Todos</option></select></label>'+
+      '<button class="bo-btn-secondary bo-refresh-button" id="boRefresh">Atualizar</button>'+
+      '</div>'+
+      '<div class="bo-control-actionbar">'+
+      '<div class="bo-bulk-actions"><button class="bo-btn-primary" id="boValidateSelected" disabled>Validar selecionados (0)</button><button class="bo-btn-secondary" id="boPrintSelected" disabled>Imprimir selecionados (0)</button></div>'+
+      '<div class="bo-report-actions"><button class="bo-btn-secondary" id="boExportPa">PA (.xlsx)</button><label class="bo-daily-field"><span>Data do Informativo</span><input id="boDailyDate" type="date" value="'+today()+'"></label><button class="bo-btn-secondary" id="boPreviewDaily">Visualizar Informativo</button></div>'+
+      '</div>'+
+      '</div>'+
       '<div class="bo-table-wrap"><table class="bo-table"><thead><tr><th class="bo-select-col"><label class="bo-select-all" title="Selecionar todos os B.O.s visíveis"><input id="boSelectAll" type="checkbox"><span>Todos</span></label></th><th>B.O.</th><th>Data/Hora</th><th>Conferente</th><th>Origem</th><th>Turno</th><th>Motivo</th><th>Local</th><th>Status</th><th>Ação</th></tr></thead><tbody id="boTableBody"></tbody></table></div><div class="bo-empty hidden" id="boEmpty">Nenhum B.O. encontrado.</div><p class="bo-export-note">A PA e o Informativo são derivados automaticamente dos B.O.s validados. Não há nova digitação.</p></section>'+
       '</div>'+
-      '<dialog id="boReviewDialog" class="bo-review-dialog"><div class="bo-review-inner"><div class="bo-review-header"><div><p class="eyebrow">B.O. · MOVIMENTAÇÕES DE ESTOQUE</p><h2 id="boDialogTitle"></h2></div><button id="boDialogClose" aria-label="Fechar">×</button></div><div class="bo-dialog-tools"><button class="bo-btn-secondary" id="boPrint">Imprimir B.O. + entrevista / PDF</button><button class="bo-btn-secondary" id="boPrintInterview" style="display:none">Só entrevista / PDF</button></div><div id="boDialogBody"></div></div></dialog>'+
+      '<dialog id="boReviewDialog" class="bo-review-dialog"><div class="bo-review-inner"><div class="bo-review-header"><div><p class="eyebrow">B.O. · MOVIMENTAÇÕES DE ESTOQUE</p><h2 id="boDialogTitle"></h2></div><button id="boDialogClose" aria-label="Fechar">×</button></div><div class="bo-dialog-tools"><button class="bo-btn-secondary" id="boPrint">Imprimir / PDF</button><button class="bo-btn-secondary" id="boPrintInterview" style="display:none">Só entrevista / PDF</button></div><div id="boDialogBody"></div></div></dialog>'+
       '<dialog id="boInformativoDialog" class="bo-informativo-dialog"><div class="bo-review-inner"><div class="bo-review-header"><div><p class="eyebrow">INFORMATIVO DE QUEBRA DIÁRIA</p><h2 id="boInfDialogTitle"></h2></div><button id="boInfClose" aria-label="Fechar">×</button></div><div class="bo-dialog-tools"><button class="bo-btn-secondary" id="boInfPrint">Imprimir / PDF</button><button class="bo-btn-primary" id="boInfDownload">Baixar XLSX</button></div><div id="boInfBody"></div></div></dialog>';
   }
 
@@ -53,8 +60,9 @@
     $('boControlView').innerHTML=shellHtml();
     $('boStatus').value=activeStatus;
     $('boStatus').onchange=()=>{activeStatus=$('boStatus').value;load();};
+    $('boOccurrenceDate').onchange=load;
     let t;$('boSearch').oninput=()=>{clearTimeout(t);t=setTimeout(load,250);};
-    $('boRefresh').onclick=load;$('boPrintSelected').onclick=printSelectedBos;$('boExportPa').onclick=exportPaXlsx;$('boPreviewDaily').onclick=previewDaily;
+    $('boRefresh').onclick=load;$('boValidateSelected').onclick=validateSelectedBos;$('boPrintSelected').onclick=printSelectedBos;$('boExportPa').onclick=exportPaXlsx;$('boPreviewDaily').onclick=previewDaily;
     $('boSelectAll').onchange=e=>{if(e.target.checked)rows.forEach(r=>selectedIds.add(Number(r.id)));else selectedIds.clear();syncSelectionUi();renderRowSelection();};
     $('boDialogClose').onclick=()=>$('boReviewDialog').close();$('boPrint').onclick=printBo;$('boPrintInterview').onclick=printInterview;$('boInfClose').onclick=()=>$('boInformativoDialog').close();
     $('boInfPrint').onclick=printInformativo;$('boInfDownload').onclick=exportDailyXlsx;
@@ -65,9 +73,12 @@
     if(row.record_kind==='turn_a_confront')return {text:'Turno A · oficial',cls:'official'};
     return {text:statusLabel(row.status),cls:row.status};
   }
+  function isBulkEligible(row){return row&&row.status==='pending'&&(row.record_kind!=='turn_c_origin'||row.confront_state==='completed');}
   function syncSelectionUi(){
-    const count=selectedIds.size,btn=$('boPrintSelected'),all=$('boSelectAll');
+    const count=selectedIds.size,btn=$('boPrintSelected'),validateBtn=$('boValidateSelected'),all=$('boSelectAll');
+    const eligible=rows.filter(r=>selectedIds.has(Number(r.id))&&isBulkEligible(r));
     if(btn){btn.disabled=count===0;btn.textContent='Imprimir selecionados ('+count+')';}
+    if(validateBtn){validateBtn.disabled=eligible.length===0;validateBtn.textContent='Validar selecionados ('+eligible.length+')';}
     if(all){const visible=rows.length,selectedVisible=rows.filter(r=>selectedIds.has(Number(r.id))).length;all.checked=visible>0&&selectedVisible===visible;all.indeterminate=selectedVisible>0&&selectedVisible<visible;}
   }
   function renderRowSelection(){
@@ -78,7 +89,8 @@
 
   async function load(){
     try{
-      const d=await call('dashboard',{status:activeStatus,search:$('boSearch')?$('boSearch').value:''});rows=d.occurrences||[];selectedIds.clear();
+      const occurrenceDate=$('boOccurrenceDate')?$('boOccurrenceDate').value:'';
+      const d=await call('dashboard',{status:activeStatus,search:$('boSearch')?$('boSearch').value:'',from:occurrenceDate||'',to:occurrenceDate||''});rows=d.occurrences||[];selectedIds.clear();
       $('boCountPending').textContent=d.counts.pending||0;$('boCountValidated').textContent=d.counts.validated||0;$('boCountReturned').textContent=d.counts.returned||0;
       const body=$('boTableBody');body.innerHTML=rows.map(r=>{const fs=flowStatus(r),relation=r.record_kind==='turn_a_confront'&&r.source?.bo_number?'<small>de '+esc(r.source.bo_number)+'</small>':'';return '<tr><td class="bo-select-col"><input class="bo-row-check" type="checkbox" data-select-bo="'+r.id+'" aria-label="Selecionar '+esc(r.bo_number)+'"></td><td><strong>'+esc(r.bo_number)+'</strong>'+relation+'</td><td>'+fmtDate(r.occurrence_date)+'<br><small>'+esc(String(r.occurrence_time||'').slice(0,5))+'</small></td><td>'+esc(r.conferencer&&r.conferencer.display_name||'—')+'</td><td>'+esc(subjectName(r))+'<br><small>'+esc(r.subject_type||'Funcionário')+'</small></td><td>'+esc(r.shift)+'</td><td>'+esc(r.reason)+'</td><td>'+esc(r.location)+'</td><td><span class="bo-badge '+fs.cls+'">'+esc(fs.text)+'</span></td><td><div class="bo-row-actions"><button class="bo-btn-secondary" data-open="'+r.id+'">Visualizar B.O.</button>'+(permissions&&permissions.can_delete?'<button class="bo-trash-btn" data-delete="'+r.id+'" title="Excluir B.O." aria-label="Excluir B.O.">🗑</button>':'')+'</div></td></tr>';}).join('');
       $('boEmpty').classList.toggle('hidden',rows.length>0);
@@ -124,17 +136,31 @@
     if(selected.interview_report)paper+='<p><strong>Entrevista registrada:</strong> '+esc(selected.interview_report)+'</p>';
     if(selected.validation_comment)paper+='<p><strong>Comentário do Controle:</strong> '+esc(selected.validation_comment)+'</p>';
     if(selected.record_kind==='turn_c_origin'){
-      paper+='<div class="bo-confront-info"><strong>Registro de origem do Turno C.</strong> '+(selected.confront_state==='completed'?'O confronto do Turno A já foi registrado e é o resultado oficial.':'Aguardando o Turno A realizar a repecagem e registrar o confronto. Este registro não entra na PA nem no Informativo.')+'</div>';
+      paper+='<div class="bo-confront-info"><strong>Registro de origem do Turno C.</strong> '+(selected.confront_state==='completed'?'Confronto do Turno A concluído. Este B.O. está liberado para validação do Controle; a decisão será aplicada também ao resultado oficial do Turno A.':'Aguardando o Turno A realizar a repecagem e registrar o confronto. Este registro ainda não pode ser validado pelo Controle.')+'</div>';
     }
-    if(selected.status==='pending'&&selected.record_kind!=='turn_c_origin'&&permissions&&permissions.can_validate)paper+='<label style="display:grid;gap:6px;margin-top:16px;font-weight:700;font-size:12px">Comentário do Controle<textarea id="boReviewComment" rows="3" placeholder="Obrigatório somente para devolver ao conferente"></textarea></label><div class="bo-review-actions"><button class="bo-btn-danger" id="boReturnButton">Devolver para correção</button><button class="bo-btn-primary" id="boValidateButton">Validar B.O.</button></div>';
+    if(isBulkEligible(selected)&&permissions&&permissions.can_validate)paper+='<label style="display:grid;gap:6px;margin-top:16px;font-weight:700;font-size:12px">Comentário do Controle<textarea id="boReviewComment" rows="3" placeholder="Obrigatório somente para devolver ao conferente"></textarea></label><div class="bo-review-actions"><button class="bo-btn-danger" id="boReturnButton">Devolver para correção</button><button class="bo-btn-primary" id="boValidateButton">Validar B.O.</button></div>';
     $('boDialogBody').innerHTML=paper;
-    $('boPrint').textContent=selected.interview_report?'Imprimir B.O. + entrevista / PDF':'Imprimir / PDF';
     $('boPrintInterview').style.display=selected.interview_report?'':'none';
     if($('boReturnButton'))$('boReturnButton').onclick=()=>review('returned');if($('boValidateButton'))$('boValidateButton').onclick=()=>review('validated');
     $('boReviewDialog').showModal();
   }
 
   async function review(decision){try{await call('review',{id:selected.id,decision,comment:$('boReviewComment')?$('boReviewComment').value:''});$('boReviewDialog').close();showToast(decision==='validated'?'B.O. validado com sucesso.':'B.O. devolvido ao conferente.');await load();}catch(e){showToast(e.message,true);}}
+
+  async function validateSelectedBos(){
+    const chosen=rows.filter(r=>selectedIds.has(Number(r.id))),eligible=chosen.filter(isBulkEligible);
+    if(!eligible.length)return showToast('Nenhum B.O. selecionado está pendente e elegível para validação.',true);
+    const skipped=chosen.length-eligible.length;
+    const message='Validar '+eligible.length+' B.O.'+(eligible.length===1?'':'s')+' selecionado'+(eligible.length===1?'':'s')+' agora?'+(skipped?'\n\n'+skipped+' registro'+(skipped===1?' será ignorado':'s serão ignorados')+' por não estar pendente ou por ainda aguardar confronto.':'');
+    if(!confirm(message))return;
+    const btn=$('boValidateSelected');if(btn)btn.disabled=true;
+    try{
+      const d=await call('bulk_validate',{ids:eligible.map(r=>Number(r.id))});
+      const validated=Number(d.validated_count||0),ignored=Number(d.skipped_count||0)+skipped;
+      showToast(validated+' B.O.'+(validated===1?' validado':'s validados')+' com sucesso.'+(ignored?' '+ignored+' ignorado'+(ignored===1?'.':'s.'):''));
+      await load();
+    }catch(e){showToast(e.message,true);syncSelectionUi();}
+  }
 
   async function exportPaXlsx(){
     try{
@@ -203,8 +229,7 @@
       '<div class="interview-print-answers">'+entries+'</div>'+
       (structured?'<div class="interview-print-considerations"><b>Considerações:</b> '+esc(value('Considerações: '))+'</div>':'')+
       '<div class="interview-print-signatures"><div><span>Funcionário</span><small>'+esc(row.employee_name||'')+'</small></div><div><span>Gestor</span><small>'+esc(value('Gestor: '))+'</small></div><div><span>Técnico de controle</span><small>'+esc(value('Técnico de controle: '))+'</small></div></div></section>';
-  }
-  function printSheet(title,content,landscape=false){
+  }  function printSheet(title,content,landscape=false){
     if(!content)return;
     const iframe=document.createElement('iframe');
     iframe.setAttribute('aria-hidden','true');
@@ -252,8 +277,7 @@
     if(!paper)return showToast('Abra um B.O. antes de imprimir.',true);
     printSheet(selected&&selected.bo_number?selected.bo_number:'B.O.',paper.outerHTML+interviewHtml(selected),false);
   }
-  function printInterview(){if(selected?.interview_report)printSheet('Entrevista · '+selected.bo_number,interviewHtml(selected),false);}
-  function printSelectedBos(){
+  function printInterview(){if(selected?.interview_report)printSheet('Entrevista · '+selected.bo_number,interviewHtml(selected),false);}  function printSelectedBos(){
     const chosen=rows.filter(r=>selectedIds.has(Number(r.id)));
     if(!chosen.length)return showToast('Selecione pelo menos um B.O. para imprimir.',true);
     const content=chosen.map(r=>'<section class="bo-batch-page">'+paperHtml(r)+interviewHtml(r)+'</section>').join('');
