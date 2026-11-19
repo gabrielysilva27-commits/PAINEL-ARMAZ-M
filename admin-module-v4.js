@@ -114,18 +114,24 @@
     $('adminCopyUnifiedPin').onclick=async()=>{await navigator.clipboard?.writeText(item.pin);showToast('PIN copiado.')};
   }
   async function loadUnifiedPins(){
-    try{
-      const [c,g,f,r]=await Promise.all([boCall('pin_status'),nriCall('gate_pin_status'),putawayCall('forklift_admin_list'),repackCall('admin_workers')]);
-      pinDirectory.conferencers=(c.conferencers||[]).map(x=>({...x,group:'conferencers'}));
-      pinDirectory.gate=(g.users||[]).map(x=>({...x,group:'gate'}));
-      pinDirectory.forklift=(f.operators||[]).map(x=>({...x,group:'forklift'}));
-      pinDirectory.repack=(r.workers||[]).map(x=>({...x,group:'repack'}));
-      renderPinSummary();renderPinPeople();
-    }catch(e){
-      if($('adminPinSummary'))$('adminPinSummary').innerHTML='<p class="form-error">'+esc(e.message)+'</p>';
-      showToast(e.message,true);
+    const groups=['conferencers','gate','forklift','repack'];
+    const fields=['conferencers','users','operators','workers'];
+    const results=await Promise.allSettled([boCall('pin_status'),nriCall('gate_pin_status'),putawayCall('forklift_admin_list'),repackCall('admin_workers')]);
+    const failures=[];
+    results.forEach((result,index)=>{
+      const group=groups[index];
+      if(result.status==='fulfilled'){
+        pinDirectory[group]=(result.value[fields[index]]||[]).map(person=>({...person,group}));
+      }else failures.push(groupLabel(group)+': '+result.reason.message);
+    });
+    renderPinSummary();renderPinPeople();
+    if(failures.length){
+      const message='Falha ao atualizar '+failures.join(' · ');
+      const error=document.createElement('p');error.className='form-error';error.textContent=message;
+      $('adminPinSummary')?.appendChild(error);showToast(message,true);
     }
   }
+
   async function issueSelectedPin(){
     const group=$('adminPinGroup').value,person=selectedPinPerson();if(!person)return;
     const verb=person.pin_ready?'redefinir':'gerar';
