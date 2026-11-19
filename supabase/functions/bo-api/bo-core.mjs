@@ -101,7 +101,7 @@ export function validateOccurrenceInput(input) {
   }
   if (!REASONS.includes(reason)) throw new Error("Selecione um motivo válido.");
   if (!RESPONSIBILITIES.includes(responsibility)) throw new Error("Selecione o responsável.");
-  if (subjectType === "Funcionário" && needsInterview(reason) && interviewReport.length < 10) {
+  if (needsInterview(reason) && interviewReport.length < 10) {
     throw new Error("Registre a entrevista para ocorrências de quebra.");
   }
 
