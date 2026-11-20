@@ -139,3 +139,29 @@
     text-align: center;
   }
 }
+
+/* Grouped confrontation and history: touch targets and narrow screens. */
+.group-confront-form{display:grid;gap:14px;min-width:0}
+.group-confront-form>p{margin:0;line-height:1.5}
+.group-confront-card{display:grid;gap:12px;min-width:0;overflow-wrap:anywhere}
+.group-confront-card>strong{font-size:16px;line-height:1.45}
+.group-confront-card p{margin:0;line-height:1.5}
+.group-confront-card label{font-size:14px}
+.group-confront-card input{font-size:18px;min-height:48px}
+.group-confront-card details{margin:0}
+.group-confront-card summary{padding:12px 0;font-size:14px;min-height:44px}
+.group-confront-card details p{padding:10px 0;border-top:1px solid var(--line);font-size:14px}
+.group-confront-form>[role=status]:empty{display:none}
+.group-confront-form>[role=status]{overflow-wrap:anywhere}
+#historyView,#confrontView,#historyList,#confrontList{min-width:0}
+#historyView .history-card{overflow-wrap:anywhere}
+#historyView .history-top{align-items:flex-start}
+#historyView .status{flex-shrink:0}
+@media(max-width:560px){
+ #historyView .bo-toolbar,#confrontView .bo-toolbar{flex-direction:column;align-items:stretch}
+ #historyView .toolbar-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+ #historyView .toolbar-actions button,#confrontView .bo-toolbar>button{min-height:46px;padding:10px;font-size:14px}
+ #historyStatus{font-size:16px;min-height:48px}
+ #historyView .history-actions button{min-height:44px;font-size:14px}
+ #historyView .history-top{flex-wrap:wrap}
+}

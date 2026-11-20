@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles-v2.css?v=20260925-4" />
+  <link rel="stylesheet" href="styles-v2.css?v=20261120-mobile" />
   <link rel="stylesheet" href="interview-form.css?v=20261118-1" />
 </head>
 <body>
@@ -112,7 +112,7 @@
         <div><p class="eyebrow">TURNO A · REPECAGEM</p><h1>Confrontos do Turno C</h1><p class="muted">O registro do Turno C permanece visível, mas somente o confronto do Turno A será considerado resultado oficial.</p></div>
         <button class="secondary" id="backFromConfrontButton" type="button">Voltar</button>
       </div>
-      <div class="confront-note"><strong>Sem duplicidade:</strong> abra o B.O. do Turno C, confira a repecagem e salve o confronto. O sistema vincula os dois registros e usa apenas o Turno A nos indicadores oficiais.</div>
+      <div class="confront-note"><strong>Sem duplicidade:</strong> informe um total por produto e salve a lista. As origens podem ser consultadas quando necessário. O sistema vincula os dois registros e usa apenas o Turno A nos indicadores oficiais.</div>
       <div id="confrontList" class="history-list"></div>
     </section>
   </main>
@@ -141,6 +141,6 @@
   <div id="toast" class="toast hidden"></div>
   <dialog id="interviewDialog" class="interview-dialog" aria-labelledby="interviewTitle"><form id="interviewForm" novalidate><header><div><p class="eyebrow">DOCUMENTO DA OCORRÊNCIA</p><h2 id="interviewTitle">Entrevista de quebras</h2></div><button id="interviewClose" class="ghost" type="button" aria-label="Fechar entrevista">×</button></header><div id="interviewFields" class="interview-fields"></div><p id="interviewError" class="error" role="alert"></p><footer><button id="interviewCancel" class="secondary" type="button">Voltar ao B.O.</button><button class="primary" type="submit">Salvar entrevista</button></footer></form></dialog>
   <script src="interview-form.js?v=20261118-1"></script>
-  <script src="app-v2.js?v=20261120-grouped-confront"></script>
+  <script src="app-v2.js?v=20261120-mobile"></script>
 <script src="../portal-pin.js?v=20261110-1"></script></body>
 </html>

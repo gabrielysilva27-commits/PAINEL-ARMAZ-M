@@ -141,7 +141,7 @@
   }
   async function openConfrontQueue(){
     editingOccurrence=null;confrontSource=null;show('confrontView');
-    try{const {openGrouped}=await import('./group-confront.js?v=20261120-1');await openGrouped({root:$('confrontList'),call,user:conferencer});}
+    try{const {openGrouped}=await import('./group-confront.js?v=20261120-mobile');await openGrouped({root:$('confrontList'),call,user:conferencer});}
     catch(error){$('confrontList').textContent=error.message;}
   }
 
