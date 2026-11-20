@@ -104,7 +104,7 @@
         <div><p class="eyebrow">HISTÓRICO</p><h1>Meus B.O.s</h1></div>
         <div class="toolbar-actions"><button class="secondary" id="historyConfrontButton" type="button">Confrontos Turno C</button><button class="secondary" id="backToFormButton" type="button">+ Novo B.O.</button></div>
       </div>
-      <div id="historyList" class="history-list"></div>
+      <label style="display:grid;gap:6px;margin-bottom:14px">Status<select id="historyStatus"><option value="all">Todos</option><option value="pending">Pendentes</option><option value="validated">Validados</option><option value="returned">Devolvidos para correção</option><option value="cancelled">Excluídos</option></select></label><div id="historyList" class="history-list"></div>
     </section>
 
     <section id="confrontView" class="hidden">
@@ -141,6 +141,6 @@
   <div id="toast" class="toast hidden"></div>
   <dialog id="interviewDialog" class="interview-dialog" aria-labelledby="interviewTitle"><form id="interviewForm" novalidate><header><div><p class="eyebrow">DOCUMENTO DA OCORRÊNCIA</p><h2 id="interviewTitle">Entrevista de quebras</h2></div><button id="interviewClose" class="ghost" type="button" aria-label="Fechar entrevista">×</button></header><div id="interviewFields" class="interview-fields"></div><p id="interviewError" class="error" role="alert"></p><footer><button id="interviewCancel" class="secondary" type="button">Voltar ao B.O.</button><button class="primary" type="submit">Salvar entrevista</button></footer></form></dialog>
   <script src="interview-form.js?v=20261118-1"></script>
-  <script src="app-v2.js?v=20261120-portal-back"></script>
+  <script src="app-v2.js?v=20261120-grouped-confront"></script>
 <script src="../portal-pin.js?v=20261110-1"></script></body>
 </html>

@@ -58,6 +58,8 @@
 
   function renderShell(){
     $('boControlView').innerHTML=shellHtml();
+    const groupPanel=document.createElement('section');groupPanel.id='boGroupedPending';$('boControlView').prepend(groupPanel);
+    import('./bo-group-control.js?v=20261120-1').then(m=>m.renderGroupControl(groupPanel,call,async()=>{await load();await m.renderGroupControl(groupPanel,call,async()=>open());})).catch(error=>{groupPanel.textContent=error.message;});
     $('boStatus').value=activeStatus;
     $('boStatus').onchange=()=>{activeStatus=$('boStatus').value;load();};
     $('boOccurrenceDate').onchange=load;

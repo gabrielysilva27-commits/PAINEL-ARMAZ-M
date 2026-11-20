@@ -1,3 +1,4 @@
+import {submitGrouped,resolveGrouped} from "./group-confront.mjs";
 import { createPinRecord, verifyPinRecord, validPinInput } from "./pin-crypto.mjs";
 import { createClient } from "jsr:@supabase/supabase-js@2.57.4";
 import {
@@ -139,7 +140,10 @@ async function hydrateOfficials(rows:any[]){
 
 async function myOccurrences(conferencer:any){
   const {data,error}=await db.from("bo_occurrences").select(occurrenceSelect).eq("conferencer_id",conferencer.id).order("submitted_at",{ascending:false}).limit(100);
-  if(error)throw error;return await hydrateSources(data||[]);
+  if(error)throw error;
+  const reserved=await db.from("bo_confront_list_sources").select("source_id");if(reserved.error)throw reserved.error;
+  const excluded=new Set((reserved.data||[]).map((x:any)=>Number(x.source_id)));
+  return await hydrateSources((data||[]).filter((x:any)=>!excluded.has(Number(x.id))));
 }
 async function confrontQueue(){
   const {data,error}=await db.from("bo_occurrences")
@@ -150,7 +154,10 @@ async function confrontQueue(){
     .order("occurrence_date",{ascending:true})
     .order("id",{ascending:true})
     .limit(200);
-  if(error)throw error;return await hydrateSources(data||[]);
+  if(error)throw error;
+  const reserved=await db.from("bo_confront_list_sources").select("source_id");if(reserved.error)throw reserved.error;
+  const excluded=new Set((reserved.data||[]).map((x:any)=>Number(x.source_id)));
+  return await hydrateSources((data||[]).filter((x:any)=>!excluded.has(Number(x.id))));
 }
 
 async function createConfrontation(conferencer:any,body:any){
@@ -474,7 +481,7 @@ Deno.serve(async(req:Request)=>{
       return json(req,{token,expires_at:expiresAt,conferencer:{id:row.id,display_name:row.display_name}});
     }
 
-    if(["bo_session","picking_product","catalog_search","employee_search","submit","my_occurrences","confront_queue","confront_submit","resubmit","update_occurrence","delete_occurrence","bo_logout"].includes(action)){
+    if(["bo_session","picking_product","catalog_search","employee_search","submit","my_occurrences","confront_queue","confront_submit","confront_group_submit","resubmit","update_occurrence","delete_occurrence","bo_logout"].includes(action)){
       const conferencer=await requireBoSession(req);if(!conferencer)return json(req,{error:"PIN expirado. Identifique-se novamente."},401);
       if(action==="picking_product"){
         const code=String(body.code||"").replace(/^0+(?=\d)/,"");
@@ -501,12 +508,24 @@ Deno.serve(async(req:Request)=>{
       if(action==="submit")return json(req,{occurrence:await createOccurrence(conferencer,body)},201);
       if(action==="my_occurrences")return json(req,{occurrences:await myOccurrences(conferencer)});
       if(action==="confront_queue")return json(req,{occurrences:await confrontQueue()});
+      if(action==="confront_group_submit")return json(req,{result:await submitGrouped(db,conferencer,body)},201);
+      if(["confront_submit","update_occurrence","resubmit","delete_occurrence"].includes(action)){
+        const reserved=await db.from("bo_confront_list_sources").select("source_id,list:bo_confront_lists(status)").eq("source_id",Number(body.source_id||body.id)).maybeSingle();
+        if(reserved.error)throw reserved.error;
+        if(reserved.data?.list?.status==="pending")throw new Error("Este B.O. está em confronto agrupado, aguardando o Controle.");
+      }
       if(action==="confront_submit")return json(req,{occurrence:await createConfrontation(conferencer,body)},201);
       if(action==="resubmit"||action==="update_occurrence")return json(req,{occurrence:await updateOccurrence(conferencer,body)});
       if(action==="delete_occurrence")return json(req,{occurrence:await cancelOccurrence(conferencer,body)});
     }
 
     const user=await requireAppUser(req);if(!user)return json(req,{error:"Sessão do painel inválida ou expirada."},401);
+    if(action==="confront_group_pending"||action==="confront_group_resolve"){
+      if(!isValidator(user))return json(req,{error:"Acesso restrito ao Controle."},403);
+      if(action==="confront_group_resolve")return json(req,{result:await resolveGrouped(db,user,body)});
+      const pending=await db.from("bo_confront_lists").select("*").eq("status","pending").order("created_at");
+      if(pending.error)throw pending.error;return json(req,{lists:pending.data||[]});
+    }
     if(action==="permissions")return json(req,{can_validate:isValidator(user),can_manage_pins:user.role==="admin",can_delete:user.role==="admin",user:{display_name:user.display_name,role:user.role}});
     if(action==="admin_delete_occurrence"){
       if(user.role!=="admin")return json(req,{error:"Somente administradores podem excluir B.O.s."},403);

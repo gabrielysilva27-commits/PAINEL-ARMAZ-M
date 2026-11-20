@@ -140,21 +140,16 @@
     try{await call('delete_occurrence',{id:row.id});toast('B.O. excluído.');await openHistory();}catch(e){toast(e.message,true);}
   }
   async function openConfrontQueue(){
-    editingOccurrence=null;confrontSource=null;show('confrontView');$('confrontList').innerHTML='<div class="history-card">Carregando B.O.s do Turno C...</div>';
-    try{
-      const d=await call('confront_queue'),rows=d.occurrences||[];
-      $('confrontList').innerHTML=rows.length?rows.map(row=>{
-        const itemSummary=(row.items||[]).slice(0,3).map(x=>escapeHtml(x.sku_code)+' · '+escapeHtml(x.sku_name)+' ('+escapeHtml(x.total_qty)+')').join('<br>');
-        return '<article class="history-card confront-card" data-confront-card="'+row.id+'" role="button" tabindex="0" aria-label="Abrir confronto do '+escapeHtml(row.bo_number)+'"><div class="history-top"><div><strong>'+escapeHtml(row.bo_number)+'</strong><span class="confront-origin">Turno C · aguardando confronto</span></div><span class="status pending">Pendente</span></div><p>'+escapeHtml(row.reason)+' · '+escapeHtml(row.location)+' · '+escapeHtml(row.occurrence_date)+'</p><div class="confront-items">'+itemSummary+((row.items||[]).length>3?'<br>+'+((row.items||[]).length-3)+' produto(s)':'')+'</div><div class="confront-open-hint">Toque para abrir confronto <span aria-hidden="true">→</span></div></article>';
-      }).join(''):'<div class="history-card"><strong>Nenhum confronto pendente.</strong><p>Quando o Turno C registrar um B.O., ele aparecerá aqui para a repecagem do Turno A.</p></div>';
-      $('confrontList').querySelectorAll('[data-confront-card]').forEach(card=>{
-        const openCard=()=>{const row=rows.find(x=>String(x.id)===card.dataset.confrontCard);if(row)startConfront(row);};
-        card.onclick=openCard;
-        card.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openCard();}};
-      });
-    }catch(e){$('confrontList').innerHTML='<div class="history-card error">'+escapeHtml(e.message)+'</div>';}
+    editingOccurrence=null;confrontSource=null;show('confrontView');
+    try{const {openGrouped}=await import('./group-confront.js?v=20261120-1');await openGrouped({root:$('confrontList'),call,user:conferencer});}
+    catch(error){$('confrontList').textContent=error.message;}
   }
 
+  function filterHistory(){
+    const value=$('historyStatus').value;
+    $('historyList').querySelectorAll('[data-history-status]').forEach(card=>{card.hidden=value!=='all'&&card.dataset.historyStatus!==value;});
+  }
+  $('historyStatus').onchange=filterHistory;
   async function openHistory(){
     editingOccurrence=null;show('historyView');$('historyList').innerHTML='<div class="history-card">Carregando...</div>';
     try{
@@ -167,8 +162,9 @@
         const flow=cOrigin?(row.confront_state==='completed'?'Turno C · confrontado pelo A':'Turno C · aguardando confronto'):(official?'Turno A · resultado oficial de '+escapeHtml(row.source?.bo_number||'B.O. do Turno C'):'Turno '+escapeHtml(row.shift));
         const label=cOrigin?(row.confront_state==='completed'?'Confrontado':'Aguardando confronto'):(labels[row.status]||row.status);
         const cls=cOrigin?(row.confront_state==='completed'?'validated':'pending'):row.status;
-        return '<article class="history-card '+(row.status==='cancelled'?'cancelled':'')+'"><div class="history-top"><div><strong>'+escapeHtml(row.bo_number)+'</strong><span class="confront-origin">'+flow+'</span></div><span class="status '+cls+'">'+escapeHtml(label)+'</span></div><p>'+escapeHtml(row.reason)+' · '+escapeHtml(row.location)+' · '+escapeHtml(origin)+'</p><small>'+escapeHtml(row.occurrence_date)+' · '+(row.items?.length||0)+' produto(s)'+(row.validation_comment?' · '+escapeHtml(row.validation_comment):'')+'</small>'+(editable?'<div class="history-actions"><button type="button" data-edit="'+row.id+'">'+(row.status==='returned'?'Corrigir':'Editar')+'</button><button type="button" class="danger" data-delete="'+row.id+'">Excluir</button></div>':'')+'</article>';
+        return '<article data-history-status="'+escapeHtml(row.status)+'" class="history-card '+(row.status==='cancelled'?'cancelled':'')+'"><div class="history-top"><div><strong>'+escapeHtml(row.bo_number)+'</strong><span class="confront-origin">'+flow+'</span></div><span class="status '+cls+'">'+escapeHtml(label)+'</span></div><p>'+escapeHtml(row.reason)+' · '+escapeHtml(row.location)+' · '+escapeHtml(origin)+'</p><small>'+escapeHtml(row.occurrence_date)+' · '+(row.items?.length||0)+' produto(s)'+(row.validation_comment?' · '+escapeHtml(row.validation_comment):'')+'</small>'+(editable?'<div class="history-actions"><button type="button" data-edit="'+row.id+'">'+(row.status==='returned'?'Corrigir':'Editar')+'</button><button type="button" class="danger" data-delete="'+row.id+'">Excluir</button></div>':'')+'</article>';
       }).join(''):'<div class="history-card">Nenhum B.O. registrado por você ainda.</div>';
+      filterHistory();
       $('historyList').querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{const row=rows.find(x=>String(x.id)===b.dataset.edit);if(row)editOccurrence(row);});
       $('historyList').querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>{const row=rows.find(x=>String(x.id)===b.dataset.delete);if(row)deleteOccurrence(row);});
     }catch(e){$('historyList').innerHTML='<div class="history-card error">'+escapeHtml(e.message)+'</div>';}
