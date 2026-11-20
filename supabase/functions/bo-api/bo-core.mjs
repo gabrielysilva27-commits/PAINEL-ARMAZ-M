@@ -80,7 +80,7 @@ export function validateOccurrenceInput(input) {
   const reason = cleanText(input?.reason, 100);
   const responsibility = cleanText(input?.responsibility, 30);
   const comments = cleanText(input?.comments, 3000);
-  const interviewReport = cleanText(input?.interview_report, 4000);
+  const interviewReport = String(input?.interview_report ?? '').replace(/\r\n?/g, '\n').replace(/[^\S\n]+/g, ' ').trim().slice(0, 4000);
 
   if (!validIsoDate(occurrenceDate)) throw new Error("Informe uma data válida.");
   if (!validTime(occurrenceTime)) throw new Error("Informe uma hora válida.");

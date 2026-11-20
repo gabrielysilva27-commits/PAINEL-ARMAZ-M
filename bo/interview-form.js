@@ -1,3 +1,4 @@
+import {parseInterview} from './interview-document.mjs?v=20261120-paper';
 (() => {
   const $ = id => document.getElementById(id);
   const questions = [
@@ -62,21 +63,17 @@
     if(report===loaded) return;
     form.reset();loaded=report;
     if(!report) return;
-    // Text saved by older versions remains available for review and editing.
-    if(!report.startsWith('ENTREVISTA DE QUEBRAS\n')) { field('notes').value=report.slice(0,600); return; }
-    const lines=report.split('\n');
-    for(const [key,tag] of [['interview_date','Entrevista: '],['break_date','Quebra: '],['area','Área: '],['employee','Funcionário: '],['job','Função: '],['notes','Considerações: '],['manager','Gestor: '],['technician','Técnico de controle: ']]) {
-      const line=lines.find(x=>x.startsWith(tag));if(line)field(key).value=line.slice(tag.length);
-    }
-    questions.forEach((_,i)=>{
-      const line=lines.find(x=>x.startsWith(`${i+1}. `));
-      if(!line)return;
-      const answer=line.slice(line.indexOf(' — ')+3).split(' | ')[0];
-      const radio=[...form.querySelectorAll(`input[name="q${i+1}"]`)].find(x=>x.value===answer);
+    const data=parseInterview(report);
+    if(!data.structured){field('notes').value=report.slice(0,600);return;}
+    for(const [key,tag] of [['interview_date','Entrevista'],['break_date','Quebra'],['area','Área'],['employee','Funcionário'],['job','Função']])field(key).value=data.meta[tag]||'';
+    field('notes').value=data.notes;field('manager').value=data.manager;field('technician').value=data.technician;
+    data.answers.forEach((answer,i)=>{
+      const radio=[...form.querySelectorAll(`input[name="q${i+1}"]`)].find(x=>x.value===answer.answer);
       if(radio)radio.checked=true;
-      if(field(`detail${i+1}`))field(`detail${i+1}`).value=line.includes(' | ')?line.slice(line.indexOf(' | ')+3):'';
+      if(field(`detail${i+1}`))field(`detail${i+1}`).value=answer.detail;
     });
   }
+
   function update(){ $('interviewStatus').textContent=$('interviewReport').value.trim()?'Entrevista preenchida. Você pode revisar antes de enviar.':'Preencha o formulário antes de enviar o B.O.'; }
   function open(){hydrate();syncFromBo();$('interviewError').textContent='';$('interviewDialog').showModal();}
   function close(){ $('interviewDialog').close(); }

@@ -4,6 +4,8 @@
   const REASONS=['Falha no Manuseio','Falta','Falta de fitilho','Vencido','Consumo interno','Avaria','Falha manobrista','Descarte repack','Quebra ao descarregar','Sem tampa/Liq. pela metade','Produto sem gás','Quebra ao carregar','Embalagem secundária','Corrosão','Outros'];
   const FULL_LOCATIONS=['Picking','Análise/Bloqueio','Repack','Retornável','Estacionamento - Rota','Descartável','Pulmões/Descarga'];
   const EMPTY_LOCATIONS=['Saroba','Devolução - Rota','Vasilhame','Descarga','Carregamento - Puxada'];
+  let interviewDocument=null;
+  const interviewDocumentReady=import('./bo/interview-document.mjs?v=20261120-paper').then(module=>{interviewDocument=module;});
   let permissions=null,activeStatus='pending',rows=[],selected=null,xlsxPromise=null,selectedIds=new Set();
 
   async function call(action,payload={}){
@@ -214,22 +216,7 @@
     }catch(e){showToast(e.message,true);}
   }
 
-  function interviewHtml(row){
-    if(!row?.interview_report)return '';
-    const report=String(row.interview_report),lines=report.split('\n');
-    const value=label=>lines.find(line=>line.startsWith(label))?.slice(label.length)||'';
-    const structured=lines[0]==='ENTREVISTA DE QUEBRAS';
-    const responses=structured?lines.filter(line=>/^\d+\. /.test(line)):[];
-    const entries=structured?responses.map(line=>{
-      const match=line.match(/^(\d+)\. (.*?) — (Sim|Não|N\/A)(?: \| (.*))?$/);
-      return match?'<div class="interview-print-row"><strong>'+esc(match[1]+'. '+match[2])+'</strong><span>'+esc(match[3])+(match[4]?' · '+esc(match[4]):'')+'</span></div>':'<p>'+esc(line)+'</p>';
-    }).join(''):'<p class="interview-print-legacy">'+esc(report)+'</p>';
-    return '<section class="interview-print-document"><header><small>ANEXO DO B.O. '+esc(row.bo_number)+'</small><h1>ENTREVISTA DE QUEBRAS</h1></header>'+
-      '<div class="interview-print-meta"><span><b>Data da entrevista:</b> '+esc(structured?fmtDate(value('Entrevista: ')):'—')+'</span><span><b>Data da quebra:</b> '+esc(structured?fmtDate(value('Quebra: ')):fmtDate(row.occurrence_date))+'</span><span><b>Área:</b> '+esc(structured?value('Área: '):row.location)+'</span><span><b>Funcionário:</b> '+esc(structured?value('Funcionário: '):row.employee_name)+'</span><span><b>Função:</b> '+esc(structured?value('Função: '):row.employee_function)+'</span></div>'+
-      '<div class="interview-print-answers">'+entries+'</div>'+
-      (structured?'<div class="interview-print-considerations"><b>Considerações:</b> '+esc(value('Considerações: '))+'</div>':'')+
-      '<div class="interview-print-signatures"><div><span>Funcionário</span><small>'+esc(row.employee_name||'')+'</small></div><div><span>Gestor</span><small>'+esc(value('Gestor: '))+'</small></div><div><span>Técnico de controle</span><small>'+esc(value('Técnico de controle: '))+'</small></div></div></section>';
-  }  function printSheet(title,content,landscape=false){
+  function interviewHtml(row){return interviewDocument.renderInterview(row);}  function printSheet(title,content,landscape=false){
     if(!content)return;
     const iframe=document.createElement('iframe');
     iframe.setAttribute('aria-hidden','true');
@@ -242,7 +229,7 @@
     iframe.style.background='#fff';
     document.body.appendChild(iframe);
     const screenCss=document.getElementById('boControlCssEmbedded')?.textContent||'';
-    const printCss='@page{size:A4 '+(landscape?'landscape':'portrait')+';margin:10mm}html,body{margin:0!important;padding:0!important;background:#fff!important;color:#111!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}.bo-batch-page{break-after:page}.bo-batch-page:last-child{break-after:auto}.bo-paper{width:100%!important;max-width:none!important;margin:0!important}.bo-review-actions,.bo-dialog-tools,button{display:none!important}.interview-print-document{break-before:page;box-sizing:border-box;font:11px Arial,sans-serif;color:#111}.interview-print-document:first-child{break-before:auto}.interview-print-document header{border-bottom:2px solid #222;padding-bottom:5mm}.interview-print-document h1{font-size:19px;margin:2mm 0}.interview-print-meta{display:grid;grid-template-columns:1fr 1fr;gap:2mm;padding:4mm 0;border-bottom:1px solid #aaa}.interview-print-row{display:grid;grid-template-columns:3fr 1fr;gap:5mm;border-bottom:1px solid #ddd;padding:1.8mm 0;break-inside:avoid}.interview-print-answers{margin-top:3mm}.interview-print-considerations{margin-top:5mm;min-height:12mm;white-space:pre-wrap}.interview-print-legacy{white-space:pre-wrap}.interview-print-signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:8mm;margin-top:12mm;break-inside:avoid}.interview-print-signatures>div{border-top:1px solid #333;text-align:center;padding-top:2mm}.interview-print-signatures small{display:block}';
+    const printCss='@page{size:A4 '+(landscape?'landscape':'portrait')+';margin:10mm}html,body{margin:0!important;padding:0!important;background:#fff!important;color:#111!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}.bo-batch-page{break-after:page}.bo-batch-page:last-child{break-after:auto}.bo-paper{width:100%!important;max-width:none!important;margin:0!important}.bo-review-actions,.bo-dialog-tools,button{display:none!important}'+interviewDocument.INTERVIEW_PRINT_CSS;
     const doc=iframe.contentDocument||iframe.contentWindow.document;
     doc.open();
     doc.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'+screenCss+'\n'+printCss+'</style></head><body>'+content+'</body></html>');
@@ -296,6 +283,6 @@
   async function generateMissingPins(){try{const d=await call('generate_missing_pins');showIssued(d.issued||[]);await loadPins();if(!d.issued||!d.issued.length)showToast('Todos os conferentes já possuem PIN.');}catch(e){showToast(e.message,true);}}
   async function resetPin(id){try{const d=await call('reset_pin',{id});showIssued([d.issued]);await loadPins();}catch(e){showToast(e.message,true);}}
 
-  async function open(){setHeader();$('boControlView').innerHTML='<div class="bo-empty">Carregando Controle de B.O.…</div>';try{permissions=await call('permissions');if(!permissions.can_validate){$('boControlView').innerHTML='<section class="bo-control-panel"><strong>Acesso restrito.</strong><p>Somente o Controle e a administração podem validar B.O.s.</p></section>';return;}renderShell();await load();}catch(e){$('boControlView').innerHTML='<section class="bo-control-panel"><p class="form-error">'+esc(e.message)+'</p></section>';}}
+  async function open(){setHeader();$('boControlView').innerHTML='<div class="bo-empty">Carregando Controle de B.O.…</div>';try{await interviewDocumentReady;permissions=await call('permissions');if(!permissions.can_validate){$('boControlView').innerHTML='<section class="bo-control-panel"><strong>Acesso restrito.</strong><p>Somente o Controle e a administração podem validar B.O.s.</p></section>';return;}renderShell();await load();}catch(e){$('boControlView').innerHTML='<section class="bo-control-panel"><p class="form-error">'+esc(e.message)+'</p></section>';}}
   window.__boControl={open};
 })();
