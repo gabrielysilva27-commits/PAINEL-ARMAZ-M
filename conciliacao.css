@@ -15,3 +15,13 @@
 @container (max-width:850px){.recon .rc-upload-fields{grid-template-columns:minmax(120px,1fr) minmax(160px,1fr) minmax(200px,1.5fr)}.recon .rc-upload-fields>label:last-child{grid-column:1/-1}}
 @container (max-width:590px){.recon .rc-upload-fields{grid-template-columns:repeat(2,minmax(0,1fr))}.recon .rc-upload-fields>label:nth-child(n+3){grid-column:1/-1}}
 @container (max-width:400px){.recon .rc-upload-fields{grid-template-columns:1fr}.recon .rc-upload-fields>label:nth-child(n){grid-column:auto}}
+
+/* Portal: search and the two selectors share the available width. */
+.recon .rc-toolbar-components{grid-template-columns:minmax(0,1fr) 170px 180px;align-items:center}
+.recon .rc-toolbar-components>input,.recon .rc-toolbar-components>select{width:100%;min-width:0;min-height:42px}
+@media(max-width:760px){
+ .recon .rc-toolbar-components{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .recon .rc-toolbar-components>input{grid-column:1/-1}
+ .recon .rc-toolbar-components>input,.recon .rc-toolbar-components>select{min-height:44px;font-size:16px}
+}
+@media(max-width:380px){.recon .rc-toolbar-components{grid-template-columns:minmax(0,1fr)}}

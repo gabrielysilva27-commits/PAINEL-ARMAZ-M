@@ -23,3 +23,9 @@ export function parseRecountWorkbook(wb,XLSX){
  return {items:validateItems(items),warnings};
 }
 export function validateCount(input,instruction,complete=false){const allowed=countFields(instruction),out={};for(const key of ['pallets','layers','boxes','units']){const v=input[key];if(!allowed.includes(key)){out[key]=null;continue;}if(v===''||v==null){if(complete)throw Error('Preencha todos os campos solicitados, inclusive zero.');out[key]=null;continue;}const n=Number(v);if(!Number.isSafeInteger(n)||n<0||n>10000000)throw Error('Informe quantidades inteiras, a partir de zero.');out[key]=n;}return out;}
+
+// Filters requested components, independently of quantities already entered.
+export function filterRecountItems(items,{query='',status='',component=''}={},getStatus=item=>item.status){
+ const search=norm(query);
+ return items.filter(item=>(!search||norm(item.sku_code+' '+item.sku_name).includes(search))&&(!status||getStatus(item)===status)&&(!component||countFields(item.instruction).includes(component)));
+}
