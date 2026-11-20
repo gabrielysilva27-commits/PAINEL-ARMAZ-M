@@ -4,8 +4,8 @@ export function productGroups(sources,counts=null,allocations=null){
   const key=String(item.sku_code);
   if(!groups.has(key))groups.set(key,{sku:key,name:item.sku_name,expected:0,items:[]});
   const group=groups.get(key);
-  group.expected+=Number(item.total_qty);
-  group.items.push({item_id:item.id,source_id:source.id,bo_number:source.bo_number,employee:source.employee_name||source.factory_name||source.subject_type,reason:source.reason,location:source.location,total:Number(item.total_qty),repacked:Number(item.repacked_qty)});
+  group.expected+=Number(item.discarded_qty??0);
+  group.items.push({item_id:item.id,source_id:source.id,bo_number:source.bo_number,employee:source.employee_name||source.factory_name||source.subject_type,reason:source.reason,location:source.location,total:Number(item.total_qty),repacked:Number(item.repacked_qty),discarded:Number(item.discarded_qty??0)});
  }
  return [...groups.values()].map(group=>{
   if(counts===null)return group;
@@ -16,21 +16,23 @@ export function productGroups(sources,counts=null,allocations=null){
   if(allocations){
    assigned=group.items.map(item=>{
     const input=allocations[String(item.item_id)];
-    if(!input||input.total===''||input.total==null)throw Error('Distribua a quantidade entre todos os B.O.s.');
-    const qty=Number(input.total),repacked=Number(input.repacked??item.repacked);
-    if(!Number.isFinite(qty)||!Number.isFinite(repacked)||qty<0||qty>1000000||repacked<0||repacked>qty)throw Error('Quantidade ou reembalagem inválida.');
-    return {item_id:item.item_id,total:qty,repacked};
+    if(!input||input.discarded===''||input.discarded==null)throw Error('Distribua a quantidade entre todos os B.O.s.');
+    const discarded=Number(input.discarded),repacked=item.repacked;
+    const qty=Math.max(item.total,repacked+discarded);
+    if(!Number.isFinite(discarded)||discarded<0||discarded>1000000||qty>1000000||repacked<0)throw Error('Quantidade ou reembalagem inválida.');
+    return {item_id:item.item_id,total:qty,repacked,discarded};
    });
-   if(Math.abs(assigned.reduce((sum,item)=>sum+item.total,0)-total)>0.000001)throw Error('A distribuição do produto '+group.sku+' precisa somar '+total+'.');
+   if(Math.abs(assigned.reduce((sum,item)=>sum+item.discarded,0)-total)>0.000001)throw Error('A distribuição do produto '+group.sku+' precisa somar '+total+'.');
   }else if(Math.abs(total-group.expected)<0.000001){
-   assigned=group.items.map(item=>({item_id:item.item_id,total:item.total,repacked:item.repacked}));
-  }else if(group.items.length===1&&total>=group.items[0].repacked){
-   assigned=[{item_id:group.items[0].item_id,total,repacked:group.items[0].repacked}];
+   assigned=group.items.map(item=>({item_id:item.item_id,total:item.total,repacked:item.repacked,discarded:item.discarded}));
+  }else if(group.items.length===1){
+   assigned=[{item_id:group.items[0].item_id,total:Math.max(group.items[0].total,group.items[0].repacked+total),repacked:group.items[0].repacked,discarded:total}];
   }
-  return {...group,total,allocations:assigned};
+  return {...group,quantity_basis:'discarded_qty',total,allocations:assigned};
  });
 }
 export async function submitGrouped(db,conferencer,body){
+ if(body.quantity_basis!=='discarded_qty')throw Error('Atualize a página para confrontar o TT Descarte.');
  const ids=body.sources;
  if(!Array.isArray(ids)||!ids.length||ids.length>200||new Set(ids.map(x=>Number(x.id))).size!==ids.length)throw Error('Lista de origem inválida.');
  if(!/^[0-9a-f-]{36}$/i.test(body.request_id||''))throw Error('Identificação da lista inválida.');
