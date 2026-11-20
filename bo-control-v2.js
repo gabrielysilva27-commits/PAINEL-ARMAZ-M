@@ -5,7 +5,7 @@
   const FULL_LOCATIONS=['Picking','Análise/Bloqueio','Repack','Retornável','Estacionamento - Rota','Descartável','Pulmões/Descarga'];
   const EMPTY_LOCATIONS=['Saroba','Devolução - Rota','Vasilhame','Descarga','Carregamento - Puxada'];
   let interviewDocument=null;
-  const interviewDocumentReady=import('./bo/interview-document.mjs?v=20261120-paper').then(module=>{interviewDocument=module;});
+  const interviewDocumentReady=Promise.all([import('./bo/interview-document.mjs?v=20261120-paper'),import('./bo/print-layout.mjs?v=20261120-a4')]).then(([document,layout])=>{interviewDocument={...document,...layout};});
   let permissions=null,activeStatus='pending',rows=[],selected=null,xlsxPromise=null,selectedIds=new Set();
 
   async function call(action,payload={}){
@@ -115,7 +115,7 @@
       :row.record_kind==='turn_a_confront'
         ?'<div class="bo-paper-flow official">RESULTADO OFICIAL · CONFRONTO DO TURNO A'+(row.source?.bo_number?' · ORIGEM '+esc(row.source.bo_number):'')+'</div>'
         :'';
-    return '<div class="bo-paper">'+
+    return '<div class="bo-paper'+(items.length>8?' bo-paper-dense':'')+'">'+
       '<div class="bo-paper-title">Movimentações de Estoque</div><div class="bo-paper-subtitle">B.O.</div>'+flow+
       '<div class="bo-paper-top"><div class="bo-paper-box"><div><strong>B.O.:</strong> '+esc(row.bo_number)+' &nbsp;&nbsp; <strong>Data:</strong> '+fmtDate(row.occurrence_date)+' &nbsp;&nbsp; <strong>Hora:</strong> '+esc(String(row.occurrence_time||'').slice(0,5))+'</div><div class="bo-paper-line"><strong>Emitido por:</strong> '+esc(conf)+'</div><div class="bo-paper-line">'+['A','B','C'].map(x=>checkbox('Turno '+x,row.shift===x)).join('')+'</div></div>'+
       '<div class="bo-paper-box"><div style="text-align:center;font-weight:800;margin-bottom:10px">Tipo</div><div class="bo-paper-line" style="justify-content:center">'+['Entrada','Saída'].map(x=>checkbox(x,row.movement_type===x)).join('')+'</div></div></div>'+
@@ -229,7 +229,7 @@
     iframe.style.background='#fff';
     document.body.appendChild(iframe);
     const screenCss=document.getElementById('boControlCssEmbedded')?.textContent||'';
-    const printCss='@page{size:A4 '+(landscape?'landscape':'portrait')+';margin:10mm}html,body{margin:0!important;padding:0!important;background:#fff!important;color:#111!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}.bo-batch-page{break-after:page}.bo-batch-page:last-child{break-after:auto}.bo-paper{width:100%!important;max-width:none!important;margin:0!important}.bo-review-actions,.bo-dialog-tools,button{display:none!important}'+interviewDocument.INTERVIEW_PRINT_CSS;
+    const printCss='@page{size:A4 '+(landscape?'landscape':'portrait')+';margin:10mm}html,body{margin:0!important;padding:0!important;background:#fff!important;color:#111!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}.bo-batch-page{break-after:page}.bo-batch-page:last-child{break-after:auto}.bo-paper{width:100%!important;max-width:none!important;margin:0!important}.bo-review-actions,.bo-dialog-tools,button{display:none!important}'+interviewDocument.BO_PRINT_CSS+interviewDocument.INTERVIEW_PRINT_CSS;
     const doc=iframe.contentDocument||iframe.contentWindow.document;
     doc.open();
     doc.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'+screenCss+'\n'+printCss+'</style></head><body>'+content+'</body></html>');
