@@ -50,12 +50,13 @@ async function catalog(q:any){
   return (products||[]).map((p:any)=>{const x=pm.get(String(p.sku_code))||{};const a=am.get(String(p.sku_code))||{};return{sku_code:String(p.sku_code),sku_name:p.sku_name,pallet_capacity:x.pallet_capacity??p.boxes_per_pallet??null,layer_qty:x.layer_qty??null,curve_class:x.curve_class??a.curve_class??null}})
 }
 
+function requiredMap(v:any){const map=clean(v,60).toUpperCase();if(!map)throw new Error("Informe o Nº Mapa para identificar esta viagem.");return map}
 function validateHeader(x:any){
   const truck=clean(x.truck_number,60).toUpperCase(),factory=clean(x.factory_name,100).toUpperCase(),driver=clean(x.driver_name,120).toUpperCase();
   if(!TRUCK_PLATES[truck])throw new Error("Selecione uma carreta cadastrada.");
   if(!FACTORIES.includes(factory as any))throw new Error("Selecione uma fábrica cadastrada.");
   if(!DRIVERS.includes(driver as any))throw new Error("Selecione um carreteiro cadastrado.");
-  return{truck_number:truck,arrival_date:isoDate(x.arrival_date),arrival_time:clean(x.arrival_time,5),...(Object.hasOwn(x,"issue_date")?{issue_date:x.issue_date?isoDate(x.issue_date):null}:{}),nf_imperio:clean(x.nf_imperio,60)||null,nf_ambev:clean(x.nf_ambev,60)||null,map_number:clean(x.map_number,60)||null,order_number:clean(x.order_number,60)||null,factory_name:factory,fleet:null,plate:TRUCK_PLATES[truck],shift:null,driver_name:driver,gate_reception:null,portaria_comments:null}
+  return{truck_number:truck,arrival_date:isoDate(x.arrival_date),arrival_time:clean(x.arrival_time,5),...(Object.hasOwn(x,"issue_date")?{issue_date:x.issue_date?isoDate(x.issue_date):null}:{}),nf_imperio:clean(x.nf_imperio,60)||null,nf_ambev:clean(x.nf_ambev,60)||null,map_number:requiredMap(x.map_number),order_number:clean(x.order_number,60)||null,factory_name:factory,fleet:null,plate:TRUCK_PLATES[truck],shift:null,driver_name:driver,gate_reception:null,portaria_comments:null}
 }
 async function enrichItems(receipt:any,src:any[]){
   if(!Array.isArray(src)||!src.length||src.length>80)throw new Error("Inclua de 1 a 80 produtos.");
@@ -690,14 +691,14 @@ Deno.serve(async(req:Request)=>{
     if(a==="gate_create_receipt"){
       const x=validateHeader(b.receipt||{});if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(x.arrival_time))throw new Error("Hora de chegada inválida.");
       const row={receipt_code:receiptCode(),...x,gate_reception:g.display_name,status:"awaiting_conference",pull_status:"pending",gate_created_by:g.id,gate_updated_by:g.id};
-      const {data,error}=await db.from("receiving_nri_receipts").insert(row).select(receiptSelect).single();if(error)throw error;
+      const {data,error}=await db.from("receiving_nri_receipts").insert(row).select(receiptSelect).single();if(error){if(error.code==="23505"&&String(error.message||"").includes("receiving_nri_distinct_trip_idx"))throw new Error("Este mapa já foi registrado para a mesma carreta nesta data.");throw error}
       return json(req,{receipt:{...data,display_name:receiptName(data)}},201);
     }
     if(a==="gate_update_receipt"){
       const id=Number(b.id),x=validateHeader(b.receipt||{});if(!Number.isInteger(id)||id<=0)throw new Error("Recebimento inválido.");
       const {data:old}=await db.from("receiving_nri_receipts").select("status,unload_started_at").eq("id",id).maybeSingle();if(!old)throw new Error("Recebimento não encontrado.");
-      if(old.status!=="awaiting_conference"||old.unload_started_at)throw new Error("A Portaria não pode alterar a carreta depois que o empilhador iniciou a descarga.");
-      const {data,error}=await db.from("receiving_nri_receipts").update({...x,gate_reception:g.display_name,gate_updated_by:g.id,updated_at:new Date().toISOString()}).eq("id",id).select(receiptSelect).single();if(error)throw error;
+      if(old.status!=="awaiting_conference")throw new Error("A Portaria não pode alterar a carreta depois que a conferência começou.");
+      const {data,error}=await db.from("receiving_nri_receipts").update({...x,gate_reception:g.display_name,gate_updated_by:g.id,updated_at:new Date().toISOString()}).eq("id",id).select(receiptSelect).single();if(error){if(error.code==="23505"&&String(error.message||"").includes("receiving_nri_distinct_trip_idx"))throw new Error("Este mapa já foi registrado para a mesma carreta nesta data.");throw error}
       return json(req,{receipt:{...data,display_name:receiptName(data)}});
     }
   }
@@ -705,7 +706,7 @@ Deno.serve(async(req:Request)=>{
   if(["conference_queue","conference_start","conference_reopen","catalog_search","conference_save","conference_finalize","conference_history","conference_print_history","conference_log_print"].includes(a)){
     const u=await confUser(req);if(!u)return json(req,{error:"Sessão do conferente inválida ou expirada."},401);
     if(a==="catalog_search")return json(req,{items:await catalog(b.query)});
-    if(a==="conference_queue"){const all=await listReceipts({status:"all"},true);return json(req,{receipts:all.filter((r:any)=>(r.status==="awaiting_conference"&&!!r.unload_started_at)||(r.status==="in_conference"&&r.conference_by===u.id))})}
+    if(a==="conference_queue"){const all=await listReceipts({status:"all"},true);return json(req,{receipts:all.filter((r:any)=>r.status==="awaiting_conference"||(r.status==="in_conference"&&r.conference_by===u.id))})}
     if(a==="conference_history"){const all=await listReceipts({status:"all"},true);return json(req,{receipts:all.filter((r:any)=>r.conference_by===u.id).slice(0,100)})}
     if(a==="conference_print_history"){
       const id=Number(b.id);if(!Number.isInteger(id)||id<=0)throw new Error("Recebimento inválido.");
@@ -736,8 +737,7 @@ Deno.serve(async(req:Request)=>{
     }
     if(a==="conference_start"){
       if(r.status==="awaiting_conference"){
-        if(!r.unload_started_at)throw new Error("A conferência só é liberada depois que o empilhador iniciar a descarga.");
-        const now=new Date().toISOString();const {data:x,error:e}=await db.from("receiving_nri_receipts").update({status:"in_conference",conference_by:u.id,conference_started_at:now,updated_at:now}).eq("id",id).eq("status","awaiting_conference").not("unload_started_at","is",null).select(blindReceiptSelect).maybeSingle();if(e)throw e;if(!x)throw new Error("A carreta já foi assumida por outro conferente.");return json(req,{receipt:{...x,display_name:receiptName(x)}})}
+        const now=new Date().toISOString();const {data:x,error:e}=await db.from("receiving_nri_receipts").update({status:"in_conference",conference_by:u.id,conference_started_at:now,updated_at:now}).eq("id",id).eq("status","awaiting_conference").select(blindReceiptSelect).maybeSingle();if(e)throw e;if(!x)throw new Error("A carreta já foi assumida por outro conferente.");return json(req,{receipt:{...x,display_name:receiptName(x)}})}
       if(r.status==="in_conference"&&r.conference_by===u.id)return json(req,{receipt:{...r,display_name:receiptName(r)}});throw new Error("Esta carreta não está disponível para você.");
     }
     if(r.status!=="in_conference"||r.conference_by!==u.id)throw new Error("Esta conferência não está aberta para você.");
@@ -800,10 +800,10 @@ Deno.serve(async(req:Request)=>{
   if(a==="create_receipt"){
     const x=validateHeader(b.receipt||{});if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(x.arrival_time))throw new Error("Hora de chegada inválida.");
     const row={receipt_code:receiptCode(),...x,status:"awaiting_conference",pull_status:"pending",created_by:u.id,updated_by:u?.id||null};
-    const {data,error}=await db.from("receiving_nri_receipts").insert(row).select(receiptSelect).single();if(error)throw error;return json(req,{receipt:{...data,display_name:receiptName(data)}},201)
+    const {data,error}=await db.from("receiving_nri_receipts").insert(row).select(receiptSelect).single();if(error){if(error.code==="23505"&&String(error.message||"").includes("receiving_nri_distinct_trip_idx"))throw new Error("Este mapa já foi registrado para a mesma carreta nesta data.");throw error}return json(req,{receipt:{...data,display_name:receiptName(data)}},201)
   }
   if(a==="update_receipt"){
-    const id=Number(b.id),x=validateHeader(b.receipt||{});const {data:old}=await db.from("receiving_nri_receipts").select("status,unload_started_at").eq("id",id).maybeSingle();if(!old)throw new Error("Recebimento não encontrado.");if(old.status==="conference_completed"||old.unload_started_at)throw new Error("Dados da Portaria ficam bloqueados após o início da descarga.");const {data,error}=await db.from("receiving_nri_receipts").update({...x,updated_by:u?.id||null,updated_at:new Date().toISOString()}).eq("id",id).select(receiptSelect).single();if(error)throw error;return json(req,{receipt:{...data,display_name:receiptName(data)}})
+    const id=Number(b.id),x=validateHeader(b.receipt||{});const {data:old}=await db.from("receiving_nri_receipts").select("status,unload_started_at").eq("id",id).maybeSingle();if(!old)throw new Error("Recebimento não encontrado.");if(old.status!=="awaiting_conference")throw new Error("Dados da Portaria ficam bloqueados após o início da conferência.");const {data,error}=await db.from("receiving_nri_receipts").update({...x,updated_by:u?.id||null,updated_at:new Date().toISOString()}).eq("id",id).select(receiptSelect).single();if(error){if(error.code==="23505"&&String(error.message||"").includes("receiving_nri_distinct_trip_idx"))throw new Error("Este mapa já foi registrado para a mesma carreta nesta data.");throw error}return json(req,{receipt:{...data,display_name:receiptName(data)}})
   }
   if(a==="cancel_receipt"){const id=Number(b.id);const {data,error}=await db.from("receiving_nri_receipts").update({status:"cancelled",updated_by:u?.id||null,updated_at:new Date().toISOString()}).eq("id",id).neq("status","conference_completed").select("id,receipt_code,status").maybeSingle();if(error)throw error;if(!data)throw new Error("Recebimento concluído não pode ser cancelado.");return json(req,{receipt:data})}
   if(a==="receipt_detail"){const id=Number(b.id);const {data,error}=await db.from("receiving_nri_receipts").select(receiptSelect).eq("id",id).maybeSingle();if(error)throw error;if(!data)throw new Error("Recebimento não encontrado.");return json(req,{receipt:{...data,display_name:receiptName(data)}})}

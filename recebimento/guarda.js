@@ -47,7 +47,7 @@
     clearInterval(poll);poll=setInterval(()=>{if(!$('homeView').classList.contains('hidden'))refreshAll(false)},30000);
   }
   async function refreshAll(showErrors=true){
-    try{await Promise.all([loadQueue(),loadOrders()])}catch(e){if(showErrors)toast(e.message,true)}
+    try{await loadOrders()}catch(e){if(showErrors)toast(e.message,true)}
   }
   async function loadQueue(){
     const d=await call('forklift_queue'),rows=d.receipts||[];

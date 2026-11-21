@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#f47a20" />
-  <meta name="description" content="Tela operacional de descarga e guarda dos empilhadores — Armazém Império." />
-  <title>Empilhador · Descarga e Guarda | Armazém Império</title>
+  <meta name="description" content="Tela operacional de guarda dos empilhadores — Armazém Império." />
+  <title>Empilhador · Guarda | Armazém Império</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
@@ -15,13 +15,13 @@
   <main class="app">
     <header class="brand">
       <img src="../assets/logo-imperio.png" alt="Império" />
-      <div><span>ARMAZÉM</span><strong>EMPILHADOR · DESCARGA E GUARDA</strong></div>
+      <div><span>ARMAZÉM</span><strong>EMPILHADOR · GUARDA</strong></div>
     </header>
 
     <section id="loginView" class="card">
       <p class="eyebrow">IDENTIFICAÇÃO DO EMPILHADOR</p>
       <h1>Entrar na operação</h1>
-      <p class="muted">Use seu nome e PIN. A partir daqui ficam registrados início da descarga, carretas atendidas, paletes e confirmações de guarda.</p>
+      <p class="muted">Use seu nome e PIN. Acompanhe e confirme os endereços das Ordens de Guarda.</p>
       <form id="loginForm" class="stack">
         <label>Empilhador<select id="operatorSelect" required><option value="">Carregando...</option></select></label>
         <label>PIN<input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="4 dígitos" required /></label>
@@ -32,13 +32,9 @@
 
     <section id="homeView" class="hidden">
       <div class="toolbar">
-        <div><p class="eyebrow">OPERAÇÃO DO EMPILHADOR</p><h1>Descargas disponíveis</h1><p class="muted" id="loggedName"></p></div>
+        <div><p class="eyebrow">OPERAÇÃO DO EMPILHADOR</p><h1>Ordens de Guarda</h1><p class="muted" id="loggedName"></p></div>
         <div class="toolbar-actions"><button class="secondary" id="refreshButton">Atualizar</button><button class="ghost" id="logoutButton">Sair</button></div>
       </div>
-      <div class="flow-note"><strong>Fluxo obrigatório:</strong> a Portaria registra a carreta → você toca em <b>Iniciar descarga</b> → a carreta é liberada para o conferente. Ao terminar fisicamente, toque em <b>Finalizar descarga</b>.</div>
-      <section id="queueSummary" class="summary"></section>
-      <div id="unloadList" class="task-list"></div>
-
       <div class="section-head">
         <div><p class="eyebrow">APÓS A CONFERÊNCIA</p><h2>Ordens de Guarda</h2><p class="muted">Quando a conferência terminar, as posições sugeridas aparecem aqui.</p></div>
       </div>
@@ -56,6 +52,6 @@
     </section>
   </main>
   <div id="toast" class="toast hidden"></div>
-  <script src="guarda.js?v=20260921-3"></script>
+  <script src="guarda.js?v=20261121-fluxo"></script>
 <script src="../portal-pin.js?v=20261110-1"></script></body>
 </html>

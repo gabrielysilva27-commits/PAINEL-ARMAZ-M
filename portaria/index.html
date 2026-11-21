@@ -29,7 +29,7 @@
 
     <section id="homeView" class="hidden">
       <div class="toolbar">
-        <div><p class="eyebrow">PORTARIA</p><h1>Recebimentos</h1><p class="muted">Abra a carreta uma única vez. O mesmo registro seguirá para Conferência, NRI e Puxada.</p><p class="muted" id="loggedGateUser"></p></div>
+        <div><p class="eyebrow">PORTARIA</p><h1>Recebimentos</h1><p class="muted">Registre cada viagem pelo seu mapa. Após a entrada, o armazém já pode conferir.</p><p class="muted" id="loggedGateUser"></p></div>
         <button id="logoutButton" class="ghost">Sair</button>
       </div>
 
@@ -67,7 +67,7 @@
             <label>Data de emissão<input id="issueDate" type="date" required /></label>
           </div>
           <div class="grid-2 document-reference-fields">
-            <label>Nº Mapa<input id="mapNumber" /></label>
+            <label>Nº Mapa<input id="mapNumber" required /></label>
             <label>Nº Pedido<input id="orderNumber" /></label>
           </div>
           <p id="formError" class="error"></p>
@@ -82,6 +82,6 @@
     </section>
   </main>
   <div id="toast" class="toast hidden"></div>
-  <script src="app.js?v=20261121-emissao"></script>
+  <script src="app.js?v=20261121-fluxo"></script>
 <script src="../portal-pin.js?v=20261110-1"></script></body>
 </html>

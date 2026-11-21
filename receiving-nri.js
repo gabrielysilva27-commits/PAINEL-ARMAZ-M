@@ -86,14 +86,13 @@
   function shell(which){
     if(which==='nri')return '<div class="rxp-shell">'+
       '<section class="rxp-kpis">'+
-        '<article class="rxp-kpi"><span>Aguardando empilhador</span><strong id="rxpUnloadWait">—</strong></article>'+
-        '<article class="rxp-kpi"><span>Descarga iniciada</span><strong id="rxpUnload">—</strong></article>'+
+        '<article class="rxp-kpi"><span>Aguardando conferência</span><strong id="rxpUnloadWait">—</strong></article>'+
         '<article class="rxp-kpi"><span>Em conferência</span><strong id="rxpIn">—</strong></article>'+
         '<article class="rxp-kpi print-queue" id="rxpPrintPendingCard"><span>Aguardando impressão</span><strong id="rxpPrintPending">—</strong></article>'+
         '<article class="rxp-kpi"><span>Conferências concluídas</span><strong id="rxpDone">—</strong></article>'+
       '</section>'+
       '<section class="rxp-panel"><div class="rxp-toolbar">'+
-        '<label class="grow">Buscar<input id="rxpSearch" placeholder="Carreta, fábrica, carreteiro, placa, NF ou produto"></label>'+
+        '<label class="grow">Buscar<input id="rxpSearch" placeholder="Carreta, fábrica, carreteiro, placa, mapa, NF ou produto"></label>'+
         '<label>Status<select id="rxpStatus"><option value="all">Todos</option><option value="awaiting_conference">Aguardando</option><option value="in_conference">Em conferência</option><option value="conference_completed">Concluída</option></select></label>'+
         '<label>Impressão<select id="rxpPrintFilter"><option value="all">Todas</option><option value="pending_print">Fila de impressão</option><option value="printed">Já impressas</option></select></label>'+
         '<button class="rxp-btn" id="rxpOpenConf">Abrir tela do conferente</button><button class="rxp-btn" id="rxpRefresh">Atualizar</button><button class="rxp-btn primary" id="rxpNew">+ Nova carreta</button>'+
@@ -129,8 +128,7 @@
     try{
       const d=await call('list_receipts',{status:$('rxpStatus').value,search:$('rxpSearch').value});
       receipts=d.receipts||[];
-      $('rxpUnloadWait').textContent=d.counts.awaiting_unload||0;
-      $('rxpUnload').textContent=d.counts.unloading||0;
+      $('rxpUnloadWait').textContent=d.counts.awaiting_conference||0;
       $('rxpIn').textContent=d.counts.in_conference||0;
       $('rxpPrintPending').textContent=d.counts.print_pending||0;
       $('rxpDone').textContent=d.counts.conference_completed||0;
@@ -144,9 +142,9 @@
           :'';
         return '<tr><td><strong>'+esc(r.display_name)+'</strong><br><small>'+esc(r.receipt_code)+'</small></td>'+
           '<td>'+fd(r.arrival_date)+'<br><small>'+esc(String(r.arrival_time||'').slice(0,5))+'</small></td>'+
-          '<td>'+esc(r.plate||'—')+'</td>'+
+          '<td>'+esc(r.plate||'—')+'<br><small>Mapa '+esc(r.map_number||'—')+'</small></td>'+
           '<td>'+esc(r.nf_imperio||r.nf_ambev||'—')+'<br><small>Pedido '+esc(r.order_number||'—')+'</small></td>'+
-          '<td>'+(()=>{let txt=receiptStatus(r.status),cls=r.status;if(r.status==='awaiting_conference'){if(r.unload_status==='pending'){txt='Aguardando empilhador';cls='pending'}else if(r.unload_status==='in_progress'){txt='Descarga iniciada';cls='in_progress'}else{txt='Liberada à conferência';cls='matched'}}return '<span class="rxp-status '+cls+'">'+txt+'</span><br><small>'+(r.unload_operator?.display_name?'Empilhador '+esc(r.unload_operator.display_name):'')+'</small><br><small class="'+printClass+'">'+printLabel+'</small>'})()+'</td>'+
+          '<td>'+(()=>{let txt=receiptStatus(r.status),cls=r.status;if(r.status==='awaiting_conference'){txt='Aguardando conferência';cls='pending'}return '<span class="rxp-status '+cls+'">'+txt+'</span><br><small class="'+printClass+'">'+printLabel+'</small>'})()+'</td>'+
           '<td>'+esc(r.gate_creator?.display_name||'—')+'</td>'+
           '<td>'+esc(r.conferencer?.display_name||'—')+'</td>'+
           '<td><strong>'+n(r.nri_count||0)+'</strong><br><small>P: 1 folha/palete · CX: 1 folha/código</small></td>'+
@@ -187,7 +185,7 @@
       '<label>Hora chegada<input id="rrTime" type="time" required value="'+esc(String(r?.arrival_time||nowTime()).slice(0,5))+'"></label>'+
       '<label>NF Império<input id="rrNfImp" value="'+esc(r?.nf_imperio||'')+'"></label>'+
       '<label>NF Ambev<input id="rrNfAmbev" value="'+esc(r?.nf_ambev||'')+'"></label>'+
-      '<label>Nº Mapa<input id="rrMap" value="'+esc(r?.map_number||'')+'"></label>'+
+      '<label>Nº Mapa<input id="rrMap" required value="'+esc(r?.map_number||'')+'"></label>'+
       '<label>Nº Pedido<input id="rrOrder" value="'+esc(r?.order_number||'')+'"></label>'+
       '</div><p class="form-error" id="rrError"></p><div class="rxp-dialog-actions"><button type="button" class="rxp-btn" id="rrCancel">Cancelar</button><button type="submit" class="rxp-btn primary">Salvar recebimento</button></div></form>';
     const sync=()=>{$('rrPlate').value=TRUCK_PLATES[$('rrTruck').value]||'';};
