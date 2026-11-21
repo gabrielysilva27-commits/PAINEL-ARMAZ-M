@@ -4,3 +4,6 @@
 .status.unload_pending{background:#fff4db;color:#8b6100}
 .status.unload_in_progress{background:#eaf1ff;color:#315d9b}
 .status.unload_completed{background:#e8f6ef;color:#19704c}
+
+/* Datas do recebimento e do documento permanecem legíveis no celular. */
+#receiptForm label{min-width:0}#receiptForm input,#receiptForm select{min-width:0;min-height:44px}#receiptForm input[type=date],#receiptForm input[type=time]{font-size:16px}.receipt-head{align-items:flex-start}.receipt-name{min-width:0;overflow-wrap:anywhere}.receipt-meta span{overflow-wrap:anywhere}@media(max-width:680px){.app{max-width:100%;overflow-x:hidden}.grid-3.arrival-fields,.grid-3.document-fields,.grid-2.document-reference-fields{grid-template-columns:minmax(0,1fr)}.section-heading button,.form-actions button{min-height:44px}.receipt-head{flex-wrap:wrap}.status{white-space:normal}}

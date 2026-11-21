@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20260921-2" />
+  <link rel="stylesheet" href="styles.css?v=20261121-emissao" />
 </head>
 <body>
   <main class="app">
@@ -51,7 +51,7 @@
               </select>
             </label>
           </div>
-          <div class="grid-3">
+          <div class="grid-3 arrival-fields">
             <label>Carreteiro / motorista
               <select id="driverName" required>
                 <option value="">Selecione...</option>
@@ -61,12 +61,13 @@
             <label>Data chegada<input id="arrivalDate" type="date" required /></label>
             <label>Hora chegada<input id="arrivalTime" type="time" required /></label>
           </div>
-          <div class="grid-3">
+          <div class="grid-3 document-fields">
             <label>NF Império<input id="nfImperio" /></label>
             <label>NF Ambev<input id="nfAmbev" /></label>
-            <label>Nº Mapa<input id="mapNumber" /></label>
+            <label>Data de emissão<input id="issueDate" type="date" required /></label>
           </div>
-          <div class="grid-2">
+          <div class="grid-2 document-reference-fields">
+            <label>Nº Mapa<input id="mapNumber" /></label>
             <label>Nº Pedido<input id="orderNumber" /></label>
           </div>
           <p id="formError" class="error"></p>
@@ -81,6 +82,6 @@
     </section>
   </main>
   <div id="toast" class="toast hidden"></div>
-  <script src="app.js?v=20260929-carretas"></script>
+  <script src="app.js?v=20261121-emissao"></script>
 <script src="../portal-pin.js?v=20261110-1"></script></body>
 </html>
