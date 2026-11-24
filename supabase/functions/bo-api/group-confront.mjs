@@ -12,23 +12,34 @@ export function productGroups(sources,counts=null,allocations=null){
   const value=counts[group.sku];
   if(value===''||value==null||!Number.isFinite(Number(value))||Number(value)<0||Number(value)>1000000)throw Error('Informe o total conferido do produto '+group.sku+'.');
   const total=Number(value);
+  const sourceCount=new Set(group.items.map(item=>String(item.source_id))).size;
+  const differs=Math.abs(total-group.expected)>0.000001;
+  const needsDistribution=sourceCount>1&&differs;
   let assigned=null;
-  if(allocations){
-   assigned=group.items.map(item=>{
-    const input=allocations[String(item.item_id)];
-    if(!input||input.discarded===''||input.discarded==null)throw Error('Distribua a quantidade entre todos os B.O.s.');
-    const discarded=Number(input.discarded),repacked=item.repacked;
-    const qty=Math.max(item.total,repacked+discarded);
-    if(!Number.isFinite(discarded)||discarded<0||discarded>1000000||qty>1000000||repacked<0)throw Error('Quantidade ou reembalagem inválida.');
-    return {item_id:item.item_id,total:qty,repacked,discarded};
-   });
-   if(Math.abs(assigned.reduce((sum,item)=>sum+item.discarded,0)-total)>0.000001)throw Error('A distribuição do produto '+group.sku+' precisa somar '+total+'.');
-  }else if(Math.abs(total-group.expected)<0.000001){
+  if(needsDistribution){
+   if(allocations){
+    assigned=group.items.map(item=>{
+     const input=allocations[String(item.item_id)];
+     if(!input||input.discarded===''||input.discarded==null)throw Error('Distribua a quantidade entre todos os B.O.s do produto '+group.sku+'.');
+     const discarded=Number(input.discarded),repacked=item.repacked;
+     const qty=Math.max(item.total,repacked+discarded);
+     if(!Number.isFinite(discarded)||discarded<0||discarded>1000000||qty>1000000||repacked<0)throw Error('Quantidade ou reembalagem inválida.');
+     return {item_id:item.item_id,total:qty,repacked,discarded};
+    });
+    if(Math.abs(assigned.reduce((sum,item)=>sum+item.discarded,0)-total)>0.000001)throw Error('A distribuição do produto '+group.sku+' precisa somar '+total+'.');
+   }
+  }else if(!differs){
    assigned=group.items.map(item=>({item_id:item.item_id,total:item.total,repacked:item.repacked,discarded:item.discarded}));
-  }else if(group.items.length===1){
-   assigned=[{item_id:group.items[0].item_id,total:Math.max(group.items[0].total,group.items[0].repacked+total),repacked:group.items[0].repacked,discarded:total}];
+  }else{
+   // Produto presente em apenas um B.O.: aplicar diretamente o total do Turno A.
+   // Se houver mais de uma linha do mesmo produto nesse B.O., concentrar o TT
+   // Descarte na primeira linha e manter as demais sem descarte.
+   assigned=group.items.map((item,index)=>{
+    const discarded=index===0?total:0;
+    return {item_id:item.item_id,total:Math.max(item.total,item.repacked+discarded),repacked:item.repacked,discarded};
+   });
   }
-  return {...group,quantity_basis:'discarded_qty',total,allocations:assigned};
+  return {...group,quantity_basis:'discarded_qty',total,source_count:sourceCount,needs_distribution:needsDistribution,allocations:assigned};
  });
 }
 export async function submitGrouped(db,conferencer,body){
