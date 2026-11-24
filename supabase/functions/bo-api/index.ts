@@ -143,7 +143,24 @@ async function myOccurrences(conferencer:any){
   if(error)throw error;
   const reserved=await db.from("bo_confront_list_sources").select("source_id");if(reserved.error)throw reserved.error;
   const excluded=new Set((reserved.data||[]).map((x:any)=>Number(x.source_id)));
-  return await hydrateSources((data||[]).filter((x:any)=>!excluded.has(Number(x.id))));
+  const ownRows=(data||[]).filter((x:any)=>!excluded.has(Number(x.id)));
+  // Quando o B.O. do Turno C é confrontado pelo Turno A, a ocorrência oficial
+  // fica vinculada ao PIN do conferente do Turno A. Se ela for devolvida,
+  // também precisa aparecer para o responsável pelo B.O. de origem.
+  const sourceIds=ownRows.filter((x:any)=>x.record_kind==="turn_c_origin").map((x:any)=>Number(x.id));
+  let returnedOfficials:any[]=[];
+  if(sourceIds.length){
+    const {data:officials,error:officialError}=await db.from("bo_occurrences")
+      .select(occurrenceSelect)
+      .in("source_occurrence_id",sourceIds)
+      .eq("record_kind","turn_a_confront")
+      .in("status",["pending","returned"])
+      .order("submitted_at",{ascending:false});
+    if(officialError)throw officialError;
+    returnedOfficials=(officials||[]).map((x:any)=>({...x,returned_for_source_owner:true}));
+  }
+  const [own,linked]=await Promise.all([hydrateSources(ownRows),hydrateSources(returnedOfficials)]);
+  return [...own,...linked].sort((a:any,b:any)=>String(b.submitted_at||"").localeCompare(String(a.submitted_at||"")));
 }
 async function confrontQueue(){
   const {data,error}=await db.from("bo_occurrences")
@@ -208,8 +225,15 @@ async function createConfrontation(conferencer:any,body:any){
 
 async function updateOccurrence(conferencer:any,body:any){
   const id=Number(body?.id);if(!Number.isInteger(id)||id<=0)throw new Error("B.O. inválido.");
-  const {data:old,error:oldError}=await db.from("bo_occurrences").select("*,items:bo_occurrence_items(*)").eq("id",id).eq("conferencer_id",conferencer.id).in("status",["pending","returned"]).maybeSingle();
+  const {data:old,error:oldError}=await db.from("bo_occurrences").select("*,items:bo_occurrence_items(*)").eq("id",id).in("status",["pending","returned"]).maybeSingle();
   if(oldError)throw oldError;if(!old)throw new Error("Este B.O. não pode mais ser editado.");
+  const isOwner=String(old.conferencer_id)===String(conferencer.id);
+  if(!isOwner){
+    if(old.record_kind!=="turn_a_confront"||!old.source_occurrence_id)throw new Error("Este B.O. não pertence ao seu acesso.");
+    const {data:source,error:sourceError}=await db.from("bo_occurrences").select("id").eq("id",old.source_occurrence_id).eq("conferencer_id",conferencer.id).eq("record_kind","turn_c_origin").maybeSingle();
+    if(sourceError)throw sourceError;
+    if(!source)throw new Error("Este B.O. não pertence ao seu acesso.");
+  }
   if(old.record_kind==="turn_c_origin"&&old.confront_state==="completed")throw new Error("O B.O. do Turno C já foi confrontado e não pode mais ser alterado.");
   const input=validateOccurrenceInput(body?.occurrence);
   if(old.record_kind==="turn_a_confront"&&input.shift!=="A")throw new Error("O confronto oficial deve permanecer no Turno A.");
