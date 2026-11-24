@@ -31,7 +31,7 @@ export async function renderGroupControl(root,call,onSaved){
    '.bo-group-row-info strong{display:block;font-size:12px;color:#25252b}'+
    '.bo-group-row-info span{display:block;margin-top:3px;color:#707078;font-size:11px;line-height:1.4;overflow-wrap:anywhere}'+
    '.bo-group-row label{display:grid;gap:5px;font-size:10px;font-weight:800;color:#555}'+
-   '.bo-group-row input{width:100%;min-width:0;box-sizing:border-box;min-height:42px;border:1px solid #d7d8dd;border-radius:9px;padding:9px 10px;font:600 15px inherit;font-variant-numeric:tabular-nums}'+
+   '.bo-group-row input{width:100%;min-width:0;box-sizing:border-box;min-height:42px;border:1px solid #d7d8dd;border-radius:9px;padding:9px 10px;font:600 15px "DM Sans",sans-serif;font-variant-numeric:tabular-nums}'+
    '.bo-group-row input:focus{outline:2px solid rgba(244,122,32,.18);border-color:#f47a20}'+
    '.bo-group-total{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;padding:10px 12px;border-radius:10px;background:#f7f7f8;font-size:12px}'+
    '.bo-group-total strong{font-variant-numeric:tabular-nums}'+
@@ -39,7 +39,7 @@ export async function renderGroupControl(root,call,onSaved){
    '.bo-group-total.bad{background:#fff1f1;color:#9b252c}'+
    '.bo-group-submit{display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px}'+
    '.bo-group-submit [role=status]{font-size:12px;color:#9b252c;flex:1;min-width:180px}'+
-   '.bo-group-submit button{border:0;border-radius:9px;padding:11px 16px;min-height:44px;background:#f47a20;color:#fff;font:800 12px inherit;cursor:pointer}'+
+   '.bo-group-submit button{border:0;border-radius:9px;padding:11px 16px;min-height:44px;background:#f47a20;color:#fff;font:800 12px "DM Sans",sans-serif;cursor:pointer}'+
    '.bo-group-submit button:disabled{opacity:.45;cursor:not-allowed}'+
    '@media(max-width:620px){.bo-group-metrics{grid-template-columns:1fr 1fr}.bo-group-metric.diff{grid-column:1/-1}.bo-group-row{grid-template-columns:minmax(0,1fr) 112px;gap:8px;padding:10px}.bo-group-card{padding:13px}.bo-group-submit{display:grid;grid-template-columns:1fr}.bo-group-submit button{width:100%}}'+
    '</style>'+
