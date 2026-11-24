@@ -12,7 +12,23 @@ test('single BO difference is applied directly',()=>{
  assert.equal(productGroups([source(1,2)],{'13201':3})[0].allocations[0].discarded,3);
 });
 test('several BOs with different total wait for Control',()=>{
- assert.equal(productGroups([source(1,2),source(2,3)],{'13201':4})[0].allocations,null);
+ const group=productGroups([source(1,2),source(2,3)],{'13201':4})[0];
+ assert.equal(group.allocations,null);
+ assert.equal(group.needs_distribution,true);
+ assert.equal(group.source_count,2);
+});
+test('several BOs with equal TT discard do not require distribution',()=>{
+ const group=productGroups([source(1,2),source(2,3)],{'13201':5})[0];
+ assert.equal(group.needs_distribution,false);
+ assert.deepEqual(group.allocations.map(x=>x.discarded),[2,3]);
+});
+test('multiple lines of one BO do not count as multiple BOs',()=>{
+ const one=source(1,4);
+ one.items.push({id:11,sku_code:'13201',sku_name:'BRAHMA',total_qty:3,repacked_qty:0,discarded_qty:1});
+ const group=productGroups([one],{'13201':7})[0];
+ assert.equal(group.source_count,1);
+ assert.equal(group.needs_distribution,false);
+ assert.deepEqual(group.allocations.map(x=>x.discarded),[7,0]);
 });
 test('Control allocates discard only and preserves original total and repacked',()=>{
  const sources=[source(1,8,1,2),source(2,12,3,3)];
