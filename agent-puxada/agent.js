@@ -36,6 +36,24 @@ function sleep(ms) {
   return new Promise(function (resolve) { setTimeout(resolve, ms); });
 }
 
+function inventoryCountErrorCode(message) {
+  const raw = String(message || "unknown");
+  if (/CONTAGEM de Estoque.*não está acessível|Pasta-base de contagens não acessível/i.test(raw)) return "PASTA_BASE_NAO_ACESSIVEL";
+  if (/021101_EDGE_NATIVE_UNAVAILABLE|EDGE_NATIVE_ACTION_UNAVAILABLE/i.test(raw)) return "EDGE_NATIVO_INDISPONIVEL";
+  if (/window-not-found|JANELA_021101_NAO_ENCONTRADA/i.test(raw)) return "JANELA_021101_NAO_ENCONTRADA";
+  if (/filter-fields|filter-controls-not-found/i.test(raw)) return "FILTROS_NAO_IDENTIFICADOS";
+  if (/count-row-not-found/i.test(raw)) return "CONTAGEM_6_NAO_LOCALIZADA";
+  if (/visualizar-button|visualizar-not-found/i.test(raw)) return "BOTAO_VISUALIZAR_NAO_LOCALIZADO";
+  if (/csv-not-found/i.test(raw)) return "BOTAO_CSV_NAO_LOCALIZADO";
+  if (/pdf-not-found/i.test(raw)) return "BOTAO_PDF_NAO_LOCALIZADO";
+  if (/CSV_DOWNLOAD_TIMEOUT/i.test(raw)) return "DOWNLOAD_CSV_TIMEOUT";
+  if (/PDF_DOWNLOAD_TIMEOUT/i.test(raw)) return "DOWNLOAD_PDF_TIMEOUT";
+  if (/PDF.*(válido|valido)|PDF vazio/i.test(raw)) return "PDF_INVALIDO";
+  if (/ENOENT|EACCES|EPERM|access denied|acesso negado/i.test(raw)) return "ACESSO_ARQUIVO_NEGADO";
+  return raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 55) || "UNKNOWN";
+}
+
 const backfill031120=require('./lib/backfill031120');
 const IDLE_REQUIRED_MS = 30000;
 async function waitForQuietComputer(stopping) {
@@ -67,6 +85,7 @@ async function main() {
   let lastReadinessError = null;
   let lastEdgeProbe = "";
   let inventoryCountRuntimeStatus = "waiting";
+  let inventoryCountRuntimeError = "";
 
   if (process.argv.indexOf("--calibrate") >= 0) {
     const token = loadAgentToken(ROOT);
@@ -121,7 +140,7 @@ async function main() {
       hostname: os.hostname(),
       agent_version: VERSION,
       updater_version: updater.UPDATER_VERSION,
-      capabilities: ["EDGE_NORMAL_STATUS_" + promax.normalEdgeStatus(),"020501_SYNC","03023601_OCP_SYNC","ABC_MONTHLY_030519","PROMAX_NORMAL_EDGE_ONLY","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","PROMAX_CSV_AUTHENTICATED_CAPTURE","PROMAX_EXCEL_COM_CAPTURE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1","OOR_020502_AUTO","INVENTORY_COUNTS_021101","USER_IDLE_GATE","INVENTORY_COUNT_STATUS_" + String(inventoryCountRuntimeStatus).toUpperCase().replace(/[^A-Z0-9_]/g, "_"), edgeProbe.available ? "EDGE_IE_SURFACES_" + Math.min(edgeProbe.ieModeSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_ACCESSIBLE_SURFACES_" + Math.min(edgeProbe.accessibleSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_REPORT_WINDOWS_" + Math.min(edgeProbe.reportWindows, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_HOME_WINDOWS_" + Math.min(edgeProbe.homeWindows, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_ATALHO_CONTROLS_" + Math.min(edgeProbe.shortcutControls, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_UIA_CONTROLS_" + Math.min(edgeProbe.uiaElements, 9999) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_CSV_CONTROLS_" + Math.min(edgeProbe.csvControls, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_VISUALIZAR_CONTROLS_" + Math.min(edgeProbe.visualizeControls, 99) : "EDGE_PROBE_UNAVAILABLE"].concat((edgeProbe.windows||[]).map(x=>"EDGE_WINDOW_"+x)).concat((edgeProbe.layout || []).map(x => "EDGE_LAYOUT_" + x)),
+      capabilities: ["EDGE_NORMAL_STATUS_" + promax.normalEdgeStatus(),"020501_SYNC","03023601_OCP_SYNC","ABC_MONTHLY_030519","PROMAX_NORMAL_EDGE_ONLY","PROMAX_DIRECT_CONTROL_PROBE","PROMAX_CALIBRATION_LOCK","PROMAX_DYNAMIC_DRIVER_PORT","PROMAX_DRIVER_BOOT_DIAGNOSTICS","PROMAX_CLASSIFICATION_DEPOT","PROMAX_SESSION_REUSE","PROMAX_CSV_HEADER_DETECT","PROMAX_CSV_LEGACY_DOM","PROMAX_CSV_NATIVE_CLICK","PROMAX_CSV_CONFIGURED_DOWNLOAD_DIRS","PROMAX_CSV_TRUSTED_KEY","PROMAX_CSV_AUTHENTICATED_CAPTURE","PROMAX_EXCEL_COM_CAPTURE","AUTO_UPDATE_V2","RELEASE_SHA256","UPDATE_ROLLBACK","FUTURE_JOBS_V1","OOR_020502_AUTO","INVENTORY_COUNTS_021101","USER_IDLE_GATE","INVENTORY_COUNT_STATUS_" + String(inventoryCountRuntimeStatus).toUpperCase().replace(/[^A-Z0-9_]/g, "_"), "INVENTORY_COUNT_ERROR_" + (inventoryCountRuntimeError || "NONE"), edgeProbe.available ? "EDGE_IE_SURFACES_" + Math.min(edgeProbe.ieModeSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_ACCESSIBLE_SURFACES_" + Math.min(edgeProbe.accessibleSurfaces, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_REPORT_WINDOWS_" + Math.min(edgeProbe.reportWindows, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_HOME_WINDOWS_" + Math.min(edgeProbe.homeWindows, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_ATALHO_CONTROLS_" + Math.min(edgeProbe.shortcutControls, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_UIA_CONTROLS_" + Math.min(edgeProbe.uiaElements, 9999) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_CSV_CONTROLS_" + Math.min(edgeProbe.csvControls, 99) : "EDGE_PROBE_UNAVAILABLE", edgeProbe.available ? "EDGE_VISUALIZAR_CONTROLS_" + Math.min(edgeProbe.visualizeControls, 99) : "EDGE_PROBE_UNAVAILABLE"].concat((edgeProbe.windows||[]).map(x=>"EDGE_WINDOW_"+x)).concat((edgeProbe.layout || []).map(x => "EDGE_LAYOUT_" + x)),
       calibration_ready: calibrationReady,
       readiness_error: readinessError
     };
@@ -181,15 +200,18 @@ async function main() {
     if (!force && Date.now() - lastInventoryCountsCheck < 5 * 60 * 1000) return;
     lastInventoryCountsCheck = Date.now();
     inventoryCountRuntimeStatus = "checking";
+    inventoryCountRuntimeError = "";
     try {
       const result = await inventoryCounts.syncDaily({config:config,promax:promax,existingEdge:existingEdge,root:ROOT,log:log,force:!!force});
       inventoryCountRuntimeStatus = result && result.status ? String(result.status) : "unknown";
+      inventoryCountRuntimeError = "";
       if (result && result.status === "saved") log("Conciliação 02.11.01 concluída para o depósito 6.");
       else if (result && result.status === "already-saved") log("Conciliação 02.11.01: CSV e PDF do dia já existem; nenhuma sobrescrita necessária.");
     } catch (error) {
       const message = error && error.message ? error.message : String(error);
       inventoryCountRuntimeStatus = "error";
-      log("Falha na conciliação diária 02.11.01: " + message, true);
+      inventoryCountRuntimeError = inventoryCountErrorCode(message);
+      log("Falha na conciliação diária 02.11.01 [" + inventoryCountRuntimeError + "]: " + message, true);
     }
   }
 
@@ -266,11 +288,13 @@ async function main() {
       const desktopIdleMs = existingEdge.idleMilliseconds();
       if (!desktopUnlocked) {
         inventoryCountRuntimeStatus = "desktop-locked";
+        inventoryCountRuntimeError = "";
         await sleep(5000);
         continue;
       }
       if (desktopIdleMs === null || desktopIdleMs < IDLE_REQUIRED_MS) {
         inventoryCountRuntimeStatus = "desktop-active";
+        inventoryCountRuntimeError = "";
         await sleep(5000);
         continue;
       }

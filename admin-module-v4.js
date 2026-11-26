@@ -267,8 +267,10 @@
         const meta=(x.hostname?('PC: '+x.hostname+' · '):'')+'Versão: '+version+' · '+upd+' · Último contato: '+adminDt(x.last_seen_at)+(x.last_sync_completed_at?' · Última sync: '+adminDt(x.last_sync_completed_at):'');
         const countToken=(Array.isArray(x.capabilities)?x.capabilities:[]).find(c=>String(c).startsWith('INVENTORY_COUNT_STATUS_'));
         const countKey=countToken?String(countToken).slice('INVENTORY_COUNT_STATUS_'.length):'';
+        const errorToken=(Array.isArray(x.capabilities)?x.capabilities:[]).find(c=>String(c).startsWith('INVENTORY_COUNT_ERROR_'));
+        const countError=errorToken?String(errorToken).slice('INVENTORY_COUNT_ERROR_'.length):'';
         const countLabels={WAITING:'Conciliação aguardando início',DESKTOP_LOCKED:'Aguardando desbloqueio do Windows',DESKTOP_ACTIVE:'Aguardando 30 segundos sem uso',CHECKING:'Verificando contagem 02.11.01',PROMAX_NOT_READY:'Aguardando Promax aberto e autenticado',ALREADY_SAVED:'CSV e PDF do dia já existem',ANOTHER_COMPUTER_RUNNING:'Outra estação está executando a contagem',SAVED:'CSV e PDF salvos com sucesso',ERROR:'Falha na execução da conciliação',UNKNOWN:'Estado da conciliação não identificado'};
-        const countLine=countToken?(countLabels[countKey]||'Estado da conciliação: '+countKey):'Conciliação 02.11.01: aguardando telemetria da versão 3.2.163';
+        const countLine=countToken?(countKey==='ERROR'&&countError&&countError!=='NONE'?'Falha na conciliação · '+countError.replace(/_/g,' '):(countLabels[countKey]||'Estado da conciliação: '+countKey)):'Conciliação 02.11.01: aguardando telemetria da versão 3.2.164';
         const err=x.update_error||x.last_error;
         return '<div class="admin-pin-item"><div><strong>'+esc(agentNodeLabel(x))+'</strong><small>'+esc(status)+'</small><small>'+esc(meta)+'</small><small style="'+(countKey==='SAVED'||countKey==='ALREADY_SAVED'?'color:#238636;font-weight:700':countKey==='ERROR'?'color:#b43e45;font-weight:700':'')+'">'+esc(countLine)+'</small>'+(err?'<small style="color:#b43e45">'+esc(err)+'</small>':'')+'</div><button data-agent-node="'+esc(x.id)+'" data-ready="'+(x.token_ready?'1':'0')+'">'+(x.token_ready?'Resetar token':'Gerar token')+'</button></div>';
       }).join('');

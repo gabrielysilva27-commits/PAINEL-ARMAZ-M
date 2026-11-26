@@ -94,3 +94,6 @@ O destino padrão é `Y:\{ano}\ARMAZÉM\3.0 - Acuracidade do Inventário\Acuraci
 ## Diagnóstico da conciliação de contagem
 
 O heartbeat do agente publica a capacidade `INVENTORY_COUNTS_021101` e o estado mais recente da rotina em `INVENTORY_COUNT_STATUS_*`. Os estados distinguem espera por desbloqueio/inatividade, verificação, pasta já atualizada, arquivos salvos e erro. O estado é diagnóstico; não substitui a conferência dos arquivos reais na pasta compartilhada.
+
+
+A telemetria de conciliação inclui um código de erro resumido (`INVENTORY_COUNT_ERROR_*`) para o ADM distinguir falhas de caminho de rede, janela Promax, filtros e exportação, sem publicar caminhos locais completos.
