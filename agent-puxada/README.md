@@ -75,7 +75,7 @@ Logs:
 - app\logs\agent.log
 - app\logs\iedriver.log
 
-Versão do agente: 3.0.0
+Versão do agente: 3.2.163
 
 ## Atualização automática
 
@@ -89,3 +89,8 @@ A pasta `data` nunca é substituída pelo atualizador, preservando token, identi
 A primeira rotina de contagem está configurada para o depósito 6 (Devolução): armazém 1, depósito inicial/final 6, área inicial/final 1 e contagem 6. O agente exporta CSV e PDF uma vez por dia, com o nome `DD.MM - CONTAGEM DEVOLUÇÃO`. O CSV conserva a extensão real de exportação do Promax (`.csv.inf`).
 
 O destino padrão é `Y:\{ano}\ARMAZÉM\3.0 - Acuracidade do Inventário\Acuracidade de Movimentação do Material do Armazém\CONTAGEM de Estoque`. O agente cria automaticamente a pasta do mês no padrão `MM. Nome do mês`, a pasta `06 - Depósito DEVOLUÇÃO` e as subpastas `CSV` e `PDF`. O compartilhamento UNC configurado é usado como alternativa quando a unidade Y: não estiver mapeada.
+
+
+## Diagnóstico da conciliação de contagem
+
+O heartbeat do agente publica a capacidade `INVENTORY_COUNTS_021101` e o estado mais recente da rotina em `INVENTORY_COUNT_STATUS_*`. Os estados distinguem espera por desbloqueio/inatividade, verificação, pasta já atualizada, arquivos salvos e erro. O estado é diagnóstico; não substitui a conferência dos arquivos reais na pasta compartilhada.
