@@ -53,7 +53,7 @@ async function syncDaily(opts){
  opts=opts||{};const cfg=opts.config||{},settings=cfg.inventoryCounts||{},log=opts.log||function(){};
  if(settings.enabled===false)return{status:"disabled"};
  const edge=opts.existingEdge;if(!edge||!edge.desktopUnlocked||!edge.desktopUnlocked())return{status:"desktop-locked"};
- const idle=edge.idleMilliseconds?edge.idleMilliseconds():null;if(idle===null||idle<30000)return{status:"desktop-active"};
+ const idle=edge.idleMilliseconds?edge.idleMilliseconds():null;if(!opts.force&&(idle===null||idle<30000))return{status:"desktop-active"};
  const dt=dateParts(opts.now||new Date());if(!opts.promax||!(await opts.promax.isConfigured(cfg,opts.root)))return{status:"promax-not-ready"};
  const deposit=Object.assign({},DEFAULT_DEPOSIT,(settings.deposits||[]).find(x=>String(x.id)==="6")||{});
  const base=baseCandidates(cfg,dt.year).find(p=>{try{return fs.existsSync(p)&&fs.statSync(p).isDirectory();}catch(_){return false;}});
@@ -61,7 +61,8 @@ async function syncDaily(opts){
  const p=ensureOutputDirectories(base,dt.iso,deposit,log),lockPath=path.join(p.depositDirectory,".agent-count-"+dt.iso.replace(/-/g,"")+".lock");
  const fd=lock(lockPath);if(fd===null)return{status:"another-computer-running"};
  try{
-  if(!opts.force&&pairExists(p))return{status:"already-saved",paths:p};
+  // FORCE bypasses the idle gate and scheduler cooldown, never a valid output pair.
+  if(pairExists(p))return{status:"already-saved",paths:p};
   log("Conciliação 02.11.01: depósito 6 · contagem 6 · "+dt.iso+".");
   const out=await opts.promax.exportInventoryCount({warehouse:"1",depositFrom:"6",depositTo:"6",areaFrom:"1",areaTo:"1",countId:"6"},cfg,opts.root);
   if(!out||!isUsableFile(out.csvPath,"csv")||!isUsableFile(out.pdfPath,"pdf"))throw Error("O Promax não entregou CSV e PDF válidos para a contagem 6.");

@@ -234,11 +234,20 @@ async function touchAgentNode(node:any,b:any,forceStatus?:string){
   const now=new Date().toISOString(),hostname=clean(b.hostname,120)||node.hostname||null,version=clean(b.agent_version,40)||node.agent_version||null,ready=!!b.calibration_ready;
   const cooling=node.cooldown_until&&Date.parse(node.cooldown_until)>Date.now();
   const status=forceStatus||(ready?(cooling?"error":"online"):"calibration_required");
-  const caps=Array.isArray(b.capabilities)?b.capabilities.map((x:any)=>clean(x,80)).filter(Boolean).slice(0,50):(node.capabilities||[]);
+  const forceMarker="INVENTORY_COUNT_FORCE_RUN";
+  const caps=(Array.isArray(b.capabilities)?b.capabilities.map((x:any)=>clean(x,80)).filter(Boolean).slice(0,50):(node.capabilities||[])).filter((x:any)=>x!==forceMarker);
+  if(Array.isArray(node.capabilities)&&node.capabilities.includes(forceMarker)){if(caps.length>=50)caps.pop();caps.push(forceMarker);}
   const patch:any={hostname,agent_version:version,updater_version:clean(b.updater_version,20)||node.updater_version||null,capabilities:caps,calibration_ready:ready,last_seen_at:now,status,updated_at:now};
   if(!cooling&&status!=="error"){patch.cooldown_until=null;if(node.last_error)patch.last_error=null}
   if(!ready&&clean(b.readiness_error,1000))patch.last_error=clean(b.readiness_error,1000);
   const {data,error}=await db.from("receiving_pull_agent_nodes").update(patch).eq("id",node.id).select("*").single();if(error)throw error;return data
+}
+async function ackInventoryCountForce(node:any){
+  const marker="INVENTORY_COUNT_FORCE_RUN";
+  const capabilities=(Array.isArray(node.capabilities)?node.capabilities:[]).filter((x:any)=>x!==marker);
+  const {error}=await db.from("receiving_pull_agent_nodes").update({capabilities,updated_at:new Date().toISOString()}).eq("id",node.id);
+  if(error)throw error;
+  return {ok:true};
 }
 async function latestAgentRelease(){
   const {data,error}=await db.from("receiving_pull_agent_releases").select("*").eq("status","active").order("published_at",{ascending:false}).limit(1).maybeSingle();
@@ -643,9 +652,10 @@ Deno.serve(async(req:Request)=>{
  if(req.method==="OPTIONS")return new Response("ok",{headers:headers(req)});if(req.method!=="POST")return json(req,{error:"Método não permitido."},405);
  try{
   const b=await body(req),a=clean(b.action,60);
-  if(["agent_poll","agent_ping","agent_heartbeat","agent_complete","agent_fail","agent_update_manifest","agent_update_state","agent_update_file","agent_oor_status","agent_oor_scan_state","agent_oor_diagnostic","agent_oor_import","agent_031120_status","agent_031120_import","agent_031120_state","agent_report_031120_import"].includes(a)){
+  if(["agent_poll","agent_ping","agent_heartbeat","agent_complete","agent_fail","agent_update_manifest","agent_update_state","agent_update_file","agent_oor_status","agent_oor_scan_state","agent_oor_diagnostic","agent_oor_import","agent_031120_status","agent_031120_import","agent_031120_state","agent_report_031120_import","agent_inventory_count_force_ack"].includes(a)){
     const node=await pullAgentAuth(req);if(!node)return json(req,{error:"Agente Puxada não autorizado."},401);
-    if(a==="agent_ping"){const updated=await touchAgentNode(node,b);return json(req,{node:{id:updated.id,slot_code:updated.slot_code,display_name:updated.display_name,hostname:updated.hostname,status:updated.status,calibration_ready:updated.calibration_ready},agent:await getAgentStatus()})}
+    if(a==="agent_ping"){const updated=await touchAgentNode(node,b);return json(req,{node:{id:updated.id,slot_code:updated.slot_code,display_name:updated.display_name,hostname:updated.hostname,status:updated.status,calibration_ready:updated.calibration_ready,inventory_count_force_requested:(updated.capabilities||[]).includes("INVENTORY_COUNT_FORCE_RUN")},agent:await getAgentStatus()})}
+    if(a==="agent_inventory_count_force_ack")return json(req,await ackInventoryCountForce(node));
     if(a==="agent_poll")return json(req,{job:await claimAgentJob(node,b),agent:await getAgentStatus()});
     if(a==="agent_heartbeat")return json(req,{result:await heartbeatAgentJob(node,b)});
     if(a==="agent_complete")return json(req,{result:await finishAgentJob(node,b)});

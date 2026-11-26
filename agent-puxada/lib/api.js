@@ -26,6 +26,10 @@ class AgentApi {
     return this.call("agent_ping", info);
   }
 
+  inventoryCountForceAck() {
+    return this.call("agent_inventory_count_force_ack", {});
+  }
+
   poll(info) {
     return this.call("agent_poll", info);
   }

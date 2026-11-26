@@ -273,7 +273,13 @@ async function main() {
     try {
       if (Date.now()-lastBackgroundPing>=30000) {
         lastBackgroundPing=Date.now();
-        await api.ping(await info()).catch(e=>log("Estado do agente: "+e.message,true));
+        const pingResult = await api.ping(await info()).catch(e=>{log("Estado do agente: "+e.message,true);return null;});
+        if (pingResult && pingResult.node && pingResult.node.inventory_count_force_requested && existingEdge.desktopUnlocked()) {
+          log("02.11.01: comando remoto de execução forçada recebido; sessão desbloqueada, iniciando agora.");
+          await maybeSyncInventoryCounts(true);
+          await api.inventoryCountForceAck().catch(e=>log("Falha ao confirmar consumo do comando 02.11.01: "+e.message,true));
+          await api.ping(await info()).catch(e=>log("Falha ao publicar resultado imediato da 02.11.01: "+e.message,true));
+        }
       }
       if (await maybeUpdate(false)) return;
       outlookSegmentations.kick(api,log);
@@ -287,14 +293,18 @@ async function main() {
       const desktopUnlocked = existingEdge.desktopUnlocked();
       const desktopIdleMs = existingEdge.idleMilliseconds();
       if (!desktopUnlocked) {
-        inventoryCountRuntimeStatus = "desktop-locked";
-        inventoryCountRuntimeError = "";
+        if (!["saved","already-saved","error"].includes(inventoryCountRuntimeStatus)) {
+          inventoryCountRuntimeStatus = "desktop-locked";
+          inventoryCountRuntimeError = "";
+        }
         await sleep(5000);
         continue;
       }
       if (desktopIdleMs === null || desktopIdleMs < IDLE_REQUIRED_MS) {
-        inventoryCountRuntimeStatus = "desktop-active";
-        inventoryCountRuntimeError = "";
+        if (!["saved","already-saved","error"].includes(inventoryCountRuntimeStatus)) {
+          inventoryCountRuntimeStatus = "desktop-active";
+          inventoryCountRuntimeError = "";
+        }
         await sleep(5000);
         continue;
       }

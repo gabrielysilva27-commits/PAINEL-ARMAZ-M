@@ -75,7 +75,7 @@ Logs:
 - app\logs\agent.log
 - app\logs\iedriver.log
 
-Versão do agente: 3.2.163
+Versão do agente: 3.2.166
 
 ## Atualização automática
 
@@ -102,3 +102,8 @@ A telemetria de conciliação inclui um código de erro resumido (`INVENTORY_COU
 ## Detecção da tela 02.11.01
 
 A rotina reconhece o formulário da conciliação tanto pelo título do relatório quanto pela estrutura acessível da tela (rótulos Armazém, Depósito, Área e Contagem/Visualizar). A janela do Promax em primeiro plano é priorizada antes das demais janelas abertas; a espera de carregamento do relatório foi ampliada para até 18 segundos.
+
+
+## Disparo administrativo de execução única
+
+A administração pode solicitar uma única execução imediata da 02.11.01 no PC ADM. O comando é consumido pelo agente no heartbeat seguinte; ele ignora somente a espera de inatividade de 30 segundos e exige que a sessão Windows esteja desbloqueada. Um par CSV/PDF válido já existente para o dia não é sobrescrito. O resultado (salvo, já existente ou erro) permanece na telemetria até a próxima tentativa.
