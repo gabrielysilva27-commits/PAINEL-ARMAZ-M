@@ -97,3 +97,8 @@ O heartbeat do agente publica a capacidade `INVENTORY_COUNTS_021101` e o estado 
 
 
 A telemetria de conciliação inclui um código de erro resumido (`INVENTORY_COUNT_ERROR_*`) para o ADM distinguir falhas de caminho de rede, janela Promax, filtros e exportação, sem publicar caminhos locais completos.
+
+
+## Detecção da tela 02.11.01
+
+A rotina reconhece o formulário da conciliação tanto pelo título do relatório quanto pela estrutura acessível da tela (rótulos Armazém, Depósito, Área e Contagem/Visualizar). A janela do Promax em primeiro plano é priorizada antes das demais janelas abertas; a espera de carregamento do relatório foi ampliada para até 18 segundos.

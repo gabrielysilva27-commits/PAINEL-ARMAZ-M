@@ -314,15 +314,23 @@ static bool HasForeground(HWND hwnd) {
       IsChild(hwnd, foreground);
 }
 
+static bool LooksLike021101Form(HWND hwnd);
 static BOOL CALLBACK Find021101Window(HWND hwnd, LPARAM raw) {
   if (!IsWindowVisible(hwnd) || ClassName(hwnd) != L"Chrome_WidgetWin_1") return TRUE;
   wchar_t title[512] = {};
   GetWindowTextW(hwnd, title, 512);
   std::wstring name(title);
   std::transform(name.begin(), name.end(), name.begin(), towlower);
-  if (name.find(L"conciliacao da contagem") != std::wstring::npos ||
+  const bool titleMatch =
+      name.find(L"conciliacao da contagem") != std::wstring::npos ||
       name.find(L"conciliação da contagem") != std::wstring::npos ||
-      name.find(L"02.11.01") != std::wstring::npos) {
+      name.find(L"02.11.01") != std::wstring::npos;
+  // In IE mode Promax sometimes leaves a generic browser title after changing
+  // the page. When that happens, identify the report from its visible filter
+  // labels/controls, but only inspect the foreground window to avoid matching
+  // a dormant Promax tab in another Edge window.
+  const bool formMatch = !titleMatch && HasForeground(hwnd) && LooksLike021101Form(hwnd);
+  if (titleMatch || formMatch) {
     HWND* chosen = reinterpret_cast<HWND*>(raw);
     if (!*chosen || HasForeground(hwnd) ||
         (!IsWindowEnabled(*chosen) && IsWindowEnabled(hwnd))) *chosen = hwnd;
@@ -905,6 +913,26 @@ static std::wstring Normalize021101(const std::wstring& value) {
   }
   return out;
 }
+static bool LooksLike021101Form(HWND hwnd) {
+  const auto controls = Controls(hwnd);
+  bool warehouse = false, deposit = false, area = false;
+  bool count = false, visualize = false, back = false;
+  for (const auto& c : controls) {
+    const std::wstring name = Normalize021101(c.name);
+    if (c.type == UIA_TextControlTypeId) {
+      if (name.find(L"armazem") != std::wstring::npos) warehouse = true;
+      if (name.find(L"deposito") != std::wstring::npos) deposit = true;
+      if (name.find(L"area") != std::wstring::npos) area = true;
+      if (name.find(L"contagem") != std::wstring::npos) count = true;
+    }
+    if (c.type == UIA_ButtonControlTypeId) {
+      if (name.find(L"visualizar") != std::wstring::npos) visualize = true;
+      if (name == L"voltar") back = true;
+    }
+  }
+  return (warehouse && deposit && area) || (count && (visualize || back));
+}
+
 static thread_local std::wstring COUNT021101_ISSUE;
 static bool Fill021101(HWND hwnd, const std::wstring* values) {
   COUNT021101_ISSUE = L"window";
@@ -1533,13 +1561,18 @@ static napi_value Act(napi_env env, napi_callback_info info) {
               stage == L"shortcut03023601" ? L"03.02.36.01" :
               stage == L"shortcut031120" ? L"03.11.20" :
               stage == L"shortcut021101" ? L"02.11.01" : L"02.05.01";
-          for (HWND candidate : target.candidates) {
+          std::vector<HWND> orderedCandidates;
+          if (target.hwnd) orderedCandidates.push_back(target.hwnd);
+          for (HWND candidate : target.candidates)
+            if (candidate && candidate != target.hwnd) orderedCandidates.push_back(candidate);
+          for (HWND candidate : orderedCandidates) {
             if (!FocusWindow(candidate) || !ActivatePromaxTab(candidate)) continue;
             Sleep(350);
             if (!FocusWindow(candidate)) continue;
             if (!OpenShortcut(candidate, reportCode)) continue;
             result = L"shortcut-no-report-window";
-            for (int i = 0; i < 30; ++i) {
+            const int waitAttempts = stage == L"shortcut021101" ? 90 : 30;
+            for (int i = 0; i < waitAttempts; ++i) {
               Sleep(200);
               if(stage==L"shortcut030519"){
                 HWND report=nullptr;EnumWindows(FindABCSalesWindow,reinterpret_cast<LPARAM>(&report));if(report){result=L"ok";break;}
