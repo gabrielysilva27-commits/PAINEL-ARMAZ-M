@@ -314,6 +314,23 @@ static bool HasForeground(HWND hwnd) {
       IsChild(hwnd, foreground);
 }
 
+static BOOL CALLBACK Find021101Window(HWND hwnd, LPARAM raw) {
+  if (!IsWindowVisible(hwnd) || ClassName(hwnd) != L"Chrome_WidgetWin_1") return TRUE;
+  wchar_t title[512] = {};
+  GetWindowTextW(hwnd, title, 512);
+  std::wstring name(title);
+  std::transform(name.begin(), name.end(), name.begin(), towlower);
+  if (name.find(L"conciliacao da contagem") != std::wstring::npos ||
+      name.find(L"conciliação da contagem") != std::wstring::npos ||
+      name.find(L"02.11.01") != std::wstring::npos) {
+    HWND* chosen = reinterpret_cast<HWND*>(raw);
+    if (!*chosen || HasForeground(hwnd) ||
+        (!IsWindowEnabled(*chosen) && IsWindowEnabled(hwnd))) *chosen = hwnd;
+    if (HasForeground(hwnd)) return FALSE;
+  }
+  return TRUE;
+}
+
 // Windows normally blocks a background process from stealing focus. The agent
 // only reaches this point after the workstation has been idle for 30 seconds,
 // so temporarily join the input queues of the foreground/browser threads,
@@ -871,6 +888,135 @@ static bool SelectOCPOption(const VisibleControl& control, bool selected) {
   if(elements)elements->Release();if(condition)condition->Release();if(root)root->Release();
   if(element)element->Release(); if(automation)automation->Release(); return ok;
 }
+static std::wstring Normalize021101(const std::wstring& value) {
+  std::wstring out;
+  for (wchar_t raw : value) {
+    wchar_t c = towlower(raw);
+    switch (c) {
+      case L'á': case L'à': case L'â': case L'ã': case L'ä': c = L'a'; break;
+      case L'é': case L'è': case L'ê': case L'ë': c = L'e'; break;
+      case L'í': case L'ì': case L'î': case L'ï': c = L'i'; break;
+      case L'ó': case L'ò': case L'ô': case L'õ': case L'ö': c = L'o'; break;
+      case L'ú': case L'ù': case L'û': case L'ü': c = L'u'; break;
+      case L'ç': c = L'c'; break;
+      default: break;
+    }
+    if (!iswspace(c)) out.push_back(c);
+  }
+  return out;
+}
+static thread_local std::wstring COUNT021101_ISSUE;
+static bool Fill021101(HWND hwnd, const std::wstring* values) {
+  COUNT021101_ISSUE = L"window";
+  RECT window = {};
+  if (!GetWindowRect(hwnd, &window)) return false;
+  auto controls = Controls(hwnd);
+  const VisibleControl* back = nullptr;
+  bool hasVisualize = false;
+  for (const auto& c : controls) {
+    if (c.type == UIA_ButtonControlTypeId && Normalize021101(c.name).find(L"visualizar") != std::wstring::npos) hasVisualize = true;
+    if (c.type == UIA_ButtonControlTypeId && Normalize021101(c.name) == L"voltar") back = &c;
+  }
+  if (!hasVisualize && back) {
+    if (!ClickControl(*back)) { COUNT021101_ISSUE = L"back-button"; return false; }
+    Sleep(1400);
+    controls = Controls(hwnd);
+  }
+  const int middle = window.left + (window.right - window.left) / 2;
+  auto findLabel = [&](const wchar_t* key, bool rightSide) -> const VisibleControl* {
+    const VisibleControl* best = nullptr;
+    for (const auto& c : controls) {
+      if (c.type != UIA_TextControlTypeId || c.rect.top < window.top + 180) continue;
+      if (Normalize021101(c.name).find(key) == std::wstring::npos) continue;
+      if (rightSide ? c.rect.left < middle : c.rect.left >= middle) continue;
+      if (!best || c.rect.top < best->rect.top) best = &c;
+    }
+    return best;
+  };
+  auto fieldsBeside = [&](const VisibleControl* label, size_t needed) {
+    std::vector<VisibleControl> result;
+    if (!label) return result;
+    const int centerY = (label->rect.top + label->rect.bottom) / 2;
+    for (const auto& c : controls) {
+      if (c.type != UIA_EditControlTypeId) continue;
+      const int fieldY = (c.rect.top + c.rect.bottom) / 2;
+      if (abs(fieldY - centerY) <= 20 && c.rect.left >= label->rect.left &&
+          c.rect.left > label->rect.right - 4) result.push_back(c);
+    }
+    std::sort(result.begin(), result.end(), [](const VisibleControl& a, const VisibleControl& b) { return a.rect.left < b.rect.left; });
+    if (result.size() > needed) result.resize(needed);
+    return result;
+  };
+  const auto* warehouseLabel = findLabel(L"armazem", false);
+  const auto* depositLabel = findLabel(L"deposito", true);
+  const auto* areaLabel = findLabel(L"area", true);
+  auto warehouse = fieldsBeside(warehouseLabel, 1);
+  auto deposit = fieldsBeside(depositLabel, 2);
+  auto area = fieldsBeside(areaLabel, 2);
+  if (warehouse.size() != 1 || deposit.size() != 2 || area.size() != 2) {
+    COUNT021101_ISSUE = L"filter-fields:warehouse=" + std::to_wstring(warehouse.size()) +
+      L":deposit=" + std::to_wstring(deposit.size()) + L":area=" + std::to_wstring(area.size());
+    return false;
+  }
+  COUNT021101_ISSUE = L"filter-readback";
+  if (!Fill031120Control(warehouse[0], values[0]) ||
+      !Fill031120Control(deposit[0], values[1]) || !Fill031120Control(deposit[1], values[2]) ||
+      !Fill031120Control(area[0], values[3]) || !Fill031120Control(area[1], values[4])) return false;
+  controls = Controls(hwnd);
+  const VisibleControl* countHeader = nullptr;
+  for (const auto& c : controls) {
+    if (c.type == UIA_TextControlTypeId && Normalize021101(c.name) == L"contagem" &&
+        c.rect.left < middle && c.rect.top > window.top + 220) { countHeader = &c; break; }
+  }
+  if (!countHeader) { COUNT021101_ISSUE = L"count-column-header"; return false; }
+  struct CountRow { std::wstring id; VisibleControl checkbox; };
+  std::vector<CountRow> rows;
+  auto isCheck = [](const VisibleControl& c) {
+    return c.type == UIA_CheckBoxControlTypeId || c.legacyRole == ROLE_SYSTEM_CHECKBUTTON;
+  };
+  for (const auto& label : controls) {
+    if (label.type == UIA_EditControlTypeId || label.type == UIA_ButtonControlTypeId || isCheck(label)) continue;
+    const std::wstring id = Normalize021101(label.name);
+    if (id.empty() || id.size() > 3 ||
+        !std::all_of(id.begin(), id.end(), [](wchar_t c) { return c >= L'0' && c <= L'9'; })) continue;
+    const int rowY = (label.rect.top + label.rect.bottom) / 2;
+    if (label.rect.left < countHeader->rect.left - 12 || label.rect.left > countHeader->rect.right + 100 ||
+        label.rect.top < countHeader->rect.bottom - 2 || label.rect.top > countHeader->rect.bottom + 280) continue;
+    const VisibleControl* checkbox = nullptr;
+    int bestGap = 100000;
+    for (const auto& candidate : controls) {
+      if (!isCheck(candidate)) continue;
+      const int checkboxY = (candidate.rect.top + candidate.rect.bottom) / 2;
+      const int gap = label.rect.left - candidate.rect.right;
+      if (abs(checkboxY - rowY) <= 18 && gap >= -5 && gap <= 150 && gap < bestGap) {
+        checkbox = &candidate; bestGap = gap;
+      }
+    }
+    if (checkbox) rows.push_back({id, *checkbox});
+  }
+  const std::wstring desiredCount = Normalize021101(values[5]);
+  auto desired = std::find_if(rows.begin(), rows.end(), [&](const CountRow& row) { return row.id == desiredCount; });
+  if (rows.empty() || desired == rows.end()) {
+    COUNT021101_ISSUE = L"count-row-not-found:" + desiredCount + L":mapped=" + std::to_wstring(rows.size());
+    return false;
+  }
+  for (const auto& row : rows) {
+    if (!SelectOCPOption(row.checkbox, row.id == desiredCount)) {
+      COUNT021101_ISSUE = L"count-checkbox-state-unavailable:" + row.id;
+      return false;
+    }
+  }
+  controls = Controls(hwnd);
+  const VisibleControl* visualize = nullptr;
+  for (const auto& c : controls) {
+    if (c.type == UIA_ButtonControlTypeId && Normalize021101(c.name).find(L"visualizar") != std::wstring::npos &&
+        (!visualize || c.rect.top > visualize->rect.top)) visualize = &c;
+  }
+  if (!visualize) { COUNT021101_ISSUE = L"visualizar-button"; return false; }
+  COUNT021101_ISSUE = L"ready";
+  return ClickControl(*visualize);
+}
+
 // Read-only visual confirmation for legacy IE controls whose labels are exposed
 // but whose radio/check state is absent from UI Automation. Never toggles them.
 struct OCPVisual {
@@ -1275,6 +1421,9 @@ static BOOL CALLBACK FindReportForDownload(HWND hwnd, LPARAM raw) {
   std::wstring name(title);
   std::transform(name.begin(), name.end(), name.begin(), towlower);
   if ((name.find(L"movimenta") != std::wstring::npos && name.find(L"estoque") != std::wstring::npos) ||
+      name.find(L"conciliação da contagem") != std::wstring::npos ||
+      name.find(L"conciliacao da contagem") != std::wstring::npos ||
+      name.find(L"02.11.01") != std::wstring::npos ||
       name.find(L"planilha de acompanhamento") != std::wstring::npos ||
       name.find(L"03.11.20") != std::wstring::npos ||
       name.find(L"ocp carregamento") != std::wstring::npos ||
@@ -1328,6 +1477,10 @@ static napi_value Act(napi_env env, napi_callback_info info) {
   if (valid && stage == L"filters03023601") {
     valid = ReadString(env,argv[1],"mapFrom",&values[0]) && ReadString(env,argv[1],"mapTo",&values[1]);
   }
+  if (valid && stage == L"filters021101") {
+    const char* names[] = {"warehouse","depositFrom","depositTo","areaFrom","areaTo","countId"};
+    for (int i = 0; i < 6; ++i) valid = ReadString(env, argv[1], names[i], &values[i], 12) && valid;
+  }
   if(valid && stage==L"filters030519")valid=ReadString(env,argv[1],"dateFrom",&values[0])&&ReadString(env,argv[1],"dateTo",&values[1]);
   std::wstring result = L"invalid-parameters";
   if (valid) {
@@ -1335,15 +1488,23 @@ static napi_value Act(napi_env env, napi_callback_info info) {
       const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
       if (FAILED(initialized)) { result = L"com-unavailable"; return; }
       SetProcessDPIAware();
-      const bool ocpStage=stage==L"shortcut030519"||stage==L"filters030519"||stage==L"csv030519"||stage==L"shortcut03023601"||stage==L"filters03023601"||stage==L"csv03023601";
+      const bool countStage = stage==L"filters021101" || stage==L"csv021101" ||
+          stage==L"pdf021101" || stage==L"close021101";
+      const bool ocpStage=stage==L"shortcut030519"||stage==L"filters030519"||stage==L"csv030519"||stage==L"shortcut03023601"||stage==L"filters03023601"||stage==L"csv03023601"||countStage;
       if(ocpStage){MSG message={};PeekMessageW(&message,nullptr,0,0,PM_NOREMOVE);}
       if (stage == L"save") {
         result = SaveDialog(savePath);
         CoUninitialize();
         return;
       }
-      TargetWindow target = { nullptr, stage == L"shortcut" || stage == L"shortcut031120" || stage == L"shortcut03023601" || stage == L"shortcut030519", -1, {} };
-      if(stage==L"filters030519"||stage==L"csv030519"||stage==L"generate030519"||stage==L"close030519"){
+      const bool shortcutStage = stage == L"shortcut" || stage == L"shortcut031120" ||
+          stage == L"shortcut03023601" || stage == L"shortcut030519" || stage == L"shortcut021101";
+      TargetWindow target = { nullptr, shortcutStage, -1, {} };
+      if (countStage) {
+        HWND report = nullptr;
+        EnumWindows(Find021101Window, reinterpret_cast<LPARAM>(&report));
+        target.hwnd = report;
+      } else if(stage==L"filters030519"||stage==L"csv030519"||stage==L"generate030519"||stage==L"close030519"){
         HWND report=nullptr;EnumWindows(FindABCSalesWindow,reinterpret_cast<LPARAM>(&report));target.hwnd=report;
       } else if (stage == L"filters03023601" || stage == L"csv03023601" || stage==L"close03023601") {
         HWND report=nullptr; EnumWindows(FindOCPWindow,reinterpret_cast<LPARAM>(&report)); target.hwnd=report;
@@ -1354,21 +1515,24 @@ static napi_value Act(napi_env env, napi_callback_info info) {
       } else {
         EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&target));
       }
-      if((stage==L"shortcut03023601"||stage==L"shortcut030519") && target.hwnd && !IsWindowEnabled(target.hwnd)){
+      if((stage==L"shortcut03023601"||stage==L"shortcut030519"||stage==L"shortcut021101") && target.hwnd && !IsWindowEnabled(target.hwnd)){
         target.hwnd=nullptr;
         for(HWND candidate:target.candidates){if(IsWindow(candidate)&&IsWindowEnabled(candidate)){target.hwnd=candidate;if(HasForeground(candidate))break;}}
       }
       RECT r = {};
       if (!target.hwnd || !GetWindowRect(target.hwnd, &r)) result = L"window-not-found";
       else {
-        if(stage==L"close030519"||stage==L"close03023601"){PostMessageW(target.hwnd,WM_CLOSE,0,0);result=L"ok";}
+        if(stage==L"close030519"||stage==L"close03023601"||stage==L"close021101"){PostMessageW(target.hwnd,WM_CLOSE,0,0);result=L"ok";}
         else if (!FocusWindow(target.hwnd)) {
           result=L"window-not-foreground";
           if(ocpStage)result+=L":exists="+std::to_wstring(IsWindow(target.hwnd)?1:0)+L":enabled="+std::to_wstring(IsWindowEnabled(target.hwnd)?1:0)+L":popup="+std::to_wstring(GetLastActivePopup(target.hwnd)!=target.hwnd?1:0);
         }
-        else if (stage == L"shortcut" || stage == L"shortcut031120" || stage == L"shortcut03023601" || stage == L"shortcut030519") {
+        else if (shortcutStage) {
           result = L"shortcut-controls-not-found";
-          const std::wstring reportCode = stage == L"shortcut030519" ? L"03.05.19" : stage == L"shortcut03023601" ? L"03.02.36.01" : stage == L"shortcut031120" ? L"03.11.20" : L"02.05.01";
+          const std::wstring reportCode = stage == L"shortcut030519" ? L"03.05.19" :
+              stage == L"shortcut03023601" ? L"03.02.36.01" :
+              stage == L"shortcut031120" ? L"03.11.20" :
+              stage == L"shortcut021101" ? L"02.11.01" : L"02.05.01";
           for (HWND candidate : target.candidates) {
             if (!FocusWindow(candidate) || !ActivatePromaxTab(candidate)) continue;
             Sleep(350);
@@ -1386,6 +1550,10 @@ static napi_value Act(napi_env env, napi_callback_info info) {
                 HWND report031120 = nullptr;
                 EnumWindows(Find031120Window, reinterpret_cast<LPARAM>(&report031120));
                 if (report031120) { result = L"ok"; break; }
+              } else if (stage == L"shortcut021101") {
+                HWND report = nullptr;
+                EnumWindows(Find021101Window, reinterpret_cast<LPARAM>(&report));
+                if (report) { result = L"ok"; break; }
               } else {
                 TargetWindow report = { nullptr, false, -1, {} };
                 EnumWindows(FindTarget, reinterpret_cast<LPARAM>(&report));
@@ -1400,12 +1568,16 @@ static napi_value Act(napi_env env, napi_callback_info info) {
           result = Fill031120(target.hwnd, values) ? L"ok" : L"031120-filter-controls-not-found";
         } else if (stage == L"filters03023601") {
           result=FillOCP(target.hwnd,values)?L"ok":L"03023601-filter-controls-not-found:"+OCP_FILTER_ISSUE;
+        } else if (stage == L"filters021101") {
+          result = Fill021101(target.hwnd, values) ? L"ok" : L"021101-filter-controls-not-found:" + COUNT021101_ISSUE;
         } else if(stage==L"generate030519"){
           result=GenerateABCSales(target.hwnd)?L"ok":L"030519-generate-button-not-found";
         } else if(stage==L"filters030519"){
           result=FillABCSales(target.hwnd,values)?L"ok":L"030519-filter-controls-not-found:"+ABC_SALES_ISSUE;
-        } else if (stage == L"csv030519" || stage == L"csv" || stage == L"csv031120" || stage == L"csv03023601") {
+        } else if (stage == L"csv030519" || stage == L"csv" || stage == L"csv031120" || stage == L"csv03023601" || stage == L"csv021101") {
           result = ClickNamedButton(target.hwnd, L"csv", false, true) ? L"ok" : L"csv-not-found";
+        } else if (stage == L"pdf021101") {
+          result = ClickNamedButton(target.hwnd, L"pdf", false, true) ? L"ok" : L"pdf-not-found";
         } else result = L"unknown-stage";
       }
       CoUninitialize();

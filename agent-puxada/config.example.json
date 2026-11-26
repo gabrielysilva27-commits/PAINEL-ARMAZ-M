@@ -8,5 +8,18 @@
     "deposit": "1",
     "operationFrom": "251",
     "operationTo": "314"
+  },
+  "inventoryCounts": {
+    "enabled": true,
+    "baseDirectory": "Y:\\{year}\\ARMAZÉM\\3.0 - Acuracidade do Inventário\\Acuracidade de Movimentação do Material do Armazém\\CONTAGEM de Estoque",
+    "fallbackBaseDirectory": "\\\\192.168.1.48\\pilargestao$\\{year}\\ARMAZÉM\\3.0 - Acuracidade do Inventário\\Acuracidade de Movimentação do Material do Armazém\\CONTAGEM de Estoque",
+    "deposits": [
+      {
+        "id": "6",
+        "countId": "6",
+        "label": "DEVOLUÇÃO",
+        "folder": "06 - Depósito DEVOLUÇÃO"
+      }
+    ]
   }
 }

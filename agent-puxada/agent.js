@@ -14,6 +14,7 @@ const ocpSync = require("./lib/ocp-sync");
 const promax = require("./lib/promax");
 const existingEdge = require("./lib/existing-edge");
 const updater = require("./lib/update");
+const inventoryCounts = require("./lib/inventory-counts");
 
 const ROOT = __dirname;
 const VERSION = require("./package.json").version;
@@ -174,6 +175,20 @@ async function main() {
 
   let last031120Check = 0;
   let last031120Run = 0;
+  let lastInventoryCountsCheck = 0;
+  async function maybeSyncInventoryCounts(force) {
+    if (!force && Date.now() - lastInventoryCountsCheck < 5 * 60 * 1000) return;
+    lastInventoryCountsCheck = Date.now();
+    try {
+      const result = await inventoryCounts.syncDaily({config:config,promax:promax,existingEdge:existingEdge,root:ROOT,log:log,force:!!force});
+      if (result && result.status === "saved") log("Conciliação 02.11.01 concluída para o depósito 6.");
+    } catch (error) {
+      const message = error && error.message ? error.message : String(error);
+      log("Falha na conciliação diária 02.11.01: " + message, true);
+    }
+  }
+
+
   async function maybeSync031120(force) {
     if (!force && Date.now() - last031120Check < 60 * 1000) return;
     last031120Check = Date.now();
@@ -217,7 +232,7 @@ async function main() {
 
   if (await maybeUpdate(true)) return;
 
-  log("Agente Puxada iniciado em " + os.hostname() + ".");
+  log("Agente Logística iniciado em " + os.hostname() + ".");
   outlookSegmentations.kick(api,log);
   await efdSync.sync(api,log).catch(e=>log("EFD: "+e.message,true));
   await maybeSync031120(true);
@@ -246,6 +261,7 @@ async function main() {
         await sleep(5000);
         continue;
       }
+      await maybeSyncInventoryCounts(false);
       const response = await api.poll(await info());
       job = response.job;
 
@@ -306,7 +322,7 @@ async function main() {
     }
   }
 
-  log("Agente Puxada encerrado.");
+  log("Agente Logística encerrado.");
 }
 
 main().catch(function (err) {

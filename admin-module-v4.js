@@ -66,7 +66,7 @@
           '<div id="adminRepackCreate" class="admin-repack-create" hidden><input id="adminRepackWorkerName" maxlength="120" placeholder="Nome do ajudante"><button id="adminRepackAdd">Cadastrar e gerar PIN</button></div>'+
           '<div class="admin-actions"><button class="primary" id="adminPinAction">Gerar / redefinir PIN</button><button id="adminPinMissing">Gerar pendentes do grupo</button><button id="adminRepackDeactivate" hidden>Desativar ajudante</button><button id="adminPinOpenForklift">Abrir tela dos empilhadores</button></div>'+
           '<div id="adminPinUnifiedIssued"></div>'+
-        '</section>'+'<section class="admin-card"><p class="eyebrow">PUXADA · PROMAX</p><h2>Agente Puxada</h2><p>Um único agente lógico pode rodar em dois computadores. O primeiro PC que pegar uma sincronização bloqueia a tarefa para o outro, evitando duplicidade.</p><div id="adminAgentStatus" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div><div id="adminAgentNodes" class="admin-pin-list"></div><div id="adminAgentIssued"></div><label style="display:grid;gap:6px;margin-top:12px;font-size:11px;font-weight:700">Intervalo automático<select id="adminAgentInterval"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select></label><div class="admin-actions"><button id="adminAgentSaveInterval">Salvar intervalo</button><button class="primary" id="adminAgentSyncNow">Sincronizar agora</button><button id="adminAgentRefresh">Atualizar status</button><button id="adminAgentRoutines">Rotinas do agente</button></div><p style="font-size:10px;color:var(--muted)">Após a instalação inicial, o agente se atualiza automaticamente. Cada PC mantém seu próprio token; novas automações são distribuídas pelo atualizador sem reinstalação manual.</p></section>'+
+        '</section>'+'<section class="admin-card"><p class="eyebrow">LOGÍSTICA · PROMAX</p><h2>Agente Logística</h2><p>Um único agente lógico pode rodar no PC Logística e no PC ADM. O primeiro computador disponível assume a tarefa, evitando duplicidade.</p><div id="adminAgentStatus" class="admin-pin-list"><span style="font-size:10px;color:var(--muted)">Carregando...</span></div><div id="adminAgentNodes" class="admin-pin-list"></div><div id="adminAgentIssued"></div><label style="display:grid;gap:6px;margin-top:12px;font-size:11px;font-weight:700">Intervalo automático<select id="adminAgentInterval"><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select></label><div class="admin-actions"><button id="adminAgentSaveInterval">Salvar intervalo</button><button class="primary" id="adminAgentSyncNow">Sincronizar agora</button><button id="adminAgentRefresh">Atualizar status</button><button id="adminAgentRoutines">Rotinas do agente</button></div><p style="font-size:10px;color:var(--muted)">Após a instalação inicial, o agente se atualiza automaticamente. Cada PC mantém seu próprio token; novas automações são distribuídas pelo atualizador sem reinstalação manual.</p></section>'+
       '</div></div>';
   }
 
@@ -213,13 +213,18 @@
     try{
       const d=await nriCall(reset?'gate_reset_pin':'gate_generate_pin',{id});
       if(!d.issued){showToast('Este PIN já está configurado.');return loadGatePin();}
-      $('adminGateIssued').innerHTML='<div class="admin-issued"><strong>PIN atualizado. O ADM poderá consultá-lo nesta tela.</strong><div class="admin-issued-row"><span>'+esc(d.issued.display_name)+'</span><code>'+esc(d.issued.pin)+'</code><button id="adminCopyGatePin">Copiar</button></div></div>';
+      $('adminGateIssued').innerHTML='<div class="admin-issued"><strong>PIN atualizado. O ADM poderá consultá-lo nesta tela.</strong><div class="admin-issued-row"><span>'+esc(agentNodeLabel(d.issued))+'</span><code>'+esc(d.issued.pin)+'</code><button id="adminCopyGatePin">Copiar</button></div></div>';
       $('adminCopyGatePin').onclick=async()=>{await navigator.clipboard?.writeText(d.issued.pin);showToast('PIN copiado.');};
       await loadGatePin();
     }catch(e){showToast(e.message,true);}
   }
 
   function adminDt(v){if(!v)return'—';const d=new Date(v);return Number.isNaN(d.getTime())?'—':d.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}
+  function agentNodeLabel(node){
+    if(node?.slot_code==='PUXADA')return'PC Logística';
+    if(node?.slot_code==='ADM')return'PC ADM';
+    return node?.display_name||'Computador';
+  }
   async function loadAgentAdmin(){
     try{
       const d=await nriCall('agent_status'),a=d.agent||{},nodes=a.nodes||[];
@@ -240,7 +245,7 @@
           runLine='Última execução com falha · versão '+(lr.agent_version||'—')+(lr.message?' · '+lr.message:'');
         }
       }
-      $('adminAgentStatus').innerHTML='<div class="admin-pin-item"><div><strong>'+esc(overall)+'</strong><small>1 agente · 2 computadores · última sincronização '+esc(adminDt(a.last_sync_completed_at))+' · intervalo '+esc(a.sync_interval_minutes||10)+' min</small><small>Versão publicada: '+esc(a.latest_agent_version||'—')+' · atualização automática</small><small style="'+(lr&&lr.status==='completed'?'color:#238636;font-weight:700':'')+'">'+esc(runLine)+'</small></div></div>';
+      $('adminAgentStatus').innerHTML='<div class="admin-pin-item"><div><strong>'+esc(overall)+'</strong><small>1 agente · PC Logística + PC ADM · última sincronização '+esc(adminDt(a.last_sync_completed_at))+' · intervalo '+esc(a.sync_interval_minutes||10)+' min</small><small>Versão publicada: '+esc(a.latest_agent_version||'—')+' · atualização automática</small><small style="'+(lr&&lr.status==='completed'?'color:#238636;font-weight:700':'')+'">'+esc(runLine)+'</small></div></div>';
       $('adminAgentNodes').innerHTML=nodes.map(x=>{
         let status='Offline';
         if(!x.token_ready)status='Token pendente';
@@ -261,7 +266,7 @@
         }
         const meta=(x.hostname?('PC: '+x.hostname+' · '):'')+'Versão: '+version+' · '+upd+' · Último contato: '+adminDt(x.last_seen_at)+(x.last_sync_completed_at?' · Última sync: '+adminDt(x.last_sync_completed_at):'');
         const err=x.update_error||x.last_error;
-        return '<div class="admin-pin-item"><div><strong>'+esc(x.display_name)+'</strong><small>'+esc(status)+'</small><small>'+esc(meta)+'</small>'+(err?'<small style="color:#b43e45">'+esc(err)+'</small>':'')+'</div><button data-agent-node="'+esc(x.id)+'" data-ready="'+(x.token_ready?'1':'0')+'">'+(x.token_ready?'Resetar token':'Gerar token')+'</button></div>';
+        return '<div class="admin-pin-item"><div><strong>'+esc(agentNodeLabel(x))+'</strong><small>'+esc(status)+'</small><small>'+esc(meta)+'</small>'+(err?'<small style="color:#b43e45">'+esc(err)+'</small>':'')+'</div><button data-agent-node="'+esc(x.id)+'" data-ready="'+(x.token_ready?'1':'0')+'">'+(x.token_ready?'Resetar token':'Gerar token')+'</button></div>';
       }).join('');
       $('adminAgentNodes').querySelectorAll('[data-agent-node]').forEach(b=>b.onclick=()=>issueAgentToken(b.dataset.agentNode,b.dataset.ready==='1'));
       $('adminAgentInterval').value=String(a.sync_interval_minutes||10);
@@ -271,7 +276,7 @@
     try{
       const d=await nriCall(reset?'agent_reset_token':'agent_generate_token',{node_id:nodeId});
       if(!d.issued){showToast('Este computador já possui token configurado.');return loadAgentAdmin()}
-      $('adminAgentIssued').innerHTML='<div class="admin-issued"><strong>Copie agora. Este token não será exibido novamente.</strong><div class="admin-issued-row"><span>'+esc(d.issued.display_name)+'</span><code style="font-size:9px;word-break:break-all">'+esc(d.issued.token)+'</code><button id="adminCopyAgentToken">Copiar</button></div></div>';
+      $('adminAgentIssued').innerHTML='<div class="admin-issued"><strong>Copie agora. Este token não será exibido novamente.</strong><div class="admin-issued-row"><span>'+esc(agentNodeLabel(d.issued))+'</span><code style="font-size:9px;word-break:break-all">'+esc(d.issued.token)+'</code><button id="adminCopyAgentToken">Copiar</button></div></div>';
       $('adminCopyAgentToken').onclick=async()=>{await navigator.clipboard?.writeText(d.issued.token);showToast('Token deste computador copiado.')};
       await loadAgentAdmin();
     }catch(e){showToast(e.message,true)}

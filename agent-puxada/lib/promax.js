@@ -903,13 +903,14 @@ function downloadDirs() {
   return list.filter(function (p, i, a) { return p && a.indexOf(p) === i && fs.existsSync(p); });
 }
 
-function newestCandidate(sinceMs) {
+function newestCandidate(sinceMs, acceptPattern) {
   let found = null;
+  const pattern = acceptPattern || /\.inf$|\.csv$/i;
   for (const dir of downloadDirs()) {
     let names = [];
     try { names = fs.readdirSync(dir); } catch { continue; }
     for (const name of names) {
-      if (!/\.inf$|\.csv$/i.test(name)) continue;
+      if (!pattern.test(name)) continue;
       const full = path.join(dir, name);
       let st;
       try { st = fs.statSync(full); } catch { continue; }
@@ -926,7 +927,7 @@ function recentDownloadNames(sinceMs) {
     let names = [];
     try { names = fs.readdirSync(dir); } catch { continue; }
     for (const name of names) {
-      if (!/\.inf$|\.csv$/i.test(name)) continue;
+      if (!/\.inf$|\.csv$|\.pdf$/i.test(name)) continue;
       try {
         const st = fs.statSync(path.join(dir, name));
         if (st.isFile() && st.mtimeMs >= sinceMs - 2000) found.push(name);
@@ -2105,6 +2106,39 @@ async function export030519(job, config, rootDir, validateCsv) {
   return target;
 }
 
+async function saveInventoryCountFormat(format, rootDir) {
+  const directory=path.join(rootDir,"downloads");fs.mkdirSync(directory,{recursive:true});
+  const suffix=format==="csv"?".csv.inf":".pdf",target=path.join(directory,"021101_"+format+"_"+Date.now()+suffix);
+  const pattern=format==="csv"?/\.csv\.inf$|\.csv$/i:/\.pdf$/i,since=Date.now();
+  await existingEdge.act(format==="csv"?"csv021101":"pdf021101");await sleep(900);
+  let saveStatus="automatic";
+  try{saveStatus=existingEdge.saveDialog(target);}
+  catch(error){if(!/save-dialog-not-found/.test(String(error&&error.message||error)))throw error;saveStatus="download automático";}
+  let previous=null,stable=0,lastSaveProbe=Date.now();
+  const candidate=await waitUntil(async function(){
+    const direct=fs.existsSync(target)?{path:target,size:fs.statSync(target).size}:null,current=direct||newestCandidate(since,pattern);
+    if(!current){if(Date.now()-lastSaveProbe>=10000){lastSaveProbe=Date.now();try{saveStatus=existingEdge.saveDialog(target);}catch(error){if(!/save-dialog-not-found/.test(String(error&&error.message||error)))throw error;}}return null;}
+    if(current.size<50)return null;stable=previous&&previous.path===current.path&&previous.size===current.size?stable+1:0;previous=current;return stable>=2?current:null;
+  },60000,700).catch(error=>{if(/Tempo esgotado/.test(String(error&&error.message||error)))throw new Error("021101_"+format.toUpperCase()+"_DOWNLOAD_TIMEOUT: "+saveStatus);throw error;});
+  if(candidate.path!==target)fs.copyFileSync(candidate.path,target);
+  if(!fs.statSync(target).isFile()||fs.statSync(target).size<50)throw new Error("Arquivo "+format.toUpperCase()+" vazio.");
+  if(format==="pdf"){if(fs.readFileSync(target).subarray(0,5).toString("ascii")!=="%PDF-")throw new Error("O botão PDF não gerou PDF válido.");}
+  else if(/<html|<!doctype/i.test(fs.readFileSync(target).subarray(0,2000).toString("latin1")))throw new Error("O CSV retornou HTML em vez de dados.");
+  return target;
+}
+async function exportInventoryCount(job, config, rootDir) {
+  if(process.platform!=="win32"||!existingEdge.probe().available)throw new Error("021101_EDGE_NATIVE_UNAVAILABLE");
+  const values={warehouse:String(job.warehouse||"1"),depositFrom:String(job.depositFrom||"6"),depositTo:String(job.depositTo||"6"),areaFrom:String(job.areaFrom||"1"),areaTo:String(job.areaTo||"1"),countId:String(job.countId||"6")};
+  for(const v of Object.values(values))if(!/^\d{1,4}$/.test(v))throw new Error("Filtro inválido para 02.11.01.");
+  async function action(stage,payload){for(let i=0;i<3;i++){try{return existingEdge.act(stage,payload);}catch(e){if(i===2||!/window-not-foreground/.test(String(e&&e.message||e)))throw e;await sleep(1000);}}}
+  try{
+    let ready=false;try{await action("filters021101",values);ready=true;}catch(e){if(!/window-not-found/.test(String(e&&e.message||e)))throw e;}
+    if(!ready){await action("shortcut021101");await sleep(1800);await action("filters021101",values);}
+    await sleep(1400);
+    const csvPath=await saveInventoryCountFormat("csv",rootDir);await sleep(500);
+    const pdfPath=await saveInventoryCountFormat("pdf",rootDir);return{csvPath,pdfPath};
+  }finally{try{existingEdge.act("close021101");}catch(_){}}
+}
 async function export020501(job, config, rootDir, validateCsv) {
   try {
     const file = await exportInNormalEdge(job, config, rootDir, validateCsv);
@@ -2135,4 +2169,4 @@ async function openCalibrationBrowser(config, rootDir) {
   }
 }
 
-module.exports = { isConfigured, readinessError, missingSelectors, openCalibrationBrowser, export020501, export031120, export03023601, export030519, normalEdgeStatus: () => LAST_NORMAL_EDGE_STATUS };
+module.exports = { isConfigured, readinessError, missingSelectors, openCalibrationBrowser, export020501, export031120, export03023601, export030519, exportInventoryCount, normalEdgeStatus: () => LAST_NORMAL_EDGE_STATUS };

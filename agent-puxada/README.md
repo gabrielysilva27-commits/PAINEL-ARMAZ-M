@@ -1,17 +1,17 @@
-# Agente Puxada - Promax V3
+# Agente Logística - Promax V3
 
-O Agente Puxada sincroniza automaticamente o relatório **02.05.01** do Promax com o Painel Armazém.
+O Agente Logística automatiza rotinas do Promax e sincroniza relatórios com o Painel Armazém.
 
 Fluxo real validado em setembro/2026:
 
 Promax no Microsoft Edge (Modo IE) -> atalho 02.05.01 -> filtros -> Visualizar -> CSV -> arquivo .csv.inf -> Painel Armazém -> cruzamento físico x sistema.
 
-## Dois computadores autorizados
+## Computadores autorizados
 
 Existe um único Agente Puxada lógico, com dois computadores autorizados:
 
-- Computador oficial da Puxada
-- Computador ADM
+- PC Logística
+- PC ADM
 
 Cada computador possui seu próprio token. A fila é compartilhada e o primeiro computador disponível assume a sincronização com lease atômico.
 
@@ -82,3 +82,10 @@ Versão do agente: 3.0.0
 A partir da V3, o agente consulta o backend do Painel a cada inicialização e periodicamente. Quando existe uma versão nova, baixa somente os arquivos publicados para aquela versão, valida SHA-256, aplica em staging e executa um health check local antes de efetivar. Se o health check falhar, restaura automaticamente os arquivos anteriores e reinicia a versão conhecida como boa.
 
 A pasta `data` nunca é substituída pelo atualizador, preservando token, identidade ADM/PUXADA e estado local. O painel ADM mostra versão instalada, versão publicada e estado da atualização.
+
+
+## Conciliação diária de contagem — 02.11.01
+
+A primeira rotina de contagem está configurada para o depósito 6 (Devolução): armazém 1, depósito inicial/final 6, área inicial/final 1 e contagem 6. O agente exporta CSV e PDF uma vez por dia, com o nome `DD.MM - CONTAGEM DEVOLUÇÃO`. O CSV conserva a extensão real de exportação do Promax (`.csv.inf`).
+
+O destino padrão é `Y:\{ano}\ARMAZÉM\3.0 - Acuracidade do Inventário\Acuracidade de Movimentação do Material do Armazém\CONTAGEM de Estoque`. O agente cria automaticamente a pasta do mês no padrão `MM. Nome do mês`, a pasta `06 - Depósito DEVOLUÇÃO` e as subpastas `CSV` e `PDF`. O compartilhamento UNC configurado é usado como alternativa quando a unidade Y: não estiver mapeada.
