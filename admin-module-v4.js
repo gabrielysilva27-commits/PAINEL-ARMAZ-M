@@ -213,7 +213,7 @@
     try{
       const d=await nriCall(reset?'gate_reset_pin':'gate_generate_pin',{id});
       if(!d.issued){showToast('Este PIN já está configurado.');return loadGatePin();}
-      $('adminGateIssued').innerHTML='<div class="admin-issued"><strong>PIN atualizado. O ADM poderá consultá-lo nesta tela.</strong><div class="admin-issued-row"><span>'+esc(agentNodeLabel(d.issued))+'</span><code>'+esc(d.issued.pin)+'</code><button id="adminCopyGatePin">Copiar</button></div></div>';
+      $('adminGateIssued').innerHTML='<div class="admin-issued"><strong>PIN atualizado. O ADM poderá consultá-lo nesta tela.</strong><div class="admin-issued-row"><span>'+esc(d.issued.display_name)+'</span><code>'+esc(d.issued.pin)+'</code><button id="adminCopyGatePin">Copiar</button></div></div>';
       $('adminCopyGatePin').onclick=async()=>{await navigator.clipboard?.writeText(d.issued.pin);showToast('PIN copiado.');};
       await loadGatePin();
     }catch(e){showToast(e.message,true);}
