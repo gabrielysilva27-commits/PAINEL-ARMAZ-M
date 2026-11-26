@@ -893,12 +893,12 @@ static std::wstring Normalize021101(const std::wstring& value) {
   for (wchar_t raw : value) {
     wchar_t c = towlower(raw);
     switch (c) {
-      case L'á': case L'à': case L'â': case L'ã': case L'ä': c = L'a'; break;
-      case L'é': case L'è': case L'ê': case L'ë': c = L'e'; break;
-      case L'í': case L'ì': case L'î': case L'ï': c = L'i'; break;
-      case L'ó': case L'ò': case L'ô': case L'õ': case L'ö': c = L'o'; break;
-      case L'ú': case L'ù': case L'û': case L'ü': c = L'u'; break;
-      case L'ç': c = L'c'; break;
+      case 0x00E1: case 0x00E0: case 0x00E2: case 0x00E3: case 0x00E4: c = L'a'; break;
+      case 0x00E9: case 0x00E8: case 0x00EA: case 0x00EB: c = L'e'; break;
+      case 0x00ED: case 0x00EC: case 0x00EE: case 0x00EF: c = L'i'; break;
+      case 0x00F3: case 0x00F2: case 0x00F4: case 0x00F5: case 0x00F6: c = L'o'; break;
+      case 0x00FA: case 0x00F9: case 0x00FB: case 0x00FC: c = L'u'; break;
+      case 0x00E7: c = L'c'; break;
       default: break;
     }
     if (!iswspace(c)) out.push_back(c);
