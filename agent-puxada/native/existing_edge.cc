@@ -1538,22 +1538,29 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
   std::vector<CountRow> rows;
   size_t bestMappedRows = 0;
   bool ambiguousCountTable = false;
+  size_t countHeaderCandidates=0,numericLabels=0,numericUnderHeader=0;
+  size_t checkControls=0,numericWithCheckbox=0,mappedRowsTotal=0;
+  for(const auto& c:controls)if(isCheck(c))++checkControls;
 
   // The count grid sits beside the deposit/area filters in this Promax layout.
   // Do not require its header to be below the filter panel: identify the
   // "Contagem" header whose numeric rows have aligned checkboxes underneath.
   for (const auto& header : controls) {
-    if (Normalize021101(header.name) != L"contagem" ||
+    const std::wstring headerName=Normalize021101(header.name);
+    if (headerName.find(L"contagem") == std::wstring::npos ||
         Is021101Input(header) || header.type == UIA_ButtonControlTypeId ||
         isCheck(header)) continue;
+    ++countHeaderCandidates;
     std::vector<CountRow> candidateRows;
     for (const auto& label : controls) {
       if (Is021101Input(label) || label.type == UIA_ButtonControlTypeId || isCheck(label)) continue;
       const std::wstring id = Normalize021101(label.name);
       if (id.empty() || id.size() > 3 ||
           !std::all_of(id.begin(), id.end(), [](wchar_t c) { return c >= L'0' && c <= L'9'; })) continue;
+      ++numericLabels;
       if (label.rect.top < header.rect.bottom - 2 ||
           label.rect.top > header.rect.bottom + 360) continue;
+      ++numericUnderHeader;
 
       const VisibleControl* checkbox = nullptr;
       int bestGap = 100000;
@@ -1562,12 +1569,13 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
         if (!isCheck(candidate)) continue;
         const int checkboxY = (candidate.rect.top + candidate.rect.bottom) / 2;
         const int gap = label.rect.left - candidate.rect.right;
-        if (std::abs(checkboxY-rowY) <= 18 && gap >= -8 && gap <= 180 && gap < bestGap) {
+        if (std::abs(checkboxY-rowY) <= 28 && gap >= -12 && gap <= 240 && gap < bestGap) {
           checkbox = &candidate;
           bestGap = gap;
         }
       }
       if (!checkbox) continue;
+      ++numericWithCheckbox;
       const bool duplicate = std::any_of(candidateRows.begin(),candidateRows.end(),
           [&](const CountRow& prior) {
             return prior.id==id &&
@@ -1578,6 +1586,7 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
           });
       if (!duplicate) candidateRows.push_back({id,label,*checkbox});
     }
+    mappedRowsTotal += candidateRows.size();
 
     if(candidateRows.size()>bestMappedRows) {
       bestMappedRows=candidateRows.size();
@@ -1592,7 +1601,13 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
     }
   }
   if(!countHeader || rows.empty()) {
-    COUNT021101_ISSUE=L"count-column-header-or-rows";
+    COUNT021101_ISSUE=L"count-column-header-or-rows:h="+
+        std::to_wstring(countHeaderCandidates)+L":n="+
+        std::to_wstring(numericLabels)+L":u="+
+        std::to_wstring(numericUnderHeader)+L":c="+
+        std::to_wstring(checkControls)+L":a="+
+        std::to_wstring(numericWithCheckbox)+L":m="+
+        std::to_wstring(mappedRowsTotal);
     return false;
   }
   if(ambiguousCountTable) {
