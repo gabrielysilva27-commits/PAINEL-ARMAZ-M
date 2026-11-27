@@ -404,7 +404,7 @@ static BOOL CALLBACK Find021101Window(HWND hwnd, LPARAM raw) {
   // Ignore stale background Edge windows that happen to retain a 02.11.01
   // title but expose no controls. A foreground title-match is still allowed
   // while the page is rendering; Fill021101 will poll for the controls.
-  if (titleMatch && !foreground && Controls(hwnd).empty()) return TRUE;
+  if (titleMatch && !foreground && !LooksLike021101Form(hwnd)) return TRUE;
   if (titleMatch || formMatch) {
     HWND* chosen = reinterpret_cast<HWND*>(raw);
     if (!*chosen || HasForeground(hwnd) ||
