@@ -1611,7 +1611,13 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
     return false;
   }
   if(ambiguousCountTable) {
-    COUNT021101_ISSUE=L"count-column-ambiguous";
+    COUNT021101_ISSUE=L"count-column-ambiguous:h="+
+        std::to_wstring(countHeaderCandidates)+L":n="+
+        std::to_wstring(numericLabels)+L":u="+
+        std::to_wstring(numericUnderHeader)+L":c="+
+        std::to_wstring(checkControls)+L":a="+
+        std::to_wstring(numericWithCheckbox)+L":m="+
+        std::to_wstring(mappedRowsTotal);
     return false;
   }
 
