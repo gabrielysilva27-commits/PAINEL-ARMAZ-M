@@ -913,24 +913,121 @@ static std::wstring Normalize021101(const std::wstring& value) {
   }
   return out;
 }
+static bool Is021101Input(const VisibleControl& c) {
+  return c.type == UIA_EditControlTypeId || c.type == UIA_ComboBoxControlTypeId;
+}
+static bool Is021101Label(const VisibleControl& c) {
+  if (Is021101Input(c) || c.type == UIA_ButtonControlTypeId ||
+      c.type == UIA_CheckBoxControlTypeId || c.type == UIA_RadioButtonControlTypeId ||
+      c.name.empty()) return false;
+  return c.rect.right-c.rect.left <= 700 && c.rect.bottom-c.rect.top <= 90;
+}
+static std::vector<VisibleControl> FieldsFor021101Key(
+    const std::vector<VisibleControl>& controls, const wchar_t* key,
+    size_t needed, size_t* labelMatches) {
+  struct Match { int score; VisibleControl field; };
+  std::vector<Match> combined, bestGroup;
+  int bestGroupScore = 100000000;
+  *labelMatches = 0;
+  for (const auto& label : controls) {
+    const std::wstring name = Normalize021101(label.name);
+    if (name.find(key) == std::wstring::npos) continue;
+    ++(*labelMatches);
+    std::vector<Match> local;
+    // Some Promax builds expose the field's accessible name directly on the
+    // editable control instead of publishing a separate text label.
+    if (Is021101Input(label)) local.push_back({-1000, label});
+    if (Is021101Label(label)) {
+      const int labelX = (label.rect.left + label.rect.right) / 2;
+      const int labelY = (label.rect.top + label.rect.bottom) / 2;
+      for (const auto& field : controls) {
+        if (!Is021101Input(field)) continue;
+        const int fieldX = (field.rect.left + field.rect.right) / 2;
+        const int fieldY = (field.rect.top + field.rect.bottom) / 2;
+        const int horizontalGap = field.rect.left - label.rect.right;
+        const int verticalGap = field.rect.top - label.rect.bottom;
+        const bool sameRow = std::abs(fieldY-labelY) <= 38 &&
+            horizontalGap >= -14 && horizontalGap <= 360;
+        const bool belowLabel = verticalGap >= -4 && verticalGap <= 100 &&
+            std::abs(fieldX-labelX) <= 150;
+        if (sameRow) {
+          local.push_back({std::abs(fieldY-labelY)*5 + std::max(0,horizontalGap), field});
+        } else if (belowLabel) {
+          local.push_back({220 + std::max(0,verticalGap)*4 +
+              std::abs(fieldX-labelX)*2, field});
+        }
+      }
+    }
+    std::sort(local.begin(), local.end(), [](const Match& a, const Match& b) {
+      return a.score < b.score;
+    });
+    std::vector<Match> uniqueLocal;
+    for (const auto& match : local) {
+      const bool duplicate = std::any_of(uniqueLocal.begin(), uniqueLocal.end(),
+          [&](const Match& prior) {
+            return prior.field.rect.left == match.field.rect.left &&
+              prior.field.rect.top == match.field.rect.top &&
+              prior.field.rect.right == match.field.rect.right &&
+              prior.field.rect.bottom == match.field.rect.bottom;
+          });
+      if (!duplicate) uniqueLocal.push_back(match);
+    }
+    if (uniqueLocal.size() >= needed) {
+      int total = 0;
+      for (size_t i=0; i<needed; ++i) total += uniqueLocal[i].score;
+      if (total < bestGroupScore) {
+        bestGroupScore = total;
+        bestGroup.assign(uniqueLocal.begin(), uniqueLocal.begin()+needed);
+      }
+    }
+    combined.insert(combined.end(), uniqueLocal.begin(), uniqueLocal.end());
+  }
+  std::vector<Match> selected = bestGroup;
+  if (selected.size() < needed) {
+    std::sort(combined.begin(), combined.end(), [](const Match& a, const Match& b) {
+      return a.score < b.score;
+    });
+    selected.clear();
+    for (const auto& match : combined) {
+      const bool duplicate = std::any_of(selected.begin(), selected.end(),
+          [&](const Match& prior) {
+            return prior.field.rect.left == match.field.rect.left &&
+              prior.field.rect.top == match.field.rect.top &&
+              prior.field.rect.right == match.field.rect.right &&
+              prior.field.rect.bottom == match.field.rect.bottom;
+          });
+      if (!duplicate) selected.push_back(match);
+      if (selected.size() == needed) break;
+    }
+  }
+  if (selected.size() > needed) selected.resize(needed);
+  std::sort(selected.begin(), selected.end(), [](const Match& a, const Match& b) {
+    if (std::abs(a.field.rect.top-b.field.rect.top) > 8)
+      return a.field.rect.top < b.field.rect.top;
+    return a.field.rect.left < b.field.rect.left;
+  });
+  std::vector<VisibleControl> result;
+  for (const auto& match : selected) result.push_back(match.field);
+  return result;
+}
 static bool LooksLike021101Form(HWND hwnd) {
   const auto controls = Controls(hwnd);
   bool warehouse = false, deposit = false, area = false;
-  bool count = false, visualize = false, back = false;
+  bool count = false, visualize = false;
+  int inputs = 0;
   for (const auto& c : controls) {
     const std::wstring name = Normalize021101(c.name);
-    if (c.type == UIA_TextControlTypeId) {
-      if (name.find(L"armazem") != std::wstring::npos) warehouse = true;
-      if (name.find(L"deposito") != std::wstring::npos) deposit = true;
-      if (name.find(L"area") != std::wstring::npos) area = true;
-      if (name.find(L"contagem") != std::wstring::npos) count = true;
-    }
-    if (c.type == UIA_ButtonControlTypeId) {
-      if (name.find(L"visualizar") != std::wstring::npos) visualize = true;
-      if (name == L"voltar") back = true;
-    }
+    if (name.find(L"armazem") != std::wstring::npos) warehouse = true;
+    if (name.find(L"deposito") != std::wstring::npos) deposit = true;
+    if (name.find(L"area") != std::wstring::npos) area = true;
+    if (name.find(L"contagem") != std::wstring::npos) count = true;
+    if (c.type == UIA_ButtonControlTypeId && name.find(L"visualizar") != std::wstring::npos) visualize = true;
+    if (Is021101Input(c)) ++inputs;
   }
-  return (warehouse && deposit && area) || (count && (visualize || back));
+  // Labels are exposed as Text, Group or Custom controls depending on the
+  // Promax/Edge build; do not require one exact UIA role or screen quadrant.
+  return (warehouse && deposit && area && inputs >= 5) ||
+      (count && visualize) || ((warehouse || deposit || area) && inputs >= 4 && visualize);
 }
 
 static thread_local std::wstring COUNT021101_ISSUE;
@@ -942,88 +1039,100 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
   const VisibleControl* back = nullptr;
   bool hasVisualize = false;
   for (const auto& c : controls) {
-    if (c.type == UIA_ButtonControlTypeId && Normalize021101(c.name).find(L"visualizar") != std::wstring::npos) hasVisualize = true;
-    if (c.type == UIA_ButtonControlTypeId && Normalize021101(c.name) == L"voltar") back = &c;
+    const std::wstring name = Normalize021101(c.name);
+    if (c.type == UIA_ButtonControlTypeId && name.find(L"visualizar") != std::wstring::npos) hasVisualize = true;
+    if (c.type == UIA_ButtonControlTypeId && name == L"voltar") back = &c;
   }
   if (!hasVisualize && back) {
     if (!ClickControl(*back)) { COUNT021101_ISSUE = L"back-button"; return false; }
     Sleep(1400);
     controls = Controls(hwnd);
   }
-  const int middle = window.left + (window.right - window.left) / 2;
-  auto findLabel = [&](const wchar_t* key, bool rightSide) -> const VisibleControl* {
-    const VisibleControl* best = nullptr;
-    for (const auto& c : controls) {
-      if (c.type != UIA_TextControlTypeId || c.rect.top < window.top + 180) continue;
-      if (Normalize021101(c.name).find(key) == std::wstring::npos) continue;
-      if (rightSide ? c.rect.left < middle : c.rect.left >= middle) continue;
-      if (!best || c.rect.top < best->rect.top) best = &c;
-    }
-    return best;
-  };
-  auto fieldsBeside = [&](const VisibleControl* label, size_t needed) {
-    std::vector<VisibleControl> result;
-    if (!label) return result;
-    const int centerY = (label->rect.top + label->rect.bottom) / 2;
-    for (const auto& c : controls) {
-      if (c.type != UIA_EditControlTypeId) continue;
-      const int fieldY = (c.rect.top + c.rect.bottom) / 2;
-      if (abs(fieldY - centerY) <= 20 && c.rect.left >= label->rect.left &&
-          c.rect.left > label->rect.right - 4) result.push_back(c);
-    }
-    std::sort(result.begin(), result.end(), [](const VisibleControl& a, const VisibleControl& b) { return a.rect.left < b.rect.left; });
-    if (result.size() > needed) result.resize(needed);
-    return result;
-  };
-  const auto* warehouseLabel = findLabel(L"armazem", false);
-  const auto* depositLabel = findLabel(L"deposito", true);
-  const auto* areaLabel = findLabel(L"area", true);
-  auto warehouse = fieldsBeside(warehouseLabel, 1);
-  auto deposit = fieldsBeside(depositLabel, 2);
-  auto area = fieldsBeside(areaLabel, 2);
+
+  size_t warehouseLabels=0, depositLabels=0, areaLabels=0;
+  auto warehouse = FieldsFor021101Key(controls, L"armazem", 1, &warehouseLabels);
+  auto deposit = FieldsFor021101Key(controls, L"deposito", 2, &depositLabels);
+  auto area = FieldsFor021101Key(controls, L"area", 2, &areaLabels);
+  size_t edits=0, combos=0;
+  for (const auto& c : controls) {
+    if (c.type == UIA_EditControlTypeId) ++edits;
+    if (c.type == UIA_ComboBoxControlTypeId) ++combos;
+  }
   if (warehouse.size() != 1 || deposit.size() != 2 || area.size() != 2) {
     COUNT021101_ISSUE = L"filter-fields:warehouse=" + std::to_wstring(warehouse.size()) +
-      L":deposit=" + std::to_wstring(deposit.size()) + L":area=" + std::to_wstring(area.size());
+      L":deposit=" + std::to_wstring(deposit.size()) + L":area=" + std::to_wstring(area.size()) +
+      L":edits=" + std::to_wstring(edits) + L":combos=" + std::to_wstring(combos) +
+      L":wlabels=" + std::to_wstring(warehouseLabels) +
+      L":dlabels=" + std::to_wstring(depositLabels) +
+      L":alabels=" + std::to_wstring(areaLabels);
     return false;
   }
-  COUNT021101_ISSUE = L"filter-readback";
-  if (!Fill031120Control(warehouse[0], values[0]) ||
-      !Fill031120Control(deposit[0], values[1]) || !Fill031120Control(deposit[1], values[2]) ||
-      !Fill031120Control(area[0], values[3]) || !Fill031120Control(area[1], values[4])) return false;
+  std::vector<VisibleControl> allFields = warehouse;
+  allFields.insert(allFields.end(), deposit.begin(), deposit.end());
+  allFields.insert(allFields.end(), area.begin(), area.end());
+  for (size_t i=0; i<allFields.size(); ++i) {
+    for (size_t j=i+1; j<allFields.size(); ++j) {
+      const RECT& a = allFields[i].rect;
+      const RECT& b = allFields[j].rect;
+      if (a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom) {
+        COUNT021101_ISSUE = L"filter-fields-overlap";
+        return false;
+      }
+    }
+  }
+
+  COUNT021101_ISSUE = L"filter-readback-warehouse";
+  if (!Fill031120Control(warehouse[0], values[0])) return false;
+  COUNT021101_ISSUE = L"filter-readback-deposit-from";
+  if (!Fill031120Control(deposit[0], values[1])) return false;
+  COUNT021101_ISSUE = L"filter-readback-deposit-to";
+  if (!Fill031120Control(deposit[1], values[2])) return false;
+  COUNT021101_ISSUE = L"filter-readback-area-from";
+  if (!Fill031120Control(area[0], values[3])) return false;
+  COUNT021101_ISSUE = L"filter-readback-area-to";
+  if (!Fill031120Control(area[1], values[4])) return false;
+
   controls = Controls(hwnd);
+  int filtersBottom = 0;
+  for (const auto& c : allFields) filtersBottom = std::max(filtersBottom, c.rect.bottom);
   const VisibleControl* countHeader = nullptr;
   for (const auto& c : controls) {
-    if (c.type == UIA_TextControlTypeId && Normalize021101(c.name) == L"contagem" &&
-        c.rect.left < middle && c.rect.top > window.top + 220) { countHeader = &c; break; }
+    const std::wstring name = Normalize021101(c.name);
+    if (name != L"contagem" || Is021101Input(c) || c.type == UIA_ButtonControlTypeId) continue;
+    if (c.rect.top < filtersBottom - 8) continue;
+    if (!countHeader || c.rect.top < countHeader->rect.top) countHeader = &c;
   }
   if (!countHeader) { COUNT021101_ISSUE = L"count-column-header"; return false; }
+
   struct CountRow { std::wstring id; VisibleControl checkbox; };
   std::vector<CountRow> rows;
   auto isCheck = [](const VisibleControl& c) {
-    return c.type == UIA_CheckBoxControlTypeId || c.legacyRole == ROLE_SYSTEM_CHECKBUTTON;
+    return c.type == UIA_CheckBoxControlTypeId || c.type == UIA_RadioButtonControlTypeId ||
+      c.legacyRole == ROLE_SYSTEM_CHECKBUTTON || c.legacyRole == ROLE_SYSTEM_RADIOBUTTON;
   };
   for (const auto& label : controls) {
-    if (label.type == UIA_EditControlTypeId || label.type == UIA_ButtonControlTypeId || isCheck(label)) continue;
+    if (Is021101Input(label) || label.type == UIA_ButtonControlTypeId || isCheck(label)) continue;
     const std::wstring id = Normalize021101(label.name);
     if (id.empty() || id.size() > 3 ||
         !std::all_of(id.begin(), id.end(), [](wchar_t c) { return c >= L'0' && c <= L'9'; })) continue;
     const int rowY = (label.rect.top + label.rect.bottom) / 2;
-    if (label.rect.left < countHeader->rect.left - 12 || label.rect.left > countHeader->rect.right + 100 ||
-        label.rect.top < countHeader->rect.bottom - 2 || label.rect.top > countHeader->rect.bottom + 280) continue;
+    if (label.rect.top < countHeader->rect.bottom - 2 ||
+        label.rect.top > countHeader->rect.bottom + 360) continue;
     const VisibleControl* checkbox = nullptr;
     int bestGap = 100000;
     for (const auto& candidate : controls) {
       if (!isCheck(candidate)) continue;
       const int checkboxY = (candidate.rect.top + candidate.rect.bottom) / 2;
       const int gap = label.rect.left - candidate.rect.right;
-      if (abs(checkboxY - rowY) <= 18 && gap >= -5 && gap <= 150 && gap < bestGap) {
+      if (std::abs(checkboxY - rowY) <= 22 && gap >= -8 && gap <= 180 && gap < bestGap) {
         checkbox = &candidate; bestGap = gap;
       }
     }
     if (checkbox) rows.push_back({id, *checkbox});
   }
   const std::wstring desiredCount = Normalize021101(values[5]);
-  auto desired = std::find_if(rows.begin(), rows.end(), [&](const CountRow& row) { return row.id == desiredCount; });
+  auto desired = std::find_if(rows.begin(), rows.end(),
+      [&](const CountRow& row) { return row.id == desiredCount; });
   if (rows.empty() || desired == rows.end()) {
     COUNT021101_ISSUE = L"count-row-not-found:" + desiredCount + L":mapped=" + std::to_wstring(rows.size());
     return false;
@@ -1037,7 +1146,8 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
   controls = Controls(hwnd);
   const VisibleControl* visualize = nullptr;
   for (const auto& c : controls) {
-    if (c.type == UIA_ButtonControlTypeId && Normalize021101(c.name).find(L"visualizar") != std::wstring::npos &&
+    if (c.type == UIA_ButtonControlTypeId &&
+        Normalize021101(c.name).find(L"visualizar") != std::wstring::npos &&
         (!visualize || c.rect.top > visualize->rect.top)) visualize = &c;
   }
   if (!visualize) { COUNT021101_ISSUE = L"visualizar-button"; return false; }

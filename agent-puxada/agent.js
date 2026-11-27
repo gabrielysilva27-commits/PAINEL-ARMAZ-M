@@ -41,6 +41,12 @@ function inventoryCountErrorCode(message) {
   if (/CONTAGEM de Estoque.*não está acessível|Pasta-base de contagens não acessível/i.test(raw)) return "PASTA_BASE_NAO_ACESSIVEL";
   if (/021101_EDGE_NATIVE_UNAVAILABLE|EDGE_NATIVE_ACTION_UNAVAILABLE/i.test(raw)) return "EDGE_NATIVO_INDISPONIVEL";
   if (/window-not-found|JANELA_021101_NAO_ENCONTRADA/i.test(raw)) return "JANELA_021101_NAO_ENCONTRADA";
+  const filterDetail = raw.match(/021101-filter-controls-not-found:(filter-fields:[A-Za-z0-9_=:-]+)/i);
+  if (filterDetail) {
+    const detail = filterDetail[1].replace(/^filter-fields:/i, "")
+      .replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "").toUpperCase();
+    return ("FILTROS_" + detail).slice(0, 75);
+  }
   if (/filter-fields|filter-controls-not-found/i.test(raw)) return "FILTROS_NAO_IDENTIFICADOS";
   if (/count-row-not-found/i.test(raw)) return "CONTAGEM_6_NAO_LOCALIZADA";
   if (/visualizar-button|visualizar-not-found/i.test(raw)) return "BOTAO_VISUALIZAR_NAO_LOCALIZADO";
