@@ -106,6 +106,7 @@ static void ProbeAccessibility(HWND hwnd, Scan* scan, const std::wstring& window
               std::to_wstring(rect.top-windowRect.top) + L":" +
               std::to_wstring(rect.right-rect.left) + L":" +
               std::to_wstring(rect.bottom-rect.top));
+          }
         }
         item->Release();
       }
