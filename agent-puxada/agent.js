@@ -64,9 +64,15 @@ function inventoryCountErrorCode(message) {
       .replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "").toUpperCase();
     return ("FILTROS_" + detail).slice(0, 75);
   }
-  if (/filter-fields|filter-controls-not-found/i.test(raw)) return "FILTROS_NAO_IDENTIFICADOS";
-  if (/count-row-not-found/i.test(raw)) return "CONTAGEM_6_NAO_LOCALIZADA";
+  // Fill021101 prefixes every failure with "021101-filter-controls-not-found:", including
+  // failures that happen after the filters were filled. Classify the real stage first.
+  if (/count-row-not-found/i.test(raw)) return "CONTAGEM_NAO_LOCALIZADA";
+  if (/count-column-header/i.test(raw)) return "CABECALHO_CONTAGEM_NAO_LOCALIZADO";
+  if (/count-checkbox-state-unavailable/i.test(raw)) return "CHECKBOX_CONTAGEM_INDISPONIVEL";
   if (/visualizar-button|visualizar-not-found/i.test(raw)) return "BOTAO_VISUALIZAR_NAO_LOCALIZADO";
+  if (/results-back|back-button/i.test(raw)) return "BOTAO_VOLTAR_FALHOU";
+  if (/021101-filter-controls-not-found:window/i.test(raw)) return "JANELA_021101_SEM_RETANGULO";
+  if (/filter-fields|filter-controls-not-found/i.test(raw)) return "FILTROS_NAO_IDENTIFICADOS";
   if (/csv-not-found/i.test(raw)) return "BOTAO_CSV_NAO_LOCALIZADO";
   if (/pdf-not-found/i.test(raw)) return "BOTAO_PDF_NAO_LOCALIZADO";
   if (/CSV_DOWNLOAD_TIMEOUT/i.test(raw)) return "DOWNLOAD_CSV_TIMEOUT";
