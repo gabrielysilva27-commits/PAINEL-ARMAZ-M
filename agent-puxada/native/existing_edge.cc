@@ -1175,7 +1175,7 @@ static std::vector<VisibleControl> FieldsFor021101AreaByGeometry(
   };
 
   const int depositY = (centerY(deposit[0]) + centerY(deposit[1])) / 2;
-  const int columnTolerance = 72;
+  const int columnTolerance = 105;
   struct Row {
     int centerY = 0;
     std::vector<VisibleControl> fields;
@@ -1183,14 +1183,14 @@ static std::vector<VisibleControl> FieldsFor021101AreaByGeometry(
   std::vector<Row> rows;
 
   for (const auto& c : controls) {
-    if (c.type != UIA_EditControlTypeId) continue;
+    if (!Is021101Input(c)) continue;
     if (sameRect(c, deposit[0]) || sameRect(c, deposit[1])) continue;
     const int y = centerY(c);
-    if (y <= depositY + 8 || y > depositY + 150) continue;
+    if (y <= depositY + 8 || y > depositY + 210) continue;
     if (c.rect.right-c.rect.left < 25 || c.rect.bottom-c.rect.top < 12) continue;
 
     auto row = std::find_if(rows.begin(), rows.end(),
-        [&](const Row& prior) { return std::abs(prior.centerY-y) <= 10; });
+        [&](const Row& prior) { return std::abs(prior.centerY-y) <= 16; });
     if (row == rows.end()) {
       rows.push_back({y, {c}});
     } else {
@@ -1314,8 +1314,7 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
           !hasAlias(L"setor") && !hasAlias(L"local") &&
           !hasAlias(L"zona") && !hasAlias(L"regiao") &&
           !hasAlias(L"corredor") && !hasAlias(L"prateleira") &&
-          !hasAlias(L"estante") && !hasAlias(L"endereco") &&
-          !hasAlias(L"posicao");
+          !hasAlias(L"estante");
       if (ruaLabels == 2 && noCompetingAlias) {
         if (ruaFields.size() == 2) {
           area = ruaFields;
@@ -1388,6 +1387,8 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
     const size_t aisleLabels = countAllowedName({L"corredor"});
     const size_t rackLabels = countAllowedName({L"prateleira", L"estante"});
     const size_t addressLabels = countAllowedName({L"endereco", L"posicao"});
+    const size_t enderecoLabels = countAllowedName({L"endereco"});
+    const size_t posicaoLabels = countAllowedName({L"posicao"});
     COUNT021101_ISSUE = L"filter-fields:warehouse=" + std::to_wstring(warehouse.size()) +
       L":deposit=" + std::to_wstring(deposit.size()) + L":area=" + std::to_wstring(area.size()) +
       L":edits=" + std::to_wstring(edits) + L":combos=" + std::to_wstring(combos) +
@@ -1403,7 +1404,9 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
       L":rack=" + std::to_wstring(rackLabels) +
       L":address=" + std::to_wstring(addressLabels) +
       L":streetfields=" + std::to_wstring(ruaFieldsFound) +
-      L":geometryarea=" + std::to_wstring(area.size());
+      L":geometryarea=" + std::to_wstring(area.size()) +
+      L":endereco=" + std::to_wstring(enderecoLabels) +
+      L":posicao=" + std::to_wstring(posicaoLabels);
     return false;
   }
 
