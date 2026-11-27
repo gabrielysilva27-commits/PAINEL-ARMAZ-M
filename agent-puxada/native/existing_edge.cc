@@ -600,50 +600,6 @@ static bool ReadString(napi_env env, napi_value object, const char* key, std::ws
   return true;
 }
 
-static bool ClickNamedButton(HWND hwnd, const std::wstring& expected, bool downloadBar, bool anyPosition = false) {
-  IUIAutomation* automation = nullptr;
-  IUIAutomationElement* root = nullptr;
-  IUIAutomationCondition* condition = nullptr;
-  IUIAutomationElementArray* elements = nullptr;
-  bool clicked = false;
-  if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
-      IID_IUIAutomation, reinterpret_cast<void**>(&automation))) && automation &&
-      SUCCEEDED(automation->ElementFromHandle(hwnd, &root)) && root &&
-      SUCCEEDED(automation->CreateTrueCondition(&condition)) && condition &&
-      SUCCEEDED(root->FindAll(TreeScope_Descendants, condition, &elements)) && elements) {
-    int count = 0;
-    elements->get_Length(&count);
-    RECT wr = {};
-    GetWindowRect(hwnd, &wr);
-    for (int i = 0; i < count && !clicked; ++i) {
-      IUIAutomationElement* item = nullptr;
-      if (FAILED(elements->GetElement(i, &item)) || !item) continue;
-      BSTR raw = nullptr;
-      CONTROLTYPEID type = 0;
-      RECT r = {};
-      if (SUCCEEDED(item->get_CurrentName(&raw)) && raw &&
-          SUCCEEDED(item->get_CurrentControlType(&type)) && type == UIA_ButtonControlTypeId &&
-          SUCCEEDED(item->get_CurrentBoundingRectangle(&r)) && r.right > r.left && r.bottom > r.top) {
-        std::wstring name(raw, SysStringLen(raw));
-        std::transform(name.begin(), name.end(), name.begin(), towlower);
-        // In Edge IE mode at 150% zoom the report toolbar is around y=220,
-        // below the old 200-pixel cutoff. Keep the search inside the upper
-        // report area so another CSV control cannot be clicked by accident.
-        if (name.find(expected) != std::wstring::npos &&
-            (anyPosition || (downloadBar ? r.top-wr.top > 500 : r.top-wr.top < 400)))
-          clicked = ClickPoint((r.left+r.right)/2, (r.top+r.bottom)/2);
-      }
-      if (raw) SysFreeString(raw);
-      item->Release();
-    }
-  }
-  if (elements) elements->Release();
-  if (condition) condition->Release();
-  if (root) root->Release();
-  if (automation) automation->Release();
-  return clicked;
-}
-
 struct VisibleControl { CONTROLTYPEID type; std::wstring name; RECT rect; long legacyRole=0; };
 static void AppendControlsFromRoot(HWND source, const RECT& boundary,
     std::vector<VisibleControl>* found) {
