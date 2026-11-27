@@ -1,5 +1,5 @@
 (() => {
- const STOCK_BUILD='20260920-16'; window.__stockBuild=STOCK_BUILD;
+ const STOCK_BUILD='20261127-export-stock-csv-1'; window.__stockBuild=STOCK_BUILD;
  const API='https://wzawtpadchtnvtclyghm.supabase.co/functions/v1/stock-api';
  const S={data:null,month:state.currentMonth,area:'Regulador',query:'',mode:'map',active:'',request:0,fefoCodes:'',origin:'Regulador',stockQuery:'',stockArea:''};
  let core;
@@ -15,9 +15,9 @@
  async function load(force=false){if(!force&&S.data?.month===S.month)return S.data;const request=++S.request,data=await call('get',{month:S.month,fallback_latest:true});if(request!==S.request)return null;S.data={...data,month:S.month};return S.data;}
  const meta=()=>S.data?.snapshot?`Base de ${dt(S.data.snapshot.as_of)} · Curva ABC ${S.month.split('-').reverse().join('/')} · última atualização do estoque`:'Nenhuma base importada';
  const matches=r=>!S.query||norm([r.address,r.sku_code,r.sku_name].join(' ')).includes(norm(S.query));
- const actions=()=>`<button class="outline-button" data-refresh>Atualizar consulta</button><button class="primary-button" data-import>Importar estoque</button>`;
+ const actions=()=>`<button class="outline-button" data-refresh>Atualizar consulta</button><button class="primary-button" data-import>Importar estoque</button><button class="outline-button" data-export-stock>Exportar estoque</button>`;
  const layoutActions=()=>`<button class="outline-button stock-layout-import" data-import>Importar estoque</button>`;
- function bindActions(root){root.querySelector('[data-refresh]')?.addEventListener('click',refresh);root.querySelector('[data-import]')?.addEventListener('click',openImport);}
+ function bindActions(root){root.querySelector('[data-refresh]')?.addEventListener('click',refresh);root.querySelector('[data-import]')?.addEventListener('click',openImport);root.querySelector('[data-export-stock]')?.addEventListener('click',exportStockBase);}
  async function refresh(){try{await load(true);renderActive();showToast('Consulta atualizada.');}catch(e){showToast(e.message,true);}}
  function hideViews(){document.querySelectorAll('main > .view').forEach(x=>x.classList.add('hidden'));document.querySelectorAll('.nav-link').forEach(x=>x.classList.remove('active'));$('sidebar')?.classList.remove('open');}
  function renderActive(){if(S.active==='layout')renderLayout();if(S.active==='fefo')renderFefo();if(S.active==='stock')renderStockBase();}
@@ -139,6 +139,30 @@
   root.querySelectorAll('[data-map]').forEach(b=>b.onclick=()=>{S.query=b.dataset.map;openArea(S.origin);});
  }
  function stockRows(){return (S.data?.rows||[]).filter(r=>r.source_sheet==='Base Ruas'&&(!S.stockArea||r.area===S.stockArea)&&(!S.stockQuery||norm([r.address,r.sku_code,r.sku_name,r.received_on,r.expires_on,r.lock].join(' ')).includes(norm(S.stockQuery))));}
+ function stockCsvCell(value,textual=false){
+  const raw=String(value??'');
+  const safe=textual&&/^[\\s]*[=+@-]/.test(raw)?"'"+raw:raw;
+  return '"'+safe.replace(/"/g,'""')+'"';
+ }
+ function exportStockBase(){
+  if(!S.data?.snapshot){showToast('Nenhuma base disponível para exportação.',true);return;}
+  const rows=stockRows();
+  if(!rows.length){showToast('Nenhum registro corresponde aos filtros atuais.',true);return;}
+  const headers=['Área','Rua','Código do produto','Descrição do produto','Recebimento','Validade','Dias até validade','Paletes','Trava-palete / motivo','Situação FEFO'];
+  const textColumns=new Set([0,1,2,3,4,5,8,9]);
+  const matrix=[headers,...rows.map(r=>[
+   areaName(r.area),r.address,r.sku_code||'',r.sku_name||'',dt(r.received_on),dt(r.expires_on),
+   r.days??'',r.pallets==null?'':nf.format(r.pallets),r.lock||'',r.fefo_status||''
+  ])];
+  const csv='\\uFEFF'+matrix.map(row=>row.map((value,index)=>stockCsvCell(value,textColumns.has(index))).join(';')).join('\\r\\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob),link=document.createElement('a'),now=new Date();
+  const date=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
+  const area=S.stockArea?'_'+norm(S.stockArea).replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''):'';
+  link.href=url;link.download='estoque-x-estoque'+area+'_'+date+'.csv';link.style.display='none';
+  document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  showToast('Exportação concluída: '+rows.length+' registro(s).');
+ }
  async function renderStockBase(){
   if(S.active!=='stock')return;const root=$('stockBaseView');if(!S.data?.snapshot){root.innerHTML='<p class="stock-empty">Nenhuma Base Ruas importada.</p>';return;}const rows=stockRows(),occupied=rows.filter(r=>r.sku_code),history=await call('history',{limit:50}).catch(()=>({items:[]}));
   root.innerHTML=`<div class="stock-module"><div class="stock-heading"><div><p class="eyebrow">BASE RUAS</p><h2>Estoque x Estoque</h2><p>${esc(meta())}</p></div><div class="stock-actions">${actions()}</div></div><div class="stock-toolbar"><label>Área<select id="baseArea"><option value="">Todas</option><option value="Regulador" ${S.stockArea==='Regulador'?'selected':''}>Estoque geral</option><option value="Marketplace" ${S.stockArea==='Marketplace'?'selected':''}>Marketplace</option></select></label><label class="stock-search">Pesquisar<input id="baseSearch" value="${esc(S.stockQuery)}" placeholder="Rua, código, produto, validade..."/></label></div><div class="stock-kpis"><article><small>Linhas da Base Ruas</small><strong>${rows.length}</strong></article><article><small>Com produto</small><strong>${occupied.length}</strong></article><article><small>Sem validade</small><strong>${occupied.filter(r=>!r.expires_on).length}</strong></article><article><small>Últimas alterações</small><strong>${history.items.length}</strong><span>rastreio de usuário ativo</span></article></div><section class="panel"><div class="panel-heading"><h2>Base Ruas</h2><small>${canEdit()?'Clique em Editar para alimentar a base pelo site.':'Visualização'}</small></div>${table(['Rua','Código / produto','Recebimento','Validade','Paletes','Trava-palete',''],rows.map(r=>`<tr><td><strong>${esc(r.address)}</strong><small>${esc(areaName(r.area))}</small></td><td><strong>${esc(r.sku_code||'Vazio')}</strong><small>${esc(r.sku_name||'')}</small></td><td>${dt(r.received_on)}</td><td>${dt(r.expires_on)}</td><td>${r.pallets==null?'—':nf.format(r.pallets)}</td><td>${esc(r.lock||'—')}</td><td>${canEdit()?`<button class="stock-link" data-edit="${esc(r.id)}">Editar</button>`:''}</td></tr>`))}</section><details class="panel stock-method"><summary>Histórico de alterações</summary><div class="stock-audit-list">${history.items.length?history.items.map(h=>{const u=h.actor_label||h.app_users?.display_name||h.app_users?.username||'Sistema';const action=h.action==='IMPORT'?'Importação':h.action==='BULK_EDIT'?'Edição em lote':h.action==='PUTAWAY'?'Guarda validada':h.action==='CONSUME'?'Consumo':'Edição';return `<div class="stock-audit-row"><strong>${esc(u)}</strong><span>${esc(action)} · ${h.changed_count} registro(s)</span><small>${new Date(h.created_at).toLocaleString('pt-BR')} · ${esc(h.note||'')}</small></div>`;}).join(''):'<p class="stock-empty">Nenhuma alteração registrada após a ativação do rastreio.</p>'}</div></details></div>`;
