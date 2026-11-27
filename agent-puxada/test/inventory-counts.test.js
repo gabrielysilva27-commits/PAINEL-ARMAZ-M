@@ -10,6 +10,7 @@ const base=fs.mkdtempSync(path.join(os.tmpdir(),"inventory-counts-"));
   assert.strictEqual(p.baseName,"26.11 - CONTAGEM DEVOLUÇÃO");
   assert.strictEqual(path.basename(p.csvFile),"26.11 - CONTAGEM DEVOLUÇÃO.csv.inf");
   assert.strictEqual(path.basename(p.pdfFile),"26.11 - CONTAGEM DEVOLUÇÃO.pdf");
+  assert.strictEqual(path.basename(p.completionFile),".agent-count-20261126.json");
   const created=inventory.ensureOutputDirectories(base,"2026-11-26",null);
   for(const d of [created.monthDirectory,created.depositDirectory,created.csvDirectory,created.pdfDirectory])assert.ok(fs.statSync(d).isDirectory());
   assert.strictEqual(inventory.ensureOutputDirectories(base,"2026-11-26",null).monthDirectory,created.monthDirectory);
@@ -42,11 +43,23 @@ const base=fs.mkdtempSync(path.join(os.tmpdir(),"inventory-counts-"));
   assert.ok(inventory.pairExists(created));
   assert.ok(fs.readFileSync(created.csvFile,"utf8").startsWith("sku;produto"));
   assert.ok(fs.readFileSync(created.pdfFile).subarray(0,5).toString("ascii")==="%PDF-");
+  const selection={date:"2026-11-26",depositId:"6",countId:"6",sector:"DEVOLUÇÃO",warehouse:"1",areaFrom:"1",areaTo:"1"};
+  assert.strictEqual(inventory.isVerifiedPair(created,selection),true);
 
   const repeated=await inventory.syncDaily({...opts,force:true});
   assert.strictEqual(repeated.status,"already-saved");
   assert.strictEqual(exports,1);
-  console.log("inventory-counts: FORCE + idle gate + idempotency OK");
+
+  // Files from older runs without a selection proof must be regenerated once.
+  fs.unlinkSync(created.completionFile);
+  const regenerated=await inventory.syncDaily({...opts,force:true});
+  assert.strictEqual(regenerated.status,"saved");
+  assert.strictEqual(exports,2);
+  assert.strictEqual(inventory.isVerifiedPair(created,selection),true);
+  const finalRepeat=await inventory.syncDaily({...opts,force:true});
+  assert.strictEqual(finalRepeat.status,"already-saved");
+  assert.strictEqual(exports,2);
+  console.log("inventory-counts: Devolução 6/6 selection marker + regeneration + idempotency OK");
  } finally {
   fs.rmSync(base,{recursive:true,force:true});
  }
