@@ -726,7 +726,7 @@ static bool ClickNamedButton(HWND hwnd, const std::wstring& expected,
     if (control.name.find(expected) == std::wstring::npos) continue;
     if (!anyPosition &&
         !(downloadBar ? r.top-wr.top > 500 : r.top-wr.top < 400)) continue;
-    if (ClickControl(control)) return true;
+    if (ClickPoint((r.left+r.right)/2, (r.top+r.bottom)/2)) return true;
   }
   return false;
 }
