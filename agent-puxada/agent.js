@@ -41,6 +41,11 @@ function inventoryCountErrorCode(message) {
   if (/CONTAGEM de Estoque.*não está acessível|Pasta-base de contagens não acessível/i.test(raw)) return "PASTA_BASE_NAO_ACESSIVEL";
   if (/021101_EDGE_NATIVE_UNAVAILABLE|EDGE_NATIVE_ACTION_UNAVAILABLE/i.test(raw)) return "EDGE_NATIVO_INDISPONIVEL";
   if (/window-not-found|JANELA_021101_NAO_ENCONTRADA/i.test(raw)) return "JANELA_021101_NAO_ENCONTRADA";
+  if (/count-selection-mismatch|count-selection-total|count-checkbox-state-unavailable|count-checkbox-readback-unavailable/i.test(raw)) return "CONTAGEM_6_NAO_MARCADA";
+  if (/count-row-ambiguous/i.test(raw)) return "CONTAGEM_6_AMBIGUA";
+  if (/count-column-ambiguous|count-column-header-or-rows/i.test(raw)) return "GRADE_CONTAGEM_NAO_RECONHECIDA";
+  if (/visualizar-click-failed/i.test(raw)) return "CLIQUE_VISUALIZAR_FALHOU";
+  if (/visualizar-results-timeout/i.test(raw)) return "RESULTADO_NAO_CARREGOU_APOS_VISUALIZAR";
   const overlap = raw.match(/filter-fields-overlap:(\d+):(\d+)/i);
   if (overlap) return "FILTER_OVERLAP_" + overlap[1] + "_" + overlap[2];
   if (/filter-fields-overlap/i.test(raw)) return "FILTER_FIELDS_OVERLAP";
