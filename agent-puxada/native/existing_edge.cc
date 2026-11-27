@@ -1153,6 +1153,95 @@ static std::vector<VisibleControl> FieldsFor021101Key(
   for (const auto& match : selected) result.push_back(match.field);
   return result;
 }
+// Resolve the Area Initial/Final pair when the legacy MSHTML tree
+// exposes its labels as "Rua" but does not provide a reliable label-to-edit
+// association. The two fields must occupy the same two horizontal columns as
+// the already-resolved Deposit Initial/Final pair, on the immediately lower
+// input row. No arbitrary third/fourth edit is accepted.
+static std::vector<VisibleControl> FieldsFor021101AreaByGeometry(
+    const std::vector<VisibleControl>& controls,
+    const std::vector<VisibleControl>& deposit,
+    const RECT& window) {
+  if (deposit.size() != 2) return {};
+  auto centerX = [](const VisibleControl& c) {
+    return (c.rect.left + c.rect.right) / 2;
+  };
+  auto centerY = [](const VisibleControl& c) {
+    return (c.rect.top + c.rect.bottom) / 2;
+  };
+  auto sameRect = [](const VisibleControl& a, const VisibleControl& b) {
+    return a.rect.left == b.rect.left && a.rect.top == b.rect.top &&
+        a.rect.right == b.rect.right && a.rect.bottom == b.rect.bottom;
+  };
+
+  const int depositY = (centerY(deposit[0]) + centerY(deposit[1])) / 2;
+  const int columnTolerance = 72;
+  struct Row {
+    int centerY = 0;
+    std::vector<VisibleControl> fields;
+  };
+  std::vector<Row> rows;
+
+  for (const auto& c : controls) {
+    if (c.type != UIA_EditControlTypeId) continue;
+    if (sameRect(c, deposit[0]) || sameRect(c, deposit[1])) continue;
+    const int y = centerY(c);
+    if (y <= depositY + 8 || y > depositY + 150) continue;
+    if (c.rect.right-c.rect.left < 25 || c.rect.bottom-c.rect.top < 12) continue;
+
+    auto row = std::find_if(rows.begin(), rows.end(),
+        [&](const Row& prior) { return std::abs(prior.centerY-y) <= 10; });
+    if (row == rows.end()) {
+      rows.push_back({y, {c}});
+    } else {
+      row->fields.push_back(c);
+      row->centerY = (row->centerY + y) / 2;
+    }
+  }
+
+  int bestScore = 100000000;
+  int bestRowY = 100000000;
+  std::vector<VisibleControl> best;
+  for (const auto& row : rows) {
+    const VisibleControl* left = nullptr;
+    const VisibleControl* right = nullptr;
+    int leftScore = 100000;
+    int rightScore = 100000;
+    for (const auto& c : row.fields) {
+      const int width = c.rect.right-c.rect.left;
+      const int leftWidth = deposit[0].rect.right-deposit[0].rect.left;
+      const int rightWidth = deposit[1].rect.right-deposit[1].rect.left;
+      const int ldx = std::abs(centerX(c)-centerX(deposit[0]));
+      const int rdx = std::abs(centerX(c)-centerX(deposit[1]));
+      const int lScore = ldx + std::abs(width-leftWidth)/2;
+      const int rScore = rdx + std::abs(width-rightWidth)/2;
+      if (ldx <= columnTolerance && lScore < leftScore) {
+        left = &c; leftScore = lScore;
+      }
+      if (rdx <= columnTolerance && rScore < rightScore) {
+        right = &c; rightScore = rScore;
+      }
+    }
+    if (!left || !right || sameRect(*left, *right)) continue;
+
+    // A duplicate or competing edit in either column makes the row ambiguous.
+    // Require the chosen control to be clearly closer to its own endpoint.
+    const int leftToRight = std::abs(centerX(*left)-centerX(deposit[1]));
+    const int rightToLeft = std::abs(centerX(*right)-centerX(deposit[0]));
+    if (leftToRight <= leftScore || rightToLeft <= rightScore) continue;
+
+    const int score = leftScore + rightScore;
+    if (score < bestScore || (score == bestScore && row.centerY < bestRowY)) {
+      bestScore = score;
+      bestRowY = row.centerY;
+      best = {*left, *right};
+    }
+  }
+  if (best.size() != 2) return {};
+  if (centerX(best[0]) > centerX(best[1])) std::swap(best[0], best[1]);
+  return best;
+}
+
 static bool LooksLike021101Form(HWND hwnd) {
   const auto controls = Controls(hwnd);
   bool warehouse = false, deposit = false, area = false;
@@ -1224,8 +1313,16 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
           !hasAlias(L"corredor") && !hasAlias(L"prateleira") &&
           !hasAlias(L"estante") && !hasAlias(L"endereco") &&
           !hasAlias(L"posicao");
-      if (ruaLabels == 2 && ruaFields.size() == 2 && noCompetingAlias)
-        area = ruaFields;
+      if (ruaLabels == 2 && noCompetingAlias) {
+        if (ruaFields.size() == 2) {
+          area = ruaFields;
+        } else {
+          // Label association can fail when each "Rua" caption is exposed
+          // separately from its edit. Anchor the two endpoints to the exact
+          // Initial/Final columns already identified for Deposit.
+          area = FieldsFor021101AreaByGeometry(controls, deposit, window);
+        }
+      }
     }
     edits=combos=0;
     bool hasBack=false, hasVisualize=false, hasCountHeader=false;
@@ -1301,7 +1398,9 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
       L":street=" + std::to_wstring(streetLabels) +
       L":aisle=" + std::to_wstring(aisleLabels) +
       L":rack=" + std::to_wstring(rackLabels) +
-      L":address=" + std::to_wstring(addressLabels);
+      L":address=" + std::to_wstring(addressLabels) +
+      L":streetfields=" + std::to_wstring(ruaFields.size()) +
+      L":geometryarea=" + std::to_wstring(area.size());
     return false;
   }
 
