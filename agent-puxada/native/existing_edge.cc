@@ -1266,6 +1266,9 @@ static bool LooksLike021101Form(HWND hwnd) {
 }
 
 static thread_local std::wstring COUNT021101_ISSUE;
+// Defined after OCPVisual: reads a legacy checkbox by pixels when UI Automation
+// does not expose its toggle state, and clicks it only if it differs from the target.
+static bool Visual021101Select(HWND hwnd, const VisibleControl& box, bool selected);
 static bool Fill021101(HWND hwnd, const std::wstring* values) {
   COUNT021101_ISSUE = L"window";
   RECT window = {};
@@ -1479,7 +1482,11 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
     return false;
   }
   for (const auto& row : rows) {
-    if (!SelectOCPOption(row.checkbox, row.id == desiredCount)) {
+    const bool wanted = row.id == desiredCount;
+    // UI Automation first; the pixel fallback covers IE-mode checkboxes whose
+    // state is not exposed. Neither path ever toggles a box blindly.
+    if (!SelectOCPOption(row.checkbox, wanted) &&
+        !Visual021101Select(hwnd, row.checkbox, wanted)) {
       COUNT021101_ISSUE = L"count-checkbox-state-unavailable:" + row.id;
       return false;
     }
@@ -1552,6 +1559,34 @@ struct OCPVisual {
     return count>=15;
   }
 };
+// A classic checkbox shows a dark check mark inside a light box. Sample only the
+// interior (3px inside the border) and report "readable" only when the box has a
+// plausible size and every sampled pixel was captured.
+static bool Visual021101Ticked(const OCPVisual& view,const VisibleControl& box,bool* readable){
+  *readable=false;
+  const int w=box.rect.right-box.rect.left,h=box.rect.bottom-box.rect.top;
+  if(w<8||h<8||w>40||h>40)return false;
+  int dark=0,total=0;
+  for(int x=box.rect.left+3;x<box.rect.right-3;++x)
+    for(int y=box.rect.top+3;y<box.rect.bottom-3;++y){
+      const auto p=view.pixel(x,y);if(!p)return false;
+      ++total;if(int(p[0])+int(p[1])+int(p[2])<3*110)++dark;
+    }
+  if(total<16)return false;
+  *readable=true;return dark>=6;
+}
+static bool Visual021101Select(HWND hwnd,const VisibleControl& box,bool selected){
+  for(int attempt=0;attempt<2;++attempt){
+    const OCPVisual view(hwnd);bool readable=false;
+    const bool ticked=Visual021101Ticked(view,box,&readable);
+    if(!readable)return false;
+    if(ticked==selected)return true;
+    if(attempt==1)return false;
+    if(!ClickControl(box))return false;
+    Sleep(250);
+  }
+  return false;
+}
 static bool OCPVisualOption(const OCPVisual& view,const std::vector<VisibleControl>& controls,const wchar_t* name,bool isRadio,bool selected=true){
   for(const auto& c:controls){
     std::wstring label=c.name;
