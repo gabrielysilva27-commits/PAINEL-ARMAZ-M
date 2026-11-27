@@ -141,7 +141,7 @@
  function stockRows(){return (S.data?.rows||[]).filter(r=>r.source_sheet==='Base Ruas'&&(!S.stockArea||r.area===S.stockArea)&&(!S.stockQuery||norm([r.address,r.sku_code,r.sku_name,r.received_on,r.expires_on,r.lock].join(' ')).includes(norm(S.stockQuery))));}
  function stockCsvCell(value,textual=false){
   const raw=String(value??'');
-  const safe=textual&&/^[\\s]*[=+@-]/.test(raw)?"'"+raw:raw;
+  const safe=textual&&/^[ \t\r\n]*[=+@-]/.test(raw)?"'"+raw:raw;
   return '"'+safe.replace(/"/g,'""')+'"';
  }
  function exportStockBase(){
@@ -154,7 +154,7 @@
    areaName(r.area),r.address,r.sku_code||'',r.sku_name||'',dt(r.received_on),dt(r.expires_on),
    r.days??'',r.pallets==null?'':nf.format(r.pallets),r.lock||'',r.fefo_status||''
   ])];
-  const csv='\\uFEFF'+matrix.map(row=>row.map((value,index)=>stockCsvCell(value,textColumns.has(index))).join(';')).join('\\r\\n');
+  const csv='\uFEFF'+matrix.map(row=>row.map((value,index)=>stockCsvCell(value,textColumns.has(index))).join(';')).join('\r\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob),link=document.createElement('a'),now=new Date();
   const date=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
