@@ -475,8 +475,13 @@ static BOOL CALLBACK Find021101Window(HWND hwnd, LPARAM raw) {
   // report from its live MSHTML child rather than relying on the frame title.
   const bool documentMatch = Has021101PromaxDocument(hwnd);
   const bool foreground = HasForeground(hwnd);
+  bool automated=false,hasPromaxTab=false;
+  int tabItems=0;
+  InspectEdgeWindow(hwnd,&automated,&tabItems,&hasPromaxTab);
+  const bool titleLooksPromax=name.find(L"promaxweb")!=std::wstring::npos;
+  const bool activePromaxWindow=foreground&&!automated&&(titleLooksPromax||hasPromaxTab);
   const bool formMatch = !titleMatch && !documentMatch &&
-      foreground && LooksLike021101Form(hwnd);
+      activePromaxWindow && LooksLike021101Form(hwnd);
   if (titleMatch && !foreground && !LooksLike021101Form(hwnd)) return TRUE;
   if (titleMatch || documentMatch || formMatch) {
     HWND* chosen = reinterpret_cast<HWND*>(raw);
@@ -1350,13 +1355,12 @@ static bool LooksLike021101Form(HWND hwnd) {
     if (c.type == UIA_ButtonControlTypeId && name.find(L"visualizar") != std::wstring::npos) visualize = true;
     if (Is021101Input(c)) ++inputs;
   }
-  // Labels are exposed as Text, Group or Custom controls depending on the
-  // Promax/Edge build; do not require one exact UIA role or screen quadrant.
-  // The Area label can be missing from Edge's accessibility tree while
-  // its two fields are still present. Warehouse + Deposit + five editable
-  // controls uniquely identifies the incomplete 02.11.01 filter form.
-  return (warehouse && deposit && inputs >= 5) ||
-      (count && visualize) || ((warehouse || deposit || area) && inputs >= 4 && visualize);
+  // Generic Promax home pages can contain isolated warehouse/deposit
+  // labels and navigation buttons. Use the fallback only when the active
+  // Promax tab exposes the complete five-input filter form and Visualizar.
+  // Explicit report titles and the 02.11.01 MSHTML endpoint remain stronger
+  // identifiers and do not depend on this heuristic.
+  return warehouse && deposit && inputs >= 5 && visualize;
 }
 
 static thread_local std::wstring COUNT021101_ISSUE;
