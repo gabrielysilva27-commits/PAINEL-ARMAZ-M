@@ -471,18 +471,18 @@ static BOOL CALLBACK Find021101Window(HWND hwnd, LPARAM raw) {
       name.find(L"conciliacao da contagem") != std::wstring::npos ||
       name.find(L"conciliação da contagem") != std::wstring::npos ||
       name.find(L"02.11.01") != std::wstring::npos;
-  // Edge can keep the IE-mode report in a generic browser frame. Confirm the
-  // report from its live MSHTML child rather than relying on the frame title.
-  const bool documentMatch = Has021101PromaxDocument(hwnd);
-  const bool foreground = HasForeground(hwnd);
-  bool automated=false,hasPromaxTab=false;
-  int tabItems=0;
-  InspectEdgeWindow(hwnd,&automated,&tabItems,&hasPromaxTab);
+  // Prefer cheap, explicit window identity checks while polling. The full
+  // Edge accessibility tree can be slow to enumerate and this callback is
+  // called repeatedly while waiting for the 02.11.01 report to open.
+  // A title match is definitive; MSHTML inspection is reserved for legacy
+  // IEFrame windows, not every Chromium frame.
   const bool titleLooksPromax=name.find(L"promaxweb")!=std::wstring::npos;
-  const bool activePromaxWindow=foreground&&!automated&&(titleLooksPromax||hasPromaxTab);
+  const bool foreground = HasForeground(hwnd);
+  const bool documentMatch = windowClass==L"IEFrame"
+      ? Has021101PromaxDocument(hwnd) : false;
+  if(!titleMatch&&!documentMatch&&(!foreground||!titleLooksPromax))return TRUE;
   const bool formMatch = !titleMatch && !documentMatch &&
-      activePromaxWindow && LooksLike021101Form(hwnd);
-  if (titleMatch && !foreground && !LooksLike021101Form(hwnd)) return TRUE;
+      foreground && titleLooksPromax && LooksLike021101Form(hwnd);
   if (titleMatch || documentMatch || formMatch) {
     HWND* chosen = reinterpret_cast<HWND*>(raw);
     if (!*chosen || foreground ||
