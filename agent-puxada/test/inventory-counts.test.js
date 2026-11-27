@@ -11,6 +11,10 @@ assert.strictEqual(
  diagnostics.inventoryCountErrorCode("EDGE_NATIVE_021101-filter-controls-not-found:count-column-ambiguous:h=2:n=8:u=8:c=8:a=8:m=16"),
  "GRADE_H2N8U8C8A8M16"
 );
+assert.strictEqual(
+ diagnostics.inventoryCountErrorCode("021101_PDF_DOWNLOAD_TIMEOUT: no-dialog; hotkey=alt-s-sent; recent=0; partial=0"),
+ "DOWNLOAD_PDF_TIMEOUT_NO_DIALOG_ALT_S_SENT_N0_P0"
+);
 
 (async function(){
  try{
