@@ -1,7 +1,17 @@
 "use strict";
 const assert=require("assert"),fs=require("fs"),os=require("os"),path=require("path");
 const inventory=require("../lib/inventory-counts");
+const diagnostics=require("../lib/inventory-counts-diagnostics");
 const base=fs.mkdtempSync(path.join(os.tmpdir(),"inventory-counts-"));
+assert.strictEqual(
+ diagnostics.inventoryCountErrorCode("EDGE_NATIVE_021101-filter-controls-not-found:count-column-header-or-rows:h=1:n=8:u=0:c=8:a=0:m=0"),
+ "GRADE_H1N8U0C8A0M0"
+);
+assert.strictEqual(
+ diagnostics.inventoryCountErrorCode("EDGE_NATIVE_021101-filter-controls-not-found:count-column-ambiguous:h=2:n=8:u=8:c=8:a=8:m=16"),
+ "GRADE_H2N8U8C8A8M16"
+);
+
 (async function(){
  try{
   const now=new Date("2026-11-26T15:00:00.000Z");
