@@ -1279,6 +1279,7 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
   std::vector<VisibleControl> controls;
   std::vector<VisibleControl> warehouse, deposit, area;
   size_t warehouseLabels=0, depositLabels=0, areaLabels=0;
+  size_t ruaFieldsFound=0;
   size_t edits=0, combos=0;
   bool returnedFromResults = false;
   bool filtersReady = false;
@@ -1290,6 +1291,7 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
   for (int attempt=0; attempt<40; ++attempt) {
     controls = Controls(hwnd);
     warehouseLabels=depositLabels=areaLabels=0;
+    ruaFieldsFound=0;
     warehouse = FieldsFor021101Key(controls, L"armazem", 1, &warehouseLabels);
     deposit = FieldsFor021101Key(controls, L"deposito", 2, &depositLabels);
     area = FieldsFor021101Key(controls, L"area", 2, &areaLabels);
@@ -1301,6 +1303,7 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
         warehouse.size() == 1 && deposit.size() == 2) {
       size_t ruaLabels = 0;
       const auto ruaFields = FieldsFor021101Key(controls, L"rua", 2, &ruaLabels);
+      ruaFieldsFound = ruaFields.size();
       auto hasAlias = [&](const wchar_t* key) {
         return std::any_of(controls.begin(), controls.end(), [&](const VisibleControl& control) {
           if (!Is021101Label(control) && !Is021101Input(control)) return false;
@@ -1399,7 +1402,7 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
       L":aisle=" + std::to_wstring(aisleLabels) +
       L":rack=" + std::to_wstring(rackLabels) +
       L":address=" + std::to_wstring(addressLabels) +
-      L":streetfields=" + std::to_wstring(ruaFields.size()) +
+      L":streetfields=" + std::to_wstring(ruaFieldsFound) +
       L":geometryarea=" + std::to_wstring(area.size());
     return false;
   }
