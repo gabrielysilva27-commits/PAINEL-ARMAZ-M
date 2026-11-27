@@ -1035,38 +1035,79 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
   COUNT021101_ISSUE = L"window";
   RECT window = {};
   if (!GetWindowRect(hwnd, &window)) return false;
-  auto controls = Controls(hwnd);
-  const VisibleControl* back = nullptr;
-  bool hasVisualize = false;
-  for (const auto& c : controls) {
-    const std::wstring name = Normalize021101(c.name);
-    if (c.type == UIA_ButtonControlTypeId && name.find(L"visualizar") != std::wstring::npos) hasVisualize = true;
-    if (c.type == UIA_ButtonControlTypeId && name == L"voltar") back = &c;
-  }
-  if (!hasVisualize && back) {
-    if (!ClickControl(*back)) { COUNT021101_ISSUE = L"back-button"; return false; }
-    Sleep(1400);
+
+  auto isCheck = [](const VisibleControl& c) {
+    return c.type == UIA_CheckBoxControlTypeId || c.type == UIA_RadioButtonControlTypeId ||
+      c.legacyRole == ROLE_SYSTEM_CHECKBUTTON || c.legacyRole == ROLE_SYSTEM_RADIOBUTTON;
+  };
+
+  std::vector<VisibleControl> controls;
+  std::vector<VisibleControl> warehouse, deposit, area;
+  size_t warehouseLabels=0, depositLabels=0, areaLabels=0;
+  size_t edits=0, combos=0;
+  bool returnedFromResults = false;
+  bool filtersReady = false;
+
+  // A title can be visible before the Promax form has finished rendering.
+  // Poll the same window until the complete filter set is accessible.
+  // "Voltar" is clicked only when a count-results grid is actually detected;
+  // its mere presence is not proof that the browser is on a results page.
+  for (int attempt=0; attempt<40; ++attempt) {
     controls = Controls(hwnd);
+    warehouseLabels=depositLabels=areaLabels=0;
+    warehouse = FieldsFor021101Key(controls, L"armazem", 1, &warehouseLabels);
+    deposit = FieldsFor021101Key(controls, L"deposito", 2, &depositLabels);
+    area = FieldsFor021101Key(controls, L"area", 2, &areaLabels);
+    edits=combos=0;
+    bool hasBack=false, hasVisualize=false, hasCountHeader=false;
+    int numericRows=0, checkboxes=0;
+    const VisibleControl* backButton = nullptr;
+    for (const auto& c : controls) {
+      if (c.type == UIA_EditControlTypeId) ++edits;
+      if (c.type == UIA_ComboBoxControlTypeId) ++combos;
+      const std::wstring name = Normalize021101(c.name);
+      if (c.type == UIA_ButtonControlTypeId && name == L"voltar") {
+        hasBack = true;
+        backButton = &c;
+      }
+      if (c.type == UIA_ButtonControlTypeId && name.find(L"visualizar") != std::wstring::npos)
+        hasVisualize = true;
+      if (name == L"contagem" && !Is021101Input(c) && c.type != UIA_ButtonControlTypeId)
+        hasCountHeader = true;
+      if (isCheck(c)) ++checkboxes;
+      if (!Is021101Input(c) && c.type != UIA_ButtonControlTypeId && !isCheck(c) &&
+          !name.empty() && name.size() <= 3 &&
+          std::all_of(name.begin(), name.end(), [](wchar_t ch) { return ch >= L'0' && ch <= L'9'; }))
+        ++numericRows;
+    }
+
+    if (warehouse.size() == 1 && deposit.size() == 2 && area.size() == 2) {
+      filtersReady = true;
+      break;
+    }
+
+    const bool countResultsVisible = hasCountHeader && numericRows > 0 && checkboxes > 0;
+    if (!returnedFromResults && hasBack && !hasVisualize && countResultsVisible && backButton) {
+      COUNT021101_ISSUE = L"results-back";
+      if (!ClickControl(*backButton)) { COUNT021101_ISSUE = L"back-button"; return false; }
+      returnedFromResults = true;
+      Sleep(700);
+      continue;
+    }
+    if (attempt < 39) Sleep(400);
   }
 
-  size_t warehouseLabels=0, depositLabels=0, areaLabels=0;
-  auto warehouse = FieldsFor021101Key(controls, L"armazem", 1, &warehouseLabels);
-  auto deposit = FieldsFor021101Key(controls, L"deposito", 2, &depositLabels);
-  auto area = FieldsFor021101Key(controls, L"area", 2, &areaLabels);
-  size_t edits=0, combos=0;
-  for (const auto& c : controls) {
-    if (c.type == UIA_EditControlTypeId) ++edits;
-    if (c.type == UIA_ComboBoxControlTypeId) ++combos;
-  }
-  if (warehouse.size() != 1 || deposit.size() != 2 || area.size() != 2) {
+  if (!filtersReady) {
     COUNT021101_ISSUE = L"filter-fields:warehouse=" + std::to_wstring(warehouse.size()) +
       L":deposit=" + std::to_wstring(deposit.size()) + L":area=" + std::to_wstring(area.size()) +
       L":edits=" + std::to_wstring(edits) + L":combos=" + std::to_wstring(combos) +
       L":wlabels=" + std::to_wstring(warehouseLabels) +
       L":dlabels=" + std::to_wstring(depositLabels) +
-      L":alabels=" + std::to_wstring(areaLabels);
+      L":alabels=" + std::to_wstring(areaLabels) +
+      L":returned=" + (returnedFromResults ? L"1" : L"0");
     return false;
   }
+
   std::vector<VisibleControl> allFields = warehouse;
   allFields.insert(allFields.end(), deposit.begin(), deposit.end());
   allFields.insert(allFields.end(), area.begin(), area.end());
@@ -1106,10 +1147,6 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
 
   struct CountRow { std::wstring id; VisibleControl checkbox; };
   std::vector<CountRow> rows;
-  auto isCheck = [](const VisibleControl& c) {
-    return c.type == UIA_CheckBoxControlTypeId || c.type == UIA_RadioButtonControlTypeId ||
-      c.legacyRole == ROLE_SYSTEM_CHECKBUTTON || c.legacyRole == ROLE_SYSTEM_RADIOBUTTON;
-  };
   for (const auto& label : controls) {
     if (Is021101Input(label) || label.type == UIA_ButtonControlTypeId || isCheck(label)) continue;
     const std::wstring id = Normalize021101(label.name);

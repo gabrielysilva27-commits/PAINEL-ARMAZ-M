@@ -41,6 +41,12 @@ function inventoryCountErrorCode(message) {
   if (/CONTAGEM de Estoque.*não está acessível|Pasta-base de contagens não acessível/i.test(raw)) return "PASTA_BASE_NAO_ACESSIVEL";
   if (/021101_EDGE_NATIVE_UNAVAILABLE|EDGE_NATIVE_ACTION_UNAVAILABLE/i.test(raw)) return "EDGE_NATIVO_INDISPONIVEL";
   if (/window-not-found|JANELA_021101_NAO_ENCONTRADA/i.test(raw)) return "JANELA_021101_NAO_ENCONTRADA";
+  const filterCounts = raw.match(/filter-fields:warehouse=(\d+):deposit=(\d+):area=(\d+):edits=(\d+):combos=(\d+):wlabels=(\d+):dlabels=(\d+):alabels=(\d+):returned=(\d+)/i);
+  if (filterCounts) {
+    const [,w,d,a,e,c,wl,dl,al,rb] = filterCounts;
+    return "FILTROS_W" + w + "_D" + d + "_A" + a + "_E" + e + "_C" + c +
+      "_WL" + wl + "_DL" + dl + "_AL" + al + "_RB" + rb;
+  }
   const filterDetail = raw.match(/021101-filter-controls-not-found:(filter-fields:[A-Za-z0-9_=:-]+)/i);
   if (filterDetail) {
     const detail = filterDetail[1].replace(/^filter-fields:/i, "")
