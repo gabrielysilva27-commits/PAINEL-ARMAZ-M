@@ -135,6 +135,74 @@ static bool IsPromax(IHTMLDocument2* document) {
          (url.size() == prefix.size() || url[prefix.size()] == L'/');
 }
 
+// Edge IE mode may not expose IHTMLDocument2 through OBJID_NATIVEOM.
+// Try MSHTML's documented WM_HTML_GETOBJECT bridge before declaring the
+// legacy page inaccessible.
+static IHTMLDocument2* GetHtmlDocumentFromWindow(HWND child) {
+  IHTMLDocument2* document = nullptr;
+  HRESULT hr = AccessibleObjectFromWindow(child, OBJID_NATIVEOM,
+      IID_IHTMLDocument2, reinterpret_cast<void**>(&document));
+  if (SUCCEEDED(hr) && document) return document;
+
+  const UINT message = RegisterWindowMessageW(L"WM_HTML_GETOBJECT");
+  if (!message) return nullptr;
+  DWORD_PTR response = 0;
+  if (!SendMessageTimeoutW(child, message, 0, 0,
+      SMTO_ABORTIFHUNG | SMTO_BLOCK, 1200, &response) || response == 0)
+    return nullptr;
+
+  document = nullptr;
+  hr = ObjectFromLresult(static_cast<LRESULT>(response), IID_IHTMLDocument2,
+      0, reinterpret_cast<void**>(&document));
+  return SUCCEEDED(hr) ? document : nullptr;
+}
+
+// Read the live document locally to distinguish the report from Edge's
+// generic browser frame. Page URL, title and entered data are never telemetry.
+static bool Is021101PromaxDocument(HWND child) {
+  if (ClassName(child) != L"Internet Explorer_Server") return false;
+  IHTMLDocument2* document = GetHtmlDocumentFromWindow(child);
+  if (!document) return false;
+
+  bool matched = false;
+  if (IsPromax(document)) {
+    BSTR rawTitle = nullptr;
+    BSTR rawUrl = nullptr;
+    std::wstring title, url;
+    if (SUCCEEDED(document->get_title(&rawTitle)) && rawTitle)
+      title.assign(rawTitle, SysStringLen(rawTitle));
+    if (SUCCEEDED(document->get_URL(&rawUrl)) && rawUrl)
+      url.assign(rawUrl, SysStringLen(rawUrl));
+    if (rawTitle) SysFreeString(rawTitle);
+    if (rawUrl) SysFreeString(rawUrl);
+    std::transform(title.begin(), title.end(), title.begin(), towlower);
+    std::transform(url.begin(), url.end(), url.begin(), towlower);
+    const bool countTitle =
+        title.find(L"conciliacao da contagem") != std::wstring::npos ||
+        title.find(L"conciliação da contagem") != std::wstring::npos;
+    const bool countEndpoint =
+        url.find(L"/pp00100.exe") != std::wstring::npos &&
+        url.find(L"ppopcao=7") != std::wstring::npos;
+    matched = countTitle || countEndpoint;
+  }
+  document->Release();
+  return matched;
+}
+
+struct Find021101DocumentState { bool found = false; };
+static BOOL CALLBACK Find021101DocumentChild(HWND child, LPARAM raw) {
+  if (Is021101PromaxDocument(child)) {
+    reinterpret_cast<Find021101DocumentState*>(raw)->found = true;
+    return FALSE;
+  }
+  return TRUE;
+}
+static bool Has021101PromaxDocument(HWND hwnd) {
+  Find021101DocumentState state;
+  EnumChildWindows(hwnd, Find021101DocumentChild, reinterpret_cast<LPARAM>(&state));
+  return state.found;
+}
+
 static void InspectEdgeWindow(HWND hwnd, bool* automated, int* tabItems, bool* hasPromaxTab) {
   *automated = false;
   *tabItems = 0;
@@ -184,10 +252,8 @@ static BOOL CALLBACK VisitChild(HWND hwnd, LPARAM state) {
   if (ClassName(hwnd) != L"Internet Explorer_Server") return TRUE;
   Scan* scan = reinterpret_cast<Scan*>(state);
   bool accessible = false, promax = false;
-  IHTMLDocument2* document = nullptr;
-  const HRESULT hr = AccessibleObjectFromWindow(hwnd, OBJID_NATIVEOM,
-      IID_IHTMLDocument2, reinterpret_cast<void**>(&document));
-  if (SUCCEEDED(hr) && document) {
+  IHTMLDocument2* document = GetHtmlDocumentFromWindow(hwnd);
+  if (document) {
     accessible = true;
     promax = IsPromax(document);
     document->Release();
@@ -197,7 +263,10 @@ static BOOL CALLBACK VisitChild(HWND hwnd, LPARAM state) {
 }
 
 static BOOL CALLBACK VisitWindow(HWND hwnd, LPARAM state) {
-  if (ClassName(hwnd) != L"Chrome_WidgetWin_1") return TRUE;
+  const std::wstring windowClass = ClassName(hwnd);
+  const bool chromiumWindow = windowClass == L"Chrome_WidgetWin_1";
+  const bool legacyIeFrame = windowClass == L"IEFrame";
+  if (!chromiumWindow && !legacyIeFrame) return TRUE;
   Scan* scan = reinterpret_cast<Scan*>(state);
   wchar_t rawTitle[512] = {};
   GetWindowTextW(hwnd, rawTitle, 512);
@@ -207,7 +276,8 @@ static BOOL CALLBACK VisitWindow(HWND hwnd, LPARAM state) {
       title.find(L"estoque") != std::wstring::npos;
   const bool countReport = title.find(L"02.11.01") != std::wstring::npos ||
       title.find(L"conciliacao da contagem") != std::wstring::npos ||
-      title.find(L"conciliação da contagem") != std::wstring::npos;
+      title.find(L"conciliação da contagem") != std::wstring::npos ||
+      Has021101PromaxDocument(hwnd);
   if (countReport) {
     ++scan->count021101Windows;
     ProbeAccessibility(hwnd, scan, L"Q" + std::to_wstring(scan->count021101Windows), true);
@@ -226,6 +296,10 @@ static BOOL CALLBACK VisitWindow(HWND hwnd, LPARAM state) {
   scan->edgeWindow = true;
   EnumChildWindows(hwnd, VisitChild, state);
   scan->edgeWindow = prior;
+  // IEFrame windows are classified by their own MSHTML child document.
+  // Chromium tab inspection below is not applicable to the legacy IE frame.
+  if (!chromiumWindow) return TRUE;
+
   const bool titleLooksPromax = title.find(L"promaxweb") != std::wstring::npos;
   bool automated = false;
   bool hasPromaxTab = false;
@@ -386,7 +460,9 @@ static bool HasForeground(HWND hwnd) {
 
 static bool LooksLike021101Form(HWND hwnd);
 static BOOL CALLBACK Find021101Window(HWND hwnd, LPARAM raw) {
-  if (!IsWindowVisible(hwnd) || ClassName(hwnd) != L"Chrome_WidgetWin_1") return TRUE;
+  if (!IsWindowVisible(hwnd)) return TRUE;
+  const std::wstring windowClass = ClassName(hwnd);
+  if (windowClass != L"Chrome_WidgetWin_1" && windowClass != L"IEFrame") return TRUE;
   wchar_t title[512] = {};
   GetWindowTextW(hwnd, title, 512);
   std::wstring name(title);
@@ -395,21 +471,18 @@ static BOOL CALLBACK Find021101Window(HWND hwnd, LPARAM raw) {
       name.find(L"conciliacao da contagem") != std::wstring::npos ||
       name.find(L"conciliação da contagem") != std::wstring::npos ||
       name.find(L"02.11.01") != std::wstring::npos;
-  // In IE mode Promax may keep the 02.11.01 page inside its generic
-  // Promaxweb window. Accept the foreground form using the partial filter
-  // signature (warehouse + deposit + at least five editable controls), even
-  // before Area/Visualizar are accessible.
+  // Edge can keep the IE-mode report in a generic browser frame. Confirm the
+  // report from its live MSHTML child rather than relying on the frame title.
+  const bool documentMatch = Has021101PromaxDocument(hwnd);
   const bool foreground = HasForeground(hwnd);
-  const bool formMatch = !titleMatch && foreground && LooksLike021101Form(hwnd);
-  // Ignore stale background Edge windows that happen to retain a 02.11.01
-  // title but expose no controls. A foreground title-match is still allowed
-  // while the page is rendering; Fill021101 will poll for the controls.
+  const bool formMatch = !titleMatch && !documentMatch &&
+      foreground && LooksLike021101Form(hwnd);
   if (titleMatch && !foreground && !LooksLike021101Form(hwnd)) return TRUE;
-  if (titleMatch || formMatch) {
+  if (titleMatch || documentMatch || formMatch) {
     HWND* chosen = reinterpret_cast<HWND*>(raw);
-    if (!*chosen || HasForeground(hwnd) ||
+    if (!*chosen || foreground ||
         (!IsWindowEnabled(*chosen) && IsWindowEnabled(hwnd))) *chosen = hwnd;
-    if (HasForeground(hwnd)) return FALSE;
+    if (foreground) return FALSE;
   }
   return TRUE;
 }
@@ -572,21 +645,19 @@ static bool ClickNamedButton(HWND hwnd, const std::wstring& expected, bool downl
 }
 
 struct VisibleControl { CONTROLTYPEID type; std::wstring name; RECT rect; long legacyRole=0; };
-static std::vector<VisibleControl> Controls(HWND hwnd) {
-  std::vector<VisibleControl> found;
+static void AppendControlsFromRoot(HWND source, const RECT& boundary,
+    std::vector<VisibleControl>* found) {
   IUIAutomation* automation = nullptr;
   IUIAutomationElement* root = nullptr;
   IUIAutomationCondition* condition = nullptr;
   IUIAutomationElementArray* elements = nullptr;
   if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
       IID_IUIAutomation, reinterpret_cast<void**>(&automation))) && automation &&
-      SUCCEEDED(automation->ElementFromHandle(hwnd, &root)) && root &&
+      SUCCEEDED(automation->ElementFromHandle(source, &root)) && root &&
       SUCCEEDED(automation->CreateTrueCondition(&condition)) && condition &&
       SUCCEEDED(root->FindAll(TreeScope_Descendants, condition, &elements)) && elements) {
     int count = 0;
     elements->get_Length(&count);
-    RECT window = {};
-    GetWindowRect(hwnd, &window);
     for (int i = 0; i < count && i < 2000; ++i) {
       IUIAutomationElement* item = nullptr;
       if (FAILED(elements->GetElement(i, &item)) || !item) continue;
@@ -596,8 +667,8 @@ static std::vector<VisibleControl> Controls(HWND hwnd) {
       if (SUCCEEDED(item->get_CurrentControlType(&type)) &&
           SUCCEEDED(item->get_CurrentBoundingRectangle(&r)) &&
           SUCCEEDED(item->get_CurrentIsOffscreen(&offscreen)) && !offscreen &&
-          r.left >= window.left && r.right <= window.right &&
-          r.top >= window.top && r.bottom <= window.bottom &&
+          r.left >= boundary.left && r.right <= boundary.right &&
+          r.top >= boundary.top && r.bottom <= boundary.bottom &&
           r.right > r.left + 2 && r.bottom > r.top + 2) {
         BSTR raw = nullptr;
         std::wstring name;
@@ -606,9 +677,18 @@ static std::vector<VisibleControl> Controls(HWND hwnd) {
           std::transform(name.begin(), name.end(), name.begin(), towlower);
         }
         if (raw) SysFreeString(raw);
-        VARIANT role;VariantInit(&role);long legacyRole=0;
-        if(SUCCEEDED(item->GetCurrentPropertyValue(UIA_LegacyIAccessibleRolePropertyId,&role)) && role.vt==VT_I4)legacyRole=role.lVal;
-        VariantClear(&role);found.push_back({type,name,r,legacyRole});
+        VARIANT role; VariantInit(&role); long legacyRole = 0;
+        if (SUCCEEDED(item->GetCurrentPropertyValue(
+            UIA_LegacyIAccessibleRolePropertyId, &role)) && role.vt == VT_I4)
+          legacyRole = role.lVal;
+        VariantClear(&role);
+        const bool duplicate = std::any_of(found->begin(), found->end(),
+            [&](const VisibleControl& prior) {
+              return prior.type == type && prior.rect.left == r.left &&
+                  prior.rect.top == r.top && prior.rect.right == r.right &&
+                  prior.rect.bottom == r.bottom && prior.name == name;
+            });
+        if (!duplicate) found->push_back({type, name, r, legacyRole});
       }
       item->Release();
     }
@@ -617,8 +697,40 @@ static std::vector<VisibleControl> Controls(HWND hwnd) {
   if (condition) condition->Release();
   if (root) root->Release();
   if (automation) automation->Release();
+}
+struct ControlsScanContext { RECT boundary; std::vector<VisibleControl>* found; };
+static BOOL CALLBACK AppendIeControls(HWND child, LPARAM raw) {
+  if (ClassName(child) != L"Internet Explorer_Server") return TRUE;
+  ControlsScanContext* context = reinterpret_cast<ControlsScanContext*>(raw);
+  AppendControlsFromRoot(child, context->boundary, context->found);
+  return TRUE;
+}
+static std::vector<VisibleControl> Controls(HWND hwnd) {
+  std::vector<VisibleControl> found;
+  RECT boundary = {};
+  if (!GetWindowRect(hwnd, &boundary)) return found;
+  AppendControlsFromRoot(hwnd, boundary, &found);
+  // Some Edge IE-mode builds expose MSHTML controls only when the
+  // Internet Explorer_Server child itself is the UI Automation root.
+  ControlsScanContext context = {boundary, &found};
+  EnumChildWindows(hwnd, AppendIeControls, reinterpret_cast<LPARAM>(&context));
   return found;
 }
+static bool ClickNamedButton(HWND hwnd, const std::wstring& expected,
+    bool downloadBar, bool anyPosition = false) {
+  RECT wr = {};
+  if (!GetWindowRect(hwnd, &wr)) return false;
+  for (const auto& control : Controls(hwnd)) {
+    if (control.type != UIA_ButtonControlTypeId) continue;
+    const RECT& r = control.rect;
+    if (control.name.find(expected) == std::wstring::npos) continue;
+    if (!anyPosition &&
+        !(downloadBar ? r.top-wr.top > 500 : r.top-wr.top < 400)) continue;
+    if (ClickControl(control)) return true;
+  }
+  return false;
+}
+
 static bool ClickControl(const VisibleControl& c) {
   return ClickPoint((c.rect.left+c.rect.right)/2, (c.rect.top+c.rect.bottom)/2);
 }
@@ -1644,82 +1756,40 @@ static std::wstring InvokeDialogSave(HWND hwnd, const std::wstring& target, bool
 // Require the Open, Save and Cancel controls together in the bottom portion
 // of the report window, so the report toolbar's Save can never match.
 static bool InvokeDownloadBarSave(HWND hwnd) {
-  IUIAutomation* automation = nullptr;
-  IUIAutomationElement* root = nullptr;
-  IUIAutomationCondition* condition = nullptr;
-  IUIAutomationElementArray* elements = nullptr;
-  IUIAutomationElement* save = nullptr;
-  bool open = false, cancel = false, confirmed = false;
-  RECT openRect = {}, cancelRect = {};
   RECT wr = {};
-  GetWindowRect(hwnd, &wr);
-  if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
-      IID_IUIAutomation, reinterpret_cast<void**>(&automation))) && automation &&
-      SUCCEEDED(automation->ElementFromHandle(hwnd, &root)) && root &&
-      SUCCEEDED(automation->CreateTrueCondition(&condition)) && condition &&
-      SUCCEEDED(root->FindAll(TreeScope_Descendants, condition, &elements)) && elements) {
-    int count = 0;
-    elements->get_Length(&count);
-    for (int i = 0; i < count && i < 2000; ++i) {
-      IUIAutomationElement* item = nullptr;
-      if (FAILED(elements->GetElement(i, &item)) || !item) continue;
-      CONTROLTYPEID type = 0;
-      RECT r = {};
-      BSTR raw = nullptr;
-      item->get_CurrentControlType(&type);
-      item->get_CurrentBoundingRectangle(&r);
-      item->get_CurrentName(&raw);
-      if (type == UIA_ButtonControlTypeId && raw && r.right > r.left && r.bottom > r.top &&
-          r.top >= wr.top + (wr.bottom-wr.top)*7/10 && r.bottom <= wr.bottom + 8 &&
-          r.left >= wr.left && r.right <= wr.right + 8) {
-        std::wstring name(raw, SysStringLen(raw));
-        std::transform(name.begin(), name.end(), name.begin(), towlower);
-        name.erase(std::remove(name.begin(), name.end(), L'&'), name.end());
-        if (name == L"abrir" || name == L"open") { open = true; openRect = r; }
-        else if (name == L"cancelar" || name == L"cancel") { cancel = true; cancelRect = r; }
-        else if (name == L"salvar" || name == L"save") {
-          if (save) save->Release();
-          save = item;
-          save->AddRef();
-        }
-      }
-      if (raw) SysFreeString(raw);
-      item->Release();
-    }
-    if (open && cancel && save) {
-      IUIAutomationInvokePattern* invoke = nullptr;
-      if (SUCCEEDED(save->GetCurrentPatternAs(UIA_InvokePatternId,
-          IID_IUIAutomationInvokePattern, reinterpret_cast<void**>(&invoke))) && invoke) {
-        confirmed = SUCCEEDED(invoke->Invoke());
-        invoke->Release();
-      }
-      if (!confirmed) {
-        RECT r = {};
-        if (SUCCEEDED(save->get_CurrentBoundingRectangle(&r)))
-          confirmed = ClickPoint((r.left+r.right)/2, (r.top+r.bottom)/2);
-      }
-    }
-    // Edge IE mode may expose the middle split Save control without a UIA
-    // button role. Its two adjacent buttons bound the exact clickable area.
-    if (!confirmed && open && cancel && !save &&
-        cancelRect.left > openRect.right + 35 &&
-        cancelRect.left < openRect.right + 240 &&
-        openRect.top <= cancelRect.bottom && cancelRect.top <= openRect.bottom) {
-      const int x = (openRect.right + cancelRect.left) / 2;
-      const int y = (openRect.top + openRect.bottom) / 2;
-      confirmed = ClickPoint(x, y);
-    }
+  if (!GetWindowRect(hwnd, &wr)) return false;
+  bool open = false, cancel = false;
+  const VisibleControl* save = nullptr;
+  RECT openRect = {}, cancelRect = {};
+  const auto controls = Controls(hwnd);
+  for (const auto& item : controls) {
+    if (item.type != UIA_ButtonControlTypeId) continue;
+    const RECT& r = item.rect;
+    if (r.top < wr.top + (wr.bottom-wr.top)*7/10 ||
+        r.bottom > wr.bottom + 8 || r.left < wr.left || r.right > wr.right + 8)
+      continue;
+    std::wstring name = item.name;
+    name.erase(std::remove(name.begin(), name.end(), L'&'), name.end());
+    if (name == L"abrir" || name == L"open") { open = true; openRect = r; }
+    else if (name == L"cancelar" || name == L"cancel") { cancel = true; cancelRect = r; }
+    else if (name == L"salvar" || name == L"save") save = &item;
   }
-  if (save) save->Release();
-  if (elements) elements->Release();
-  if (condition) condition->Release();
-  if (root) root->Release();
-  if (automation) automation->Release();
-  return confirmed;
+  if (open && cancel && save && ClickControl(*save)) return true;
+  if (open && cancel && !save &&
+      cancelRect.left > openRect.right + 35 &&
+      cancelRect.left < openRect.right + 240 &&
+      openRect.top <= cancelRect.bottom && cancelRect.top <= openRect.bottom) {
+    const int x = (openRect.right + cancelRect.left) / 2;
+    const int y = (openRect.top + openRect.bottom) / 2;
+    return ClickPoint(x, y);
+  }
+  return false;
 }
 
 static BOOL CALLBACK FindReportForDownload(HWND hwnd, LPARAM raw) {
-  if (!IsWindowVisible(hwnd) || ClassName(hwnd) != L"Chrome_WidgetWin_1") return TRUE;
+  if (!IsWindowVisible(hwnd)) return TRUE;
+  const std::wstring windowClass = ClassName(hwnd);
+  if (windowClass != L"Chrome_WidgetWin_1" && windowClass != L"IEFrame") return TRUE;
   wchar_t title[512] = {};
   GetWindowTextW(hwnd, title, 512);
   std::wstring name(title);
@@ -1728,6 +1798,7 @@ static BOOL CALLBACK FindReportForDownload(HWND hwnd, LPARAM raw) {
       name.find(L"conciliação da contagem") != std::wstring::npos ||
       name.find(L"conciliacao da contagem") != std::wstring::npos ||
       name.find(L"02.11.01") != std::wstring::npos ||
+      Has021101PromaxDocument(hwnd) ||
       name.find(L"planilha de acompanhamento") != std::wstring::npos ||
       name.find(L"03.11.20") != std::wstring::npos ||
       name.find(L"ocp carregamento") != std::wstring::npos ||
