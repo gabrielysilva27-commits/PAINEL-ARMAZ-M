@@ -14,15 +14,18 @@ const base=fs.mkdtempSync(path.join(os.tmpdir(),"inventory-counts-"));
   for(const d of [created.monthDirectory,created.depositDirectory,created.csvDirectory,created.pdfDirectory])assert.ok(fs.statSync(d).isDirectory());
   assert.strictEqual(inventory.ensureOutputDirectories(base,"2026-11-26",null).monthDirectory,created.monthDirectory);
 
-  let exports=0;
+  let exports=0,exportJob=null;
   const sourceDir=path.join(base,"source");fs.mkdirSync(sourceDir);
   const csvSource=path.join(sourceDir,"count.csv.inf"),pdfSource=path.join(sourceDir,"count.pdf");
   fs.writeFileSync(csvSource,"sku;produto\n"+ "123;Produto de teste\n".repeat(6));
   fs.writeFileSync(pdfSource,"%PDF-1.4\n"+ "conteudo de teste ".repeat(8));
   const opts={
-    config:{inventoryCounts:{baseDirectory:base}},
+    config:{inventoryCounts:{baseDirectory:base,deposits:[{
+      id:"6",countId:"6",sector:"DEVOLUÇÃO",label:"DEVOLUÇÃO",
+      warehouse:"1",areaFrom:"1",areaTo:"1",folder:"06 - Depósito DEVOLUÇÃO"
+    }]}},
     existingEdge:{desktopUnlocked:()=>true,idleMilliseconds:()=>0},
-    promax:{isConfigured:async()=>true,exportInventoryCount:async()=>{exports++;return{csvPath:csvSource,pdfPath:pdfSource};}},
+    promax:{isConfigured:async()=>true,exportInventoryCount:async(job)=>{exports++;exportJob=job;return{csvPath:csvSource,pdfPath:pdfSource};}},
     root:base,now,log:()=>{}
   };
   const blocked=await inventory.syncDaily({...opts,force:false});
@@ -32,7 +35,13 @@ const base=fs.mkdtempSync(path.join(os.tmpdir(),"inventory-counts-"));
   const forced=await inventory.syncDaily({...opts,force:true});
   assert.strictEqual(forced.status,"saved");
   assert.strictEqual(exports,1);
+  assert.deepStrictEqual(exportJob,{
+    warehouse:"1",depositFrom:"6",depositTo:"6",
+    areaFrom:"1",areaTo:"1",countId:"6"
+  });
   assert.ok(inventory.pairExists(created));
+  assert.ok(fs.readFileSync(created.csvFile,"utf8").startsWith("sku;produto"));
+  assert.ok(fs.readFileSync(created.pdfFile).subarray(0,5).toString("ascii")==="%PDF-");
 
   const repeated=await inventory.syncDaily({...opts,force:true});
   assert.strictEqual(repeated.status,"already-saved");
