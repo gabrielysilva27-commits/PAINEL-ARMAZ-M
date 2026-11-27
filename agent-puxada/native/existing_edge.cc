@@ -1555,8 +1555,8 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
     ++countHeaderCandidates;
     const int headerCenterX=(header.rect.left+header.rect.right)/2;
     const int headerWidth=static_cast<int>(header.rect.right-header.rect.left);
-    const int derivedColumnTolerance=headerWidth*3/4+24;
-    const int columnXTolerance=derivedColumnTolerance>58?derivedColumnTolerance:58;
+    const int derivedColumnTolerance=headerWidth/2+10;
+    const int columnXTolerance=derivedColumnTolerance>36?derivedColumnTolerance:36;
     std::vector<CountRow> candidateRows;
     for (const auto& label : controls) {
       if (Is021101Input(label) || label.type == UIA_ButtonControlTypeId || isCheck(label)) continue;
@@ -1603,11 +1603,28 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
       countHeader=&header;
       rows.swap(candidateRows);
       ambiguousCountTable=false;
-    } else if(candidateRows.size()>0 && candidateRows.size()==bestMappedRows &&
-        countHeader &&
-        (countHeader->rect.left!=header.rect.left || countHeader->rect.top!=header.rect.top ||
-         countHeader->rect.right!=header.rect.right || countHeader->rect.bottom!=header.rect.bottom)) {
-      ambiguousCountTable=true;
+    } else if(candidateRows.size()>0 && candidateRows.size()==bestMappedRows && countHeader) {
+      const int priorHeaderCenterX=(countHeader->rect.left+countHeader->rect.right)/2;
+      const int currentHeaderCenterX=(header.rect.left+header.rect.right)/2;
+      const bool sameColumn=std::abs(priorHeaderCenterX-currentHeaderCenterX)<=10;
+      const bool sameMappedRows=candidateRows.size()==rows.size() &&
+        std::all_of(candidateRows.begin(),candidateRows.end(),[&](const CountRow& candidateRow) {
+          return std::any_of(rows.begin(),rows.end(),[&](const CountRow& priorRow) {
+            return priorRow.id==candidateRow.id &&
+              priorRow.checkbox.rect.left==candidateRow.checkbox.rect.left &&
+              priorRow.checkbox.rect.top==candidateRow.checkbox.rect.top &&
+              priorRow.checkbox.rect.right==candidateRow.checkbox.rect.right &&
+              priorRow.checkbox.rect.bottom==candidateRow.checkbox.rect.bottom;
+          });
+        });
+      // Some Promax/Edge accessibility trees publish the same column header
+      // twice in separate containers. Treat those as duplicates only when
+      // both the horizontal column and every mapped checkbox row are identical.
+      if(sameColumn && sameMappedRows) {
+        if(header.rect.bottom>countHeader->rect.bottom) countHeader=&header;
+      } else {
+        ambiguousCountTable=true;
+      }
     }
   }
   if(!countHeader || rows.empty()) {
