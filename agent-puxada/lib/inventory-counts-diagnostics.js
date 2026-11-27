@@ -39,6 +39,13 @@ function inventoryCountErrorCode(message) {
   if (/csv-not-found/i.test(raw)) return "BOTAO_CSV_NAO_LOCALIZADO";
   if (/pdf-not-found/i.test(raw)) return "BOTAO_PDF_NAO_LOCALIZADO";
   if (/CSV_DOWNLOAD_TIMEOUT/i.test(raw)) return "DOWNLOAD_CSV_TIMEOUT";
+  const pdfTimeout=raw.match(/021101_PDF_DOWNLOAD_TIMEOUT:\s*([^;]+);\s*hotkey=([^;]+);\s*recent=(\d+);\s*partial=(\d+)/i);
+  if(pdfTimeout){
+    const status=pdfTimeout[1].normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+      .toUpperCase().replace(/[^A-Z0-9]+/g,"_").replace(/^_+|_+$/g,"").slice(0,20)||"UNKNOWN";
+    const hotkey=pdfTimeout[2].toUpperCase().replace(/[^A-Z0-9]+/g,"_").replace(/^_+|_+$/g,"").slice(0,12)||"NONE";
+    return "DOWNLOAD_PDF_TIMEOUT_"+status+"_"+hotkey+"_N"+pdfTimeout[3]+"_P"+pdfTimeout[4];
+  }
   if (/PDF_DOWNLOAD_TIMEOUT/i.test(raw)) return "DOWNLOAD_PDF_TIMEOUT";
   if (/PDF.*(válido|valido)|PDF vazio/i.test(raw)) return "PDF_INVALIDO";
   if (/ENOENT|EACCES|EPERM|access denied|acesso negado/i.test(raw)) return "ACESSO_ARQUIVO_NEGADO";
