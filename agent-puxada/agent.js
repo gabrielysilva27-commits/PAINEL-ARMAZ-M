@@ -41,6 +41,11 @@ function inventoryCountErrorCode(message) {
   if (/CONTAGEM de Estoque.*não está acessível|Pasta-base de contagens não acessível/i.test(raw)) return "PASTA_BASE_NAO_ACESSIVEL";
   if (/021101_EDGE_NATIVE_UNAVAILABLE|EDGE_NATIVE_ACTION_UNAVAILABLE/i.test(raw)) return "EDGE_NATIVO_INDISPONIVEL";
   if (/window-not-found|JANELA_021101_NAO_ENCONTRADA/i.test(raw)) return "JANELA_021101_NAO_ENCONTRADA";
+  const overlap = raw.match(/filter-fields-overlap:(\d+):(\d+)/i);
+  if (overlap) return "FILTER_OVERLAP_" + overlap[1] + "_" + overlap[2];
+  if (/filter-fields-overlap/i.test(raw)) return "FILTER_FIELDS_OVERLAP";
+  const readback = raw.match(/filter-readback-(warehouse|deposit-from|deposit-to|area-from|area-to)/i);
+  if (readback) return "FILTER_READBACK_" + readback[1].replace(/-/g, "_").toUpperCase();
   const filterCounts = raw.match(/filter-fields:warehouse=(\d+):deposit=(\d+):area=(\d+):edits=(\d+):combos=(\d+):wlabels=(\d+):dlabels=(\d+):alabels=(\d+):returned=(\d+):sector=(\d+):local=(\d+):zone=(\d+):street=(\d+):aisle=(\d+):rack=(\d+):address=(\d+)(?::streetfields=(\d+):geometryarea=(\d+):endereco=(\d+):posicao=(\d+))?/i);
   if (filterCounts) {
     const [,w,d,a,e,c,wl,dl,al,rb,se,lo,zo,st,ai,ra,en,ruaFields,geometryArea,endereco,posicao] = filterCounts;
