@@ -927,7 +927,7 @@ function recentDownloadNames(sinceMs) {
     let names = [];
     try { names = fs.readdirSync(dir); } catch { continue; }
     for (const name of names) {
-      if (!/\.inf$|\.csv$|\.pdf$|\.crdownload$|\.partial$/i.test(name)) continue;
+      if (!/\.inf$|\.csv$|\.pdf$|\.crdownload$|\.partial$|\.download$/i.test(name)) continue;
       try {
         const st = fs.statSync(path.join(dir, name));
         if (st.isFile() && st.mtimeMs >= sinceMs - 2000) found.push(name);
@@ -2117,22 +2117,39 @@ async function saveInventoryCountFormat(format, rootDir) {
   await sleep(900);
 
   let saveStatus="automatic";
-  let hotkeyStatus="not-used";
+  let keyboardStatus="not-used";
+  let enterAttempted=false;
   let altSAttempted=false;
-  const tryAltSSave=async function(){
-    if(format!=="pdf"||altSAttempted)return;
-    altSAttempted=true;
-    try{
-      sendAltS();
-      hotkeyStatus="alt-s-sent";
-      await sleep(650);
-      try{saveStatus=existingEdge.saveDialog(target);}
-      catch(error){
-        if(!/save-dialog-not-found/.test(String(error&&error.message||error)))throw error;
+  const tryKeyboardSave=async function(){
+    if(format==="csv"&&!enterAttempted){
+      enterAttempted=true;
+      try{
+        sendEnter();
+        keyboardStatus="enter-sent";
+        await sleep(500);
+        try{saveStatus=existingEdge.saveDialog(target);}
+        catch(error){
+          if(!/save-dialog-not-found/.test(String(error&&error.message||error)))throw error;
+        }
+      }catch(error){
+        keyboardStatus="enter-error";
+        saveStatus=String(error&&error.message||error).slice(0,90);
       }
-    }catch(error){
-      hotkeyStatus="alt-s-error";
-      saveStatus=String(error&&error.message||error).slice(0,90);
+    }
+    if(!altSAttempted){
+      altSAttempted=true;
+      try{
+        sendAltS();
+        keyboardStatus=keyboardStatus==="enter-sent"?"enter+alt-s-sent":"alt-s-sent";
+        await sleep(650);
+        try{saveStatus=existingEdge.saveDialog(target);}
+        catch(error){
+          if(!/save-dialog-not-found/.test(String(error&&error.message||error)))throw error;
+        }
+      }catch(error){
+        keyboardStatus=keyboardStatus==="enter-sent"?"enter+alt-s-error":"alt-s-error";
+        saveStatus=String(error&&error.message||error).slice(0,90);
+      }
     }
   };
 
@@ -2141,9 +2158,9 @@ async function saveInventoryCountFormat(format, rootDir) {
   }catch(error){
     if(!/save-dialog-not-found/.test(String(error&&error.message||error)))throw error;
     saveStatus="no-dialog";
-    // Promax/Edge IE mode can require the real Alt+S keyboard gesture to
-    // accept its download bar. Re-check the native Save As dialog afterward.
-    await tryAltSSave();
+    // CSV downloads in Edge IE mode can require Enter followed by Alt+S.
+    // PDF downloads can require Alt+S or an explicit inline-viewer Save a copy.
+    await tryKeyboardSave();
   }
 
   let previous=null,stable=0,lastSaveProbe=Date.now();
@@ -2153,18 +2170,10 @@ async function saveInventoryCountFormat(format, rootDir) {
     if(!current){
       if(Date.now()-lastSaveProbe>=10000){
         lastSaveProbe=Date.now();
-        const saveAlreadyTriggered=[
-          "save-as-confirmed",
-          "download-bar-confirmed",
-          "download-accepted-no-save-as",
-          "pdf-viewer-save-triggered"
-        ].includes(saveStatus);
-        if(!saveAlreadyTriggered){
-          try{saveStatus=existingEdge.saveDialog(target);}
-          catch(error){
-            if(!/save-dialog-not-found/.test(String(error&&error.message||error)))throw error;
-            if(format==="pdf"&&!altSAttempted)await tryAltSSave();
-          }
+        try{saveStatus=existingEdge.saveDialog(target);}
+        catch(error){
+          if(!/save-dialog-not-found/.test(String(error&&error.message||error)))throw error;
+          if((format==="csv"&&!enterAttempted)||!altSAttempted)await tryKeyboardSave();
         }
       }
       return null;
@@ -2176,9 +2185,9 @@ async function saveInventoryCountFormat(format, rootDir) {
   },60000,700).catch(error=>{
     if(!/Tempo esgotado/.test(String(error&&error.message||error)))throw error;
     const recent=recentDownloadNames(since);
-    const partial=recent.filter(name=>/\.crdownload$|\.partial$/i.test(name)).length;
+    const partial=recent.filter(name=>/\.crdownload$|\.partial$|\.download$/i.test(name)).length;
     throw new Error("021101_"+format.toUpperCase()+"_DOWNLOAD_TIMEOUT: "+saveStatus+
-      "; hotkey="+hotkeyStatus+"; recent="+recent.length+"; partial="+partial);
+      "; hotkey="+keyboardStatus+"; recent="+recent.length+"; partial="+partial);
   });
 
   if(candidate.path!==target)fs.copyFileSync(candidate.path,target);
