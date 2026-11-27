@@ -3,7 +3,7 @@ const fs=require("fs"),path=require("path");
 const MONTHS=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const DEFAULT_BASE_DIRECTORY="Y:\\{year}\\ARMAZÉM\\3.0 - Acuracidade do Inventário\\Acuracidade de Movimentação do Material do Armazém\\CONTAGEM de Estoque";
 const DEFAULT_FALLBACK_DIRECTORY="\\\\192.168.1.48\\pilargestao$\\{year}\\ARMAZÉM\\3.0 - Acuracidade do Inventário\\Acuracidade de Movimentação do Material do Armazém\\CONTAGEM de Estoque";
-const DEFAULT_DEPOSIT=Object.freeze({id:"6",countId:"6",label:"DEVOLUÇÃO",folder:"06 - Depósito DEVOLUÇÃO"});
+const DEFAULT_DEPOSIT=Object.freeze({id:"6",countId:"6",sector:"DEVOLUÇÃO",label:"DEVOLUÇÃO",folder:"06 - Depósito DEVOLUÇÃO",warehouse:"1",areaFrom:"1",areaTo:"1"});
 function dateParts(date){
  const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(date||new Date());
  const x={};for(const p of parts)if(p.type!=="literal")x[p.type]=p.value;
@@ -56,6 +56,9 @@ async function syncDaily(opts){
  const idle=edge.idleMilliseconds?edge.idleMilliseconds():null;if(!opts.force&&(idle===null||idle<30000))return{status:"desktop-active"};
  const dt=dateParts(opts.now||new Date());if(!opts.promax||!(await opts.promax.isConfigured(cfg,opts.root)))return{status:"promax-not-ready"};
  const deposit=Object.assign({},DEFAULT_DEPOSIT,(settings.deposits||[]).find(x=>String(x.id)==="6")||{});
+ const depositId=String(deposit.id||"6"),countId=String(deposit.countId||depositId);
+ const warehouse=String(deposit.warehouse||settings.warehouse||"1");
+ const areaFrom=String(deposit.areaFrom||settings.areaFrom||"1"),areaTo=String(deposit.areaTo||settings.areaTo||"1");
  const base=baseCandidates(cfg,dt.year).find(p=>{try{return fs.existsSync(p)&&fs.statSync(p).isDirectory();}catch(_){return false;}});
  if(!base)throw Error("A pasta CONTAGEM de Estoque não está acessível em Y: nem pelo compartilhamento da rede.");
  const p=ensureOutputDirectories(base,dt.iso,deposit,log),lockPath=path.join(p.depositDirectory,".agent-count-"+dt.iso.replace(/-/g,"")+".lock");
@@ -63,11 +66,16 @@ async function syncDaily(opts){
  try{
   // FORCE bypasses the idle gate and scheduler cooldown, never a valid output pair.
   if(pairExists(p))return{status:"already-saved",paths:p};
-  log("Conciliação 02.11.01: depósito 6 · contagem 6 · "+dt.iso+".");
-  const out=await opts.promax.exportInventoryCount({warehouse:"1",depositFrom:"6",depositTo:"6",areaFrom:"1",areaTo:"1",countId:"6"},cfg,opts.root);
+  log("Conciliação 02.11.01: setor "+deposit.sector+" · depósito "+depositId+" · contagem "+countId+" · "+dt.iso+".");
+  const out=await opts.promax.exportInventoryCount({
+   warehouse:warehouse,depositFrom:depositId,depositTo:depositId,
+   areaFrom:areaFrom,areaTo:areaTo,countId:countId
+  },cfg,opts.root);
   if(!out||!isUsableFile(out.csvPath,"csv")||!isUsableFile(out.pdfPath,"pdf"))throw Error("O Promax não entregou CSV e PDF válidos para a contagem 6.");
   atomicCopy(out.csvPath,p.csvFile);atomicCopy(out.pdfPath,p.pdfFile);
-  log("Contagem do depósito 6 salva em CSV e PDF: "+p.baseName+".");return{status:"saved",paths:p};
+  log("Contagem "+countId+" do setor "+deposit.sector+" salva em CSV e PDF: "+p.baseName+".");
+  log("CSV: "+p.csvFile);log("PDF: "+p.pdfFile);
+  return{status:"saved",paths:p};
  }finally{try{fs.closeSync(fd);}catch(_){}try{fs.unlinkSync(lockPath);}catch(_){}}
 }
 module.exports={dateParts,buildPaths,ensureOutputDirectories,isUsableFile,pairExists,syncDaily};
