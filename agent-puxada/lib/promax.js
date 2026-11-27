@@ -2153,10 +2153,18 @@ async function saveInventoryCountFormat(format, rootDir) {
     if(!current){
       if(Date.now()-lastSaveProbe>=10000){
         lastSaveProbe=Date.now();
-        try{saveStatus=existingEdge.saveDialog(target);}
-        catch(error){
-          if(!/save-dialog-not-found/.test(String(error&&error.message||error)))throw error;
-          if(format==="pdf"&&!altSAttempted)await tryAltSSave();
+        const saveAlreadyTriggered=[
+          "save-as-confirmed",
+          "download-bar-confirmed",
+          "download-accepted-no-save-as",
+          "pdf-viewer-save-triggered"
+        ].includes(saveStatus);
+        if(!saveAlreadyTriggered){
+          try{saveStatus=existingEdge.saveDialog(target);}
+          catch(error){
+            if(!/save-dialog-not-found/.test(String(error&&error.message||error)))throw error;
+            if(format==="pdf"&&!altSAttempted)await tryAltSSave();
+          }
         }
       }
       return null;
