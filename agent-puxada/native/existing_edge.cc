@@ -1554,8 +1554,9 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
         isCheck(header)) continue;
     ++countHeaderCandidates;
     const int headerCenterX=(header.rect.left+header.rect.right)/2;
-    const int headerWidth=std::max(0,header.rect.right-header.rect.left);
-    const int columnXTolerance=std::max(58,headerWidth*3/4+24);
+    const int headerWidth=static_cast<int>(header.rect.right-header.rect.left);
+    const int derivedColumnTolerance=headerWidth*3/4+24;
+    const int columnXTolerance=derivedColumnTolerance>58?derivedColumnTolerance:58;
     std::vector<CountRow> candidateRows;
     for (const auto& label : controls) {
       if (Is021101Input(label) || label.type == UIA_ButtonControlTypeId || isCheck(label)) continue;
