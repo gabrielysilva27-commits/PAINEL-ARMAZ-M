@@ -48,7 +48,7 @@ function act(stage, values = {}) {
 function saveDialog(target) {
   if (!bridge || typeof bridge.act !== "function") throw new Error("EDGE_NATIVE_ACTION_UNAVAILABLE");
   const result = bridge.act({ stage: "save" }, { path: target });
-  if (result !== "save-as-confirmed" && result !== "download-accepted-no-save-as" && result !== "download-bar-confirmed")
+  if (result !== "save-as-confirmed" && result !== "download-accepted-no-save-as" && result !== "download-bar-confirmed" && result !== "pdf-viewer-save-triggered")
     throw new Error("EDGE_SAVE_DIALOG: " + String(result || "unknown"));
   return result;
 }
