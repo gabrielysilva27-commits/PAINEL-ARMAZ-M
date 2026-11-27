@@ -1418,7 +1418,9 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
       const RECT& a = allFields[i].rect;
       const RECT& b = allFields[j].rect;
       if (a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom) {
-        COUNT021101_ISSUE = L"filter-fields-overlap";
+        // Group indexes: 0=warehouse, 1-2=deposit endpoints, 3-4=area endpoints.
+        COUNT021101_ISSUE = L"filter-fields-overlap:" +
+            std::to_wstring(i) + L":" + std::to_wstring(j);
         return false;
       }
     }
