@@ -15,7 +15,9 @@ function buildPaths(base,iso,deposit){
  const item=Object.assign({},DEFAULT_DEPOSIT,deposit||{}),monthFolder=d[2]+". "+MONTHS[m-1];
  const baseName=d[3]+"."+d[2]+" - CONTAGEM "+item.label,monthDirectory=path.join(base,monthFolder);
  const depositDirectory=path.join(monthDirectory,item.folder),csvDirectory=path.join(depositDirectory,"CSV"),pdfDirectory=path.join(depositDirectory,"PDF");
- return{monthFolder,baseName,monthDirectory,depositDirectory,csvDirectory,pdfDirectory,csvFile:path.join(csvDirectory,baseName+".csv.inf"),pdfFile:path.join(pdfDirectory,baseName+".pdf")};
+ return{monthFolder,baseName,monthDirectory,depositDirectory,csvDirectory,pdfDirectory,
+  csvFile:path.join(csvDirectory,baseName+".csv.inf"),pdfFile:path.join(pdfDirectory,baseName+".pdf"),
+  completionFile:path.join(depositDirectory,".agent-count-"+d[1]+d[2]+d[3]+".json")};
 }
 function ensureDirectory(p,log,label){
  if(fs.existsSync(p)){if(!fs.statSync(p).isDirectory())throw Error("Não é uma pasta: "+p);return false;}
@@ -34,6 +36,37 @@ function isUsableFile(file,format){
  }catch(_){return false;}
 }
 function pairExists(p){return isUsableFile(p.csvFile,"csv")&&isUsableFile(p.pdfFile,"pdf");}
+function isVerifiedPair(p,selection){
+ if(!pairExists(p))return false;
+ try{
+  const marker=JSON.parse(fs.readFileSync(p.completionFile,"utf8"));
+  const csvSize=fs.statSync(p.csvFile).size,pdfSize=fs.statSync(p.pdfFile).size;
+  return marker.schema===1 && marker.selectionVersion===2 &&
+   marker.date===selection.date && marker.depositId===selection.depositId &&
+   marker.countId===selection.countId && marker.sector===selection.sector &&
+   marker.warehouse===selection.warehouse && marker.areaFrom===selection.areaFrom &&
+   marker.areaTo===selection.areaTo && marker.csvSize===csvSize && marker.pdfSize===pdfSize;
+ }catch(_){return false;}
+}
+function writeCompletionMarker(p,selection){
+ const payload=Object.assign({schema:1,selectionVersion:2},selection,{
+  csvSize:fs.statSync(p.csvFile).size,pdfSize:fs.statSync(p.pdfFile).size,
+  savedAt:new Date().toISOString()
+ });
+ const tmp=p.completionFile+".incoming-"+process.pid+"-"+Date.now();
+ const bak=p.completionFile+".backup-"+process.pid+"-"+Date.now();
+ fs.writeFileSync(tmp,JSON.stringify(payload,null,2),"utf8");
+ let backed=false;
+ try{
+  if(fs.existsSync(p.completionFile)){fs.renameSync(p.completionFile,bak);backed=true;}
+  fs.renameSync(tmp,p.completionFile);
+  if(backed)fs.unlinkSync(bak);
+ }catch(e){
+  try{if(fs.existsSync(tmp))fs.unlinkSync(tmp);}catch(_){}
+  if(backed&&!fs.existsSync(p.completionFile)){try{fs.renameSync(bak,p.completionFile);}catch(_){}}
+  throw e;
+ }
+}
 function lock(p){
  for(let i=0;i<2;i++){try{const fd=fs.openSync(p,"wx");fs.writeFileSync(fd,JSON.stringify({pid:process.pid,at:Date.now()}));return fd;}
   catch(e){if(e.code!=="EEXIST")throw e;try{if(Date.now()-fs.statSync(p).mtimeMs>45*60*1000){fs.unlinkSync(p);continue;}}catch(_){}return null;}}
@@ -64,8 +97,13 @@ async function syncDaily(opts){
  const p=ensureOutputDirectories(base,dt.iso,deposit,log),lockPath=path.join(p.depositDirectory,".agent-count-"+dt.iso.replace(/-/g,"")+".lock");
  const fd=lock(lockPath);if(fd===null)return{status:"another-computer-running"};
  try{
-  // FORCE bypasses the idle gate and scheduler cooldown, never a valid output pair.
-  if(pairExists(p))return{status:"already-saved",paths:p};
+  // FORCE bypasses the idle gate, never a pair already proven to use the
+  // current count-selection workflow. Old files without this marker are
+  // regenerated once so an earlier unselected count cannot be treated as done.
+  const selection={date:dt.iso,depositId:depositId,countId:countId,sector:String(deposit.sector||deposit.label),
+    warehouse:warehouse,areaFrom:areaFrom,areaTo:areaTo};
+  if(isVerifiedPair(p,selection))return{status:"already-saved",paths:p};
+  if(pairExists(p))log("Arquivos anteriores sem confirmação da contagem selecionada serão regenerados.");
   log("Conciliação 02.11.01: setor "+deposit.sector+" · depósito "+depositId+" · contagem "+countId+" · "+dt.iso+".");
   const out=await opts.promax.exportInventoryCount({
    warehouse:warehouse,depositFrom:depositId,depositTo:depositId,
@@ -73,9 +111,10 @@ async function syncDaily(opts){
   },cfg,opts.root);
   if(!out||!isUsableFile(out.csvPath,"csv")||!isUsableFile(out.pdfPath,"pdf"))throw Error("O Promax não entregou CSV e PDF válidos para a contagem 6.");
   atomicCopy(out.csvPath,p.csvFile);atomicCopy(out.pdfPath,p.pdfFile);
+  writeCompletionMarker(p,selection);
   log("Contagem "+countId+" do setor "+deposit.sector+" salva em CSV e PDF: "+p.baseName+".");
   log("CSV: "+p.csvFile);log("PDF: "+p.pdfFile);
   return{status:"saved",paths:p};
  }finally{try{fs.closeSync(fd);}catch(_){}try{fs.unlinkSync(lockPath);}catch(_){}}
 }
-module.exports={dateParts,buildPaths,ensureOutputDirectories,isUsableFile,pairExists,syncDaily};
+module.exports={dateParts,buildPaths,ensureOutputDirectories,isUsableFile,pairExists,isVerifiedPair,syncDaily};
