@@ -1136,6 +1136,29 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
     warehouse = FieldsFor021101Key(controls, L"armazem", 1, &warehouseLabels);
     deposit = FieldsFor021101Key(controls, L"deposito", 2, &depositLabels);
     area = FieldsFor021101Key(controls, L"area", 2, &areaLabels);
+    // Some Promax 02.11.01 layouts label the two area-range fields as "Rua".
+    // Use that alias only when both endpoints resolve to distinct controls,
+    // warehouse/deposit are fully recognized, Area itself is absent, and no
+    // competing location alias is present. Otherwise fail closed.
+    if (area.size() != 2 && areaLabels == 0 &&
+        warehouse.size() == 1 && deposit.size() == 2) {
+      size_t ruaLabels = 0;
+      const auto ruaFields = FieldsFor021101Key(controls, L"rua", 2, &ruaLabels);
+      auto hasAlias = [&](const wchar_t* key) {
+        return std::any_of(controls.begin(), controls.end(), [&](const VisibleControl& control) {
+          if (!Is021101Label(control) && !Is021101Input(control)) return false;
+          return Normalize021101(control.name).find(key) != std::wstring::npos;
+        });
+      };
+      const bool noCompetingAlias =
+          !hasAlias(L"setor") && !hasAlias(L"local") &&
+          !hasAlias(L"zona") && !hasAlias(L"regiao") &&
+          !hasAlias(L"corredor") && !hasAlias(L"prateleira") &&
+          !hasAlias(L"estante") && !hasAlias(L"endereco") &&
+          !hasAlias(L"posicao");
+      if (ruaLabels == 2 && ruaFields.size() == 2 && noCompetingAlias)
+        area = ruaFields;
+    }
     edits=combos=0;
     bool hasBack=false, hasVisualize=false, hasCountHeader=false;
     int numericRows=0, checkboxes=0;
