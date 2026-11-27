@@ -15,6 +15,10 @@ assert.strictEqual(
  diagnostics.inventoryCountErrorCode("021101_PDF_DOWNLOAD_TIMEOUT: no-dialog; hotkey=alt-s-sent; recent=0; partial=0"),
  "DOWNLOAD_PDF_TIMEOUT_NO_DIALOG_ALT_S_SENT_N0_P0"
 );
+assert.strictEqual(
+ diagnostics.inventoryCountErrorCode("021101_CSV_DOWNLOAD_TIMEOUT: no-dialog; hotkey=enter+alt-s-sent; recent=1; partial=1"),
+ "DOWNLOAD_CSV_TIMEOUT_NO_DIALOG_ENTER_ALT_S_SENT_N1_P1"
+);
 
 (async function(){
  try{
