@@ -395,11 +395,16 @@ static BOOL CALLBACK Find021101Window(HWND hwnd, LPARAM raw) {
       name.find(L"conciliacao da contagem") != std::wstring::npos ||
       name.find(L"conciliação da contagem") != std::wstring::npos ||
       name.find(L"02.11.01") != std::wstring::npos;
-  // In IE mode Promax sometimes leaves a generic browser title after changing
-  // the page. When that happens, identify the report from its visible filter
-  // labels/controls, but only inspect the foreground window to avoid matching
-  // a dormant Promax tab in another Edge window.
-  const bool formMatch = !titleMatch && HasForeground(hwnd) && LooksLike021101Form(hwnd);
+  // In IE mode Promax may keep the 02.11.01 page inside its generic
+  // Promaxweb window. Accept the foreground form using the partial filter
+  // signature (warehouse + deposit + at least five editable controls), even
+  // before Area/Visualizar are accessible.
+  const bool foreground = HasForeground(hwnd);
+  const bool formMatch = !titleMatch && foreground && LooksLike021101Form(hwnd);
+  // Ignore stale background Edge windows that happen to retain a 02.11.01
+  // title but expose no controls. A foreground title-match is still allowed
+  // while the page is rendering; Fill021101 will poll for the controls.
+  if (titleMatch && !foreground && Controls(hwnd).empty()) return TRUE;
   if (titleMatch || formMatch) {
     HWND* chosen = reinterpret_cast<HWND*>(raw);
     if (!*chosen || HasForeground(hwnd) ||
@@ -1096,7 +1101,10 @@ static bool LooksLike021101Form(HWND hwnd) {
   }
   // Labels are exposed as Text, Group or Custom controls depending on the
   // Promax/Edge build; do not require one exact UIA role or screen quadrant.
-  return (warehouse && deposit && area && inputs >= 5) ||
+  // The Area label can be missing from Edge's accessibility tree while
+  // its two fields are still present. Warehouse + Deposit + five editable
+  // controls uniquely identifies the incomplete 02.11.01 filter form.
+  return (warehouse && deposit && inputs >= 5) ||
       (count && visualize) || ((warehouse || deposit || area) && inputs >= 4 && visualize);
 }
 
