@@ -248,6 +248,44 @@ static void InspectEdgeWindow(HWND hwnd, bool* automated, int* tabItems, bool* h
   automation->Release();
 }
 
+struct EdgeWindowCacheEntry {
+  HWND hwnd;
+  DWORD checkedAt;
+  bool automated;
+  int tabItems;
+  bool hasPromaxTab;
+};
+static void InspectEdgeWindowCached(HWND hwnd,bool* automated,int* tabItems,bool* hasPromaxTab) {
+  static thread_local std::vector<EdgeWindowCacheEntry> cache;
+  const DWORD now=GetTickCount();
+  for(auto& entry:cache) {
+    if(entry.hwnd==hwnd && static_cast<DWORD>(now-entry.checkedAt)<=5000) {
+      *automated=entry.automated;
+      *tabItems=entry.tabItems;
+      *hasPromaxTab=entry.hasPromaxTab;
+      return;
+    }
+  }
+  bool foundAutomation=false,foundPromaxTab=false;
+  int foundTabs=0;
+  InspectEdgeWindow(hwnd,&foundAutomation,&foundTabs,&foundPromaxTab);
+  bool updated=false;
+  for(auto& entry:cache) {
+    if(entry.hwnd==hwnd) {
+      entry.checkedAt=now;entry.automated=foundAutomation;
+      entry.tabItems=foundTabs;entry.hasPromaxTab=foundPromaxTab;
+      updated=true;break;
+    }
+  }
+  if(!updated) {
+    if(cache.size()>=16)cache.erase(cache.begin());
+    cache.push_back({hwnd,now,foundAutomation,foundTabs,foundPromaxTab});
+  }
+  *automated=foundAutomation;
+  *tabItems=foundTabs;
+  *hasPromaxTab=foundPromaxTab;
+}
+
 static BOOL CALLBACK VisitChild(HWND hwnd, LPARAM state) {
   if (ClassName(hwnd) != L"Internet Explorer_Server") return TRUE;
   Scan* scan = reinterpret_cast<Scan*>(state);
@@ -304,7 +342,7 @@ static BOOL CALLBACK VisitWindow(HWND hwnd, LPARAM state) {
   bool automated = false;
   bool hasPromaxTab = false;
   int tabItems = 0;
-  InspectEdgeWindow(hwnd, &automated, &tabItems, &hasPromaxTab);
+  InspectEdgeWindowCached(hwnd, &automated, &tabItems, &hasPromaxTab);
   if ((titleLooksPromax || hasPromaxTab) && !automated && !stockReport && !countReport) {
     ++scan->homeWindows;
     // Only map controls when Promax is the active tab; a background Promax tab
@@ -480,9 +518,16 @@ static BOOL CALLBACK Find021101Window(HWND hwnd, LPARAM raw) {
   const bool foreground = HasForeground(hwnd);
   const bool documentMatch = windowClass==L"IEFrame"
       ? Has021101PromaxDocument(hwnd) : false;
-  if(!titleMatch&&!documentMatch&&(!foreground||!titleLooksPromax))return TRUE;
+  bool automated=false,hasPromaxTab=false;
+  int tabItems=0;
+  if(!titleMatch&&!documentMatch) {
+    if(!foreground)return TRUE;
+    if(!titleLooksPromax)InspectEdgeWindowCached(hwnd,&automated,&tabItems,&hasPromaxTab);
+    if(automated || (!titleLooksPromax&&!hasPromaxTab))return TRUE;
+  }
+  const bool activePromaxWindow=foreground&&!automated&&(titleLooksPromax||hasPromaxTab);
   const bool formMatch = !titleMatch && !documentMatch &&
-      foreground && titleLooksPromax && LooksLike021101Form(hwnd);
+      activePromaxWindow && LooksLike021101Form(hwnd);
   if (titleMatch || documentMatch || formMatch) {
     HWND* chosen = reinterpret_cast<HWND*>(raw);
     if (!*chosen || foreground ||
