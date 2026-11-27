@@ -2108,8 +2108,35 @@ static BOOL CALLBACK FindReportForDownload(HWND hwnd, LPARAM raw) {
   return TRUE;
 }
 
+static bool ClickPdfViewerSave(HWND hwnd) {
+  if(!IsWindow(hwnd)||!IsWindowVisible(hwnd)||ClassName(hwnd)!=L"Chrome_WidgetWin_1")return false;
+  wchar_t rawTitle[512]={};GetWindowTextW(hwnd,rawTitle,512);
+  std::wstring title(rawTitle);
+  std::transform(title.begin(),title.end(),title.begin(),towlower);
+  const bool pdfTitle=title.find(L".pdf")!=std::wstring::npos;
+  const auto controls=Controls(hwnd);
+  for(const auto& control:controls) {
+    if(control.type!=UIA_ButtonControlTypeId)continue;
+    std::wstring name=control.name;
+    std::transform(name.begin(),name.end(),name.begin(),towlower);
+    name.erase(std::remove(name.begin(),name.end(),L'&'),name.end());
+    const bool saveCopy=name.find(L"save a copy")!=std::wstring::npos||
+        name.find(L"salvar uma copia")!=std::wstring::npos||
+        name.find(L"salvar uma cópia")!=std::wstring::npos;
+    const bool downloadButton=pdfTitle&&
+        (name==L"download"||name==L"baixar"||
+         name.find(L"download ")==0||name.find(L"baixar ")==0);
+    if(!saveCopy&&!downloadButton)continue;
+    if(!FocusWindow(hwnd))continue;
+    if(ClickPoint((control.rect.left+control.rect.right)/2,
+        (control.rect.top+control.rect.bottom)/2))return true;
+  }
+  return false;
+}
+
 static std::wstring SaveDialog(const std::wstring& target) {
   bool downloadAccepted = false;
+  bool pdfViewerSaveRequested = false;
   for (int i = 0; i < 40; ++i) {
     SaveWindows windows;
     EnumWindows(FindSaveWindow, reinterpret_cast<LPARAM>(&windows));
@@ -2121,14 +2148,32 @@ static std::wstring SaveDialog(const std::wstring& target) {
     EnumWindows(FindReportForDownload, reinterpret_cast<LPARAM>(&reports));
     for (HWND report : reports)
       if (InvokeDownloadBarSave(report)) return L"download-bar-confirmed";
-    if (windows.download && !downloadAccepted) {
-      const std::wstring result = InvokeDialogSave(windows.download, target, false);
-      if (result != L"ok") return result;
-      downloadAccepted = true;
+    if(windows.download&&!downloadAccepted) {
+      const std::wstring result=InvokeDialogSave(windows.download,target,false);
+      if(result!=L"ok")return result;
+      downloadAccepted=true;
+    }
+    // In some Promax configurations the PDF button opens Edge's inline PDF
+    // viewer instead of the IE-mode download bar. Use only its explicit
+    // "Save a copy"/Download toolbar control, never a generic page Save button.
+    if(!pdfViewerSaveRequested) {
+      std::vector<HWND> browserWindows;
+      EnumWindows([](HWND hwnd,LPARAM raw)->BOOL {
+        reinterpret_cast<std::vector<HWND>*>(raw)->push_back(hwnd);
+        return TRUE;
+      },reinterpret_cast<LPARAM>(&browserWindows));
+      for(HWND browser:browserWindows) {
+        if(ClickPdfViewerSave(browser)) {
+          pdfViewerSaveRequested=true;
+          break;
+        }
+      }
     }
     Sleep(250);
   }
-  return downloadAccepted ? L"download-accepted-no-save-as" : L"save-dialog-not-found";
+  if(downloadAccepted)return L"download-accepted-no-save-as";
+  if(pdfViewerSaveRequested)return L"pdf-viewer-save-triggered";
+  return L"save-dialog-not-found";
 }
 
 static napi_value Act(napi_env env, napi_callback_info info) {
