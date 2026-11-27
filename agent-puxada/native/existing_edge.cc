@@ -1093,7 +1093,7 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
   if (!Fill031120Control(area[1], values[4])) return false;
 
   controls = Controls(hwnd);
-  int filtersBottom = 0;
+  LONG filtersBottom = 0;
   for (const auto& c : allFields) filtersBottom = std::max(filtersBottom, c.rect.bottom);
   const VisibleControl* countHeader = nullptr;
   for (const auto& c : controls) {
