@@ -982,63 +982,157 @@ static bool Fill031120Control(const VisibleControl& control, const std::wstring&
   }
   return false;
 }
-static bool SelectOCPOption(const VisibleControl& control, bool selected) {
+static bool SelectOCPOption(HWND hwnd, const VisibleControl& control, bool selected) {
   IUIAutomation* automation=nullptr; IUIAutomationElement* element=nullptr;
-  // Point lookup can return the text child inside a checkbox/radio. Resolve
-  // the semantic control itself by type and rectangle in the active window.
   IUIAutomationElement* root=nullptr; IUIAutomationCondition* condition=nullptr;
   IUIAutomationElementArray* elements=nullptr;
   bool ok=false;
-  if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation,nullptr,CLSCTX_INPROC_SERVER,IID_IUIAutomation,reinterpret_cast<void**>(&automation))) && automation &&
-      SUCCEEDED(automation->ElementFromHandle(GetForegroundWindow(),&root)) && root) {
-    VARIANT type; VariantInit(&type);type.vt=VT_I4;type.lVal=control.type;
-    if(SUCCEEDED(automation->CreatePropertyCondition(UIA_ControlTypePropertyId,type,&condition)) && condition &&
-       SUCCEEDED(root->FindAll(TreeScope_Descendants,condition,&elements)) && elements){
-      int count=0;elements->get_Length(&count);
-      for(int i=0;i<count && i<2000;++i){
-        IUIAutomationElement* candidate=nullptr;RECT rect={};
-        if(SUCCEEDED(elements->GetElement(i,&candidate)) && candidate){
+  if (SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation,nullptr,CLSCTX_INPROC_SERVER,
+      IID_IUIAutomation,reinterpret_cast<void**>(&automation))) && automation &&
+      SUCCEEDED(automation->ElementFromHandle(hwnd,&root)) && root) {
+    VARIANT type; VariantInit(&type); type.vt=VT_I4; type.lVal=control.type;
+    if (SUCCEEDED(automation->CreatePropertyCondition(UIA_ControlTypePropertyId,type,&condition)) &&
+        condition && SUCCEEDED(root->FindAll(TreeScope_Descendants,condition,&elements)) && elements) {
+      int count=0; elements->get_Length(&count);
+      for(int i=0;i<count && i<2000;++i) {
+        IUIAutomationElement* candidate=nullptr; RECT rect={};
+        if(SUCCEEDED(elements->GetElement(i,&candidate)) && candidate) {
           if(SUCCEEDED(candidate->get_CurrentBoundingRectangle(&rect)) &&
              abs(rect.left-control.rect.left)<=2 && abs(rect.top-control.rect.top)<=2 &&
-             abs(rect.right-control.rect.right)<=2 && abs(rect.bottom-control.rect.bottom)<=2){element=candidate;break;}
+             abs(rect.right-control.rect.right)<=2 && abs(rect.bottom-control.rect.bottom)<=2) {
+            element=candidate;
+            break;
+          }
           candidate->Release();
         }
       }
     }
   }
   if(element) {
-    if (control.type!=UIA_RadioButtonControlTypeId && control.legacyRole!=ROLE_SYSTEM_RADIOBUTTON) {
-      IUIAutomationTogglePattern* pattern=nullptr;
-      if (SUCCEEDED(element->GetCurrentPatternAs(UIA_TogglePatternId,IID_IUIAutomationTogglePattern,reinterpret_cast<void**>(&pattern))) && pattern) {
-        ToggleState state; if (SUCCEEDED(pattern->get_CurrentToggleState(&state))) {
-          if ((state==ToggleState_On)!=selected) pattern->Toggle();
-          Sleep(120); ok=SUCCEEDED(pattern->get_CurrentToggleState(&state)) && (state==ToggleState_On)==selected;
-        } pattern->Release();
+    const bool radio=control.type==UIA_RadioButtonControlTypeId ||
+        control.legacyRole==ROLE_SYSTEM_RADIOBUTTON;
+    if(radio) {
+      IUIAutomationSelectionItemPattern* pattern=nullptr;
+      if(SUCCEEDED(element->GetCurrentPatternAs(UIA_SelectionItemPatternId,
+          IID_IUIAutomationSelectionItemPattern,reinterpret_cast<void**>(&pattern))) && pattern) {
+        if(selected) pattern->Select();
+        BOOL state=FALSE; Sleep(150);
+        ok=SUCCEEDED(pattern->get_CurrentIsSelected(&state)) && (!!state)==selected;
+        pattern->Release();
       }
     } else {
-      IUIAutomationSelectionItemPattern* pattern=nullptr;
-      if (SUCCEEDED(element->GetCurrentPatternAs(UIA_SelectionItemPatternId,IID_IUIAutomationSelectionItemPattern,reinterpret_cast<void**>(&pattern))) && pattern) {
-        if (selected) pattern->Select(); BOOL state=FALSE; Sleep(120);
-        ok=SUCCEEDED(pattern->get_CurrentIsSelected(&state)) && !!state==selected; pattern->Release();
+      IUIAutomationTogglePattern* pattern=nullptr;
+      if(SUCCEEDED(element->GetCurrentPatternAs(UIA_TogglePatternId,
+          IID_IUIAutomationTogglePattern,reinterpret_cast<void**>(&pattern))) && pattern) {
+        ToggleState state;
+        if(SUCCEEDED(pattern->get_CurrentToggleState(&state))) {
+          if((state==ToggleState_On)!=selected) pattern->Toggle();
+          Sleep(150);
+          ok=SUCCEEDED(pattern->get_CurrentToggleState(&state)) &&
+              ((state==ToggleState_On)==selected);
+        }
+        pattern->Release();
+      }
+    }
+    if(!ok) {
+      VARIANT state; VariantInit(&state);
+      if(SUCCEEDED(element->GetCurrentPropertyValue(UIA_LegacyIAccessibleStatePropertyId,&state)) &&
+         state.vt==VT_I4) {
+        const bool checked=(state.lVal & STATE_SYSTEM_CHECKED)!=0;
+        const bool isSelected=radio ? checked || ((state.lVal & STATE_SYSTEM_SELECTED)!=0) : checked;
+        if(isSelected!=selected && !radio) {
+          ClickControl(control);
+          Sleep(180);
+        }
+        VARIANT verify; VariantInit(&verify);
+        if(SUCCEEDED(element->GetCurrentPropertyValue(UIA_LegacyIAccessibleStatePropertyId,&verify)) &&
+           verify.vt==VT_I4) {
+          const bool nowChecked=(verify.lVal & STATE_SYSTEM_CHECKED)!=0;
+          const bool nowSelected=radio ? nowChecked || ((verify.lVal & STATE_SYSTEM_SELECTED)!=0) : nowChecked;
+          ok=nowSelected==selected;
+        }
+        VariantClear(&verify);
+      }
+      VariantClear(&state);
+    }
+  }
+  if(elements) elements->Release();
+  if(condition) condition->Release();
+  if(root) root->Release();
+  if(element) element->Release();
+  if(automation) automation->Release();
+  return ok;
+}
+
+static bool ReadOCPOptionState(HWND hwnd, const VisibleControl& control, bool* selected) {
+  if(!selected) return false;
+  IUIAutomation* automation=nullptr; IUIAutomationElement* element=nullptr;
+  IUIAutomationElement* root=nullptr; IUIAutomationCondition* condition=nullptr;
+  IUIAutomationElementArray* elements=nullptr;
+  bool readable=false;
+  if(SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation,nullptr,CLSCTX_INPROC_SERVER,
+      IID_IUIAutomation,reinterpret_cast<void**>(&automation))) && automation &&
+      SUCCEEDED(automation->ElementFromHandle(hwnd,&root)) && root) {
+    VARIANT type; VariantInit(&type); type.vt=VT_I4; type.lVal=control.type;
+    if(SUCCEEDED(automation->CreatePropertyCondition(UIA_ControlTypePropertyId,type,&condition)) &&
+       condition && SUCCEEDED(root->FindAll(TreeScope_Descendants,condition,&elements)) && elements) {
+      int count=0; elements->get_Length(&count);
+      for(int i=0;i<count && i<2000;++i) {
+        IUIAutomationElement* candidate=nullptr; RECT rect={};
+        if(SUCCEEDED(elements->GetElement(i,&candidate)) && candidate) {
+          if(SUCCEEDED(candidate->get_CurrentBoundingRectangle(&rect)) &&
+             abs(rect.left-control.rect.left)<=2 && abs(rect.top-control.rect.top)<=2 &&
+             abs(rect.right-control.rect.right)<=2 && abs(rect.bottom-control.rect.bottom)<=2) {
+            element=candidate;
+            break;
+          }
+          candidate->Release();
+        }
       }
     }
   }
-  if(!ok && element) {
-    auto checked=[&](bool* state){
-      VARIANT v;VariantInit(&v);bool readable=false;
-      if(SUCCEEDED(element->GetCurrentPropertyValue(UIA_LegacyIAccessibleStatePropertyId,&v)) && v.vt==VT_I4){
-        *state=(v.lVal & STATE_SYSTEM_CHECKED)!=0;readable=true;
-      }VariantClear(&v);return readable;
-    };
-    bool state=false;
-    if(checked(&state)){
-      if(state!=selected){ClickControl(control);Sleep(200);}
-      ok=checked(&state)&&state==selected;
+  if(element) {
+    const bool radio=control.type==UIA_RadioButtonControlTypeId ||
+        control.legacyRole==ROLE_SYSTEM_RADIOBUTTON;
+    if(radio) {
+      IUIAutomationSelectionItemPattern* pattern=nullptr;
+      if(SUCCEEDED(element->GetCurrentPatternAs(UIA_SelectionItemPatternId,
+          IID_IUIAutomationSelectionItemPattern,reinterpret_cast<void**>(&pattern))) && pattern) {
+        BOOL state=FALSE;
+        readable=SUCCEEDED(pattern->get_CurrentIsSelected(&state));
+        if(readable) *selected=!!state;
+        pattern->Release();
+      }
+    } else {
+      IUIAutomationTogglePattern* pattern=nullptr;
+      if(SUCCEEDED(element->GetCurrentPatternAs(UIA_TogglePatternId,
+          IID_IUIAutomationTogglePattern,reinterpret_cast<void**>(&pattern))) && pattern) {
+        ToggleState state;
+        readable=SUCCEEDED(pattern->get_CurrentToggleState(&state));
+        if(readable) *selected=state==ToggleState_On;
+        pattern->Release();
+      }
+    }
+    if(!readable) {
+      VARIANT state; VariantInit(&state);
+      if(SUCCEEDED(element->GetCurrentPropertyValue(UIA_LegacyIAccessibleStatePropertyId,&state)) &&
+         state.vt==VT_I4) {
+        *selected=radio
+            ? ((state.lVal & STATE_SYSTEM_CHECKED)!=0 || (state.lVal & STATE_SYSTEM_SELECTED)!=0)
+            : ((state.lVal & STATE_SYSTEM_CHECKED)!=0);
+        readable=true;
+      }
+      VariantClear(&state);
     }
   }
-  if(elements)elements->Release();if(condition)condition->Release();if(root)root->Release();
-  if(element)element->Release(); if(automation)automation->Release(); return ok;
+  if(elements) elements->Release();
+  if(condition) condition->Release();
+  if(root) root->Release();
+  if(element) element->Release();
+  if(automation) automation->Release();
+  return readable;
 }
+
 static std::wstring Normalize021101(const std::wstring& value) {
   std::wstring out;
   for (wchar_t raw : value) {
@@ -1438,52 +1532,118 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
   if (!Fill031120Control(area[1], values[4])) return false;
 
   controls = Controls(hwnd);
-  LONG filtersBottom = 0;
-  for (const auto& c : allFields) filtersBottom = std::max(filtersBottom, c.rect.bottom);
-  const VisibleControl* countHeader = nullptr;
-  for (const auto& c : controls) {
-    const std::wstring name = Normalize021101(c.name);
-    if (name != L"contagem" || Is021101Input(c) || c.type == UIA_ButtonControlTypeId) continue;
-    if (c.rect.top < filtersBottom - 8) continue;
-    if (!countHeader || c.rect.top < countHeader->rect.top) countHeader = &c;
-  }
-  if (!countHeader) { COUNT021101_ISSUE = L"count-column-header"; return false; }
-
-  struct CountRow { std::wstring id; VisibleControl checkbox; };
-  std::vector<CountRow> rows;
-  for (const auto& label : controls) {
-    if (Is021101Input(label) || label.type == UIA_ButtonControlTypeId || isCheck(label)) continue;
-    const std::wstring id = Normalize021101(label.name);
-    if (id.empty() || id.size() > 3 ||
-        !std::all_of(id.begin(), id.end(), [](wchar_t c) { return c >= L'0' && c <= L'9'; })) continue;
-    const int rowY = (label.rect.top + label.rect.bottom) / 2;
-    if (label.rect.top < countHeader->rect.bottom - 2 ||
-        label.rect.top > countHeader->rect.bottom + 360) continue;
-    const VisibleControl* checkbox = nullptr;
-    int bestGap = 100000;
-    for (const auto& candidate : controls) {
-      if (!isCheck(candidate)) continue;
-      const int checkboxY = (candidate.rect.top + candidate.rect.bottom) / 2;
-      const int gap = label.rect.left - candidate.rect.right;
-      if (std::abs(checkboxY - rowY) <= 22 && gap >= -8 && gap <= 180 && gap < bestGap) {
-        checkbox = &candidate; bestGap = gap;
-      }
-    }
-    if (checkbox) rows.push_back({id, *checkbox});
-  }
+  struct CountRow { std::wstring id; VisibleControl label; VisibleControl checkbox; };
   const std::wstring desiredCount = Normalize021101(values[5]);
-  auto desired = std::find_if(rows.begin(), rows.end(),
-      [&](const CountRow& row) { return row.id == desiredCount; });
-  if (rows.empty() || desired == rows.end()) {
-    COUNT021101_ISSUE = L"count-row-not-found:" + desiredCount + L":mapped=" + std::to_wstring(rows.size());
+  const VisibleControl* countHeader = nullptr;
+  std::vector<CountRow> rows;
+  size_t bestMappedRows = 0;
+  bool ambiguousCountTable = false;
+
+  // The count grid sits beside the deposit/area filters in this Promax layout.
+  // Do not require its header to be below the filter panel: identify the
+  // "Contagem" header whose numeric rows have aligned checkboxes underneath.
+  for (const auto& header : controls) {
+    if (Normalize021101(header.name) != L"contagem" ||
+        Is021101Input(header) || header.type == UIA_ButtonControlTypeId ||
+        isCheck(header)) continue;
+    std::vector<CountRow> candidateRows;
+    for (const auto& label : controls) {
+      if (Is021101Input(label) || label.type == UIA_ButtonControlTypeId || isCheck(label)) continue;
+      const std::wstring id = Normalize021101(label.name);
+      if (id.empty() || id.size() > 3 ||
+          !std::all_of(id.begin(), id.end(), [](wchar_t c) { return c >= L'0' && c <= L'9'; })) continue;
+      if (label.rect.top < header.rect.bottom - 2 ||
+          label.rect.top > header.rect.bottom + 360) continue;
+
+      const VisibleControl* checkbox = nullptr;
+      int bestGap = 100000;
+      const int rowY = (label.rect.top + label.rect.bottom) / 2;
+      for (const auto& candidate : controls) {
+        if (!isCheck(candidate)) continue;
+        const int checkboxY = (candidate.rect.top + candidate.rect.bottom) / 2;
+        const int gap = label.rect.left - candidate.rect.right;
+        if (std::abs(checkboxY-rowY) <= 18 && gap >= -8 && gap <= 180 && gap < bestGap) {
+          checkbox = &candidate;
+          bestGap = gap;
+        }
+      }
+      if (!checkbox) continue;
+      const bool duplicate = std::any_of(candidateRows.begin(),candidateRows.end(),
+          [&](const CountRow& prior) {
+            return prior.id==id &&
+              prior.checkbox.rect.left==checkbox->rect.left &&
+              prior.checkbox.rect.top==checkbox->rect.top &&
+              prior.checkbox.rect.right==checkbox->rect.right &&
+              prior.checkbox.rect.bottom==checkbox->rect.bottom;
+          });
+      if (!duplicate) candidateRows.push_back({id,label,*checkbox});
+    }
+
+    if(candidateRows.size()>bestMappedRows) {
+      bestMappedRows=candidateRows.size();
+      countHeader=&header;
+      rows=std::move(candidateRows);
+      ambiguousCountTable=false;
+    } else if(candidateRows.size()>0 && candidateRows.size()==bestMappedRows &&
+        countHeader &&
+        (countHeader->rect.left!=header.rect.left || countHeader->rect.top!=header.rect.top ||
+         countHeader->rect.right!=header.rect.right || countHeader->rect.bottom!=header.rect.bottom)) {
+      ambiguousCountTable=true;
+    }
+  }
+  if(!countHeader || rows.empty()) {
+    COUNT021101_ISSUE=L"count-column-header-or-rows";
+    return false;
+  }
+  if(ambiguousCountTable) {
+    COUNT021101_ISSUE=L"count-column-ambiguous";
+    return false;
+  }
+
+  const size_t desiredMatches=static_cast<size_t>(std::count_if(rows.begin(),rows.end(),
+      [&](const CountRow& row){return row.id==desiredCount;}));
+  if(desiredMatches==0) {
+    COUNT021101_ISSUE=L"count-row-not-found:"+desiredCount+L":mapped="+std::to_wstring(rows.size());
+    return false;
+  }
+  if(desiredMatches!=1) {
+    COUNT021101_ISSUE=L"count-row-ambiguous:"+desiredCount+L":matches="+std::to_wstring(desiredMatches);
     return false;
   }
   for (const auto& row : rows) {
-    if (!SelectOCPOption(row.checkbox, row.id == desiredCount)) {
+    const bool shouldBeSelected=row.id==desiredCount;
+    if (!SelectOCPOption(hwnd,row.checkbox,shouldBeSelected)) {
       COUNT021101_ISSUE = L"count-checkbox-state-unavailable:" + row.id;
       return false;
     }
   }
+
+  // Re-read every checkbox after the complete pass. The selected count must
+  // be exactly the requested ID, with no other count left selected.
+  size_t selectedRows=0;
+  for (const auto& row : rows) {
+    bool state=false, readable=false;
+    for(int retry=0;retry<4 && !readable;++retry) {
+      readable=ReadOCPOptionState(hwnd,row.checkbox,&state);
+      if(!readable) Sleep(120);
+    }
+    if(!readable) {
+      COUNT021101_ISSUE=L"count-checkbox-readback-unavailable:"+row.id;
+      return false;
+    }
+    if(state) ++selectedRows;
+    if(state!=(row.id==desiredCount)) {
+      COUNT021101_ISSUE=L"count-selection-mismatch:"+row.id+
+          L":expected="+(row.id==desiredCount?L"1":L"0")+
+          L":actual="+(state?L"1":L"0");
+      return false;
+    }
+  }
+  if(selectedRows!=1) {
+    COUNT021101_ISSUE=L"count-selection-total:"+std::to_wstring(selectedRows);
+    return false;
+  }
+
   controls = Controls(hwnd);
   const VisibleControl* visualize = nullptr;
   for (const auto& c : controls) {
@@ -1492,8 +1652,37 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
         (!visualize || c.rect.top > visualize->rect.top)) visualize = &c;
   }
   if (!visualize) { COUNT021101_ISSUE = L"visualizar-button"; return false; }
-  COUNT021101_ISSUE = L"ready";
-  return ClickControl(*visualize);
+  COUNT021101_ISSUE = L"count-6-selected;visualizar-click";
+  if(!ClickControl(*visualize)) {
+    COUNT021101_ISSUE=L"visualizar-click-failed";
+    return false;
+  }
+
+  // Do not report success merely because the button received a click.
+  // Wait until the result view exposes Voltar and both export controls.
+  bool hasBack=false,hasVisualize=false,hasCsv=false,hasPdf=false;
+  for(int attempt=0;attempt<100;++attempt) {
+    controls=Controls(hwnd);
+    hasBack=hasVisualize=hasCsv=hasPdf=false;
+    for(const auto& c:controls) {
+      const std::wstring name=Normalize021101(c.name);
+      if(c.type!=UIA_ButtonControlTypeId) continue;
+      if(name==L"voltar") hasBack=true;
+      if(name.find(L"visualizar")!=std::wstring::npos) hasVisualize=true;
+      if(name.find(L"csv")!=std::wstring::npos) hasCsv=true;
+      if(name.find(L"pdf")!=std::wstring::npos) hasPdf=true;
+    }
+    if(hasBack && !hasVisualize && hasCsv && hasPdf) {
+      COUNT021101_ISSUE=L"results-ready;count-6-selected";
+      return true;
+    }
+    Sleep(300);
+  }
+  COUNT021101_ISSUE=L"visualizar-results-timeout:back="+
+      std::to_wstring(hasBack?1:0)+L":visualizar="+
+      std::to_wstring(hasVisualize?1:0)+L":csv="+
+      std::to_wstring(hasCsv?1:0)+L":pdf="+std::to_wstring(hasPdf?1:0);
+  return false;
 }
 
 // Read-only visual confirmation for legacy IE controls whose labels are exposed
@@ -1595,7 +1784,7 @@ static bool FillOCP(HWND hwnd,const std::wstring* values) {
   // Bind only an exact option label to a matching input immediately to its left.
   auto option=[&](const wchar_t* label,bool isRadio,int* seen){
     for(const auto& c:controls){
-      if((isRadio?radio(c):check(c)) && Contains(c.name,label)){++*seen;if(SelectOCPOption(c,true))return true;}
+      if((isRadio?radio(c):check(c)) && Contains(c.name,label)){++*seen;if(SelectOCPOption(hwnd,c,true))return true;}
     }
     for(const auto& text:controls){
       if(text.name!=label || text.rect.top<window.top+160)continue;
@@ -1605,7 +1794,7 @@ static bool FillOCP(HWND hwnd,const std::wstring* values) {
         int gap=text.rect.left-c.rect.right;
         if(gap>=-4 && gap<nearest && abs((text.rect.top+text.rect.bottom)-(c.rect.top+c.rect.bottom))<=20){input=&c;nearest=gap;}
       }
-      if(input){++*seen;if(SelectOCPOption(*input,true))return true;}
+      if(input){++*seen;if(SelectOCPOption(hwnd,*input,true))return true;}
     }
     return false;
   };
