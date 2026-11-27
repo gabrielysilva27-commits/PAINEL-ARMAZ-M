@@ -1582,7 +1582,7 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
     if(candidateRows.size()>bestMappedRows) {
       bestMappedRows=candidateRows.size();
       countHeader=&header;
-      rows=std::move(candidateRows);
+      rows.swap(candidateRows);
       ambiguousCountTable=false;
     } else if(candidateRows.size()>0 && candidateRows.size()==bestMappedRows &&
         countHeader &&
@@ -1633,9 +1633,9 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
     }
     if(state) ++selectedRows;
     if(state!=(row.id==desiredCount)) {
-      COUNT021101_ISSUE=L"count-selection-mismatch:"+row.id+
-          L":expected="+(row.id==desiredCount?L"1":L"0")+
-          L":actual="+(state?L"1":L"0");
+      COUNT021101_ISSUE=std::wstring(L"count-selection-mismatch:")+row.id+
+          std::wstring(L":expected=")+(row.id==desiredCount?std::wstring(L"1"):std::wstring(L"0"))+
+          std::wstring(L":actual=")+(state?std::wstring(L"1"):std::wstring(L"0"));
       return false;
     }
   }
