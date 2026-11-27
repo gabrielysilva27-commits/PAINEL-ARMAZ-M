@@ -17,7 +17,7 @@
 // Read-only discovery of IE-mode document surfaces. No URL, page content,
 // cookie, credential, or window title is returned to JavaScript.
 struct Surface { bool promax; bool accessible; bool edgeWindow; };
-struct Scan { std::vector<Surface> surfaces; std::vector<std::wstring> layout; std::vector<std::wstring> windows; bool edgeWindow; int reportWindows; int homeWindows; int shortcutControls; int uiaElements; int csvControls; int visualizeControls; int count021101Windows; int countAreaLabels; int countSectorLabels; int countLocalLabels; int countZoneLabels; int countStreetLabels; int countAisleLabels; int countRackLabels; int countAddressLabels; int countWarehouseLabels; int countDepositLabels; int countCountLabels; };
+struct Scan { std::vector<Surface> surfaces; std::vector<std::wstring> layout; std::vector<std::wstring> windows; bool edgeWindow; int reportWindows; int homeWindows; int shortcutControls; int uiaElements; int csvControls; int visualizeControls; int count021101Windows; int countActivePromaxWindows; int countAreaLabels; int countSectorLabels; int countLocalLabels; int countZoneLabels; int countStreetLabels; int countAisleLabels; int countRackLabels; int countAddressLabels; int countWarehouseLabels; int countDepositLabels; int countCountLabels; };
 
 static std::wstring NormalizeProbeLabel(const std::wstring& value) {
   std::wstring out;
@@ -235,8 +235,15 @@ static BOOL CALLBACK VisitWindow(HWND hwnd, LPARAM state) {
     ++scan->homeWindows;
     // Only map controls when Promax is the active tab; a background Promax tab
     // is enough for readiness but its window currently exposes another page.
-    if (titleLooksPromax)
-      ProbeAccessibility(hwnd, scan, L"H" + std::to_wstring(scan->homeWindows));
+    if (titleLooksPromax) {
+      const bool foregroundPromax = GetAncestor(GetForegroundWindow(), GA_ROOT) == hwnd;
+      if (foregroundPromax) ++scan->countActivePromaxWindows;
+      // Also scan the active Promax content when the report remains inside
+      // the generic Promaxweb window instead of receiving its own title.
+      // Only allowlisted static-label categories are counted; no names or
+      // entered values are emitted to telemetry.
+      ProbeAccessibility(hwnd, scan, L"H" + std::to_wstring(scan->homeWindows), foregroundPromax);
+    }
   }
   return TRUE;
 }
@@ -291,6 +298,7 @@ static napi_value Probe(napi_env env, napi_callback_info info) {
   SetInt(env, out, "csvControls", scan.csvControls);
   SetInt(env, out, "visualizeControls", scan.visualizeControls);
   SetInt(env, out, "count021101Windows", scan.count021101Windows);
+  SetInt(env, out, "countActivePromaxWindows", scan.countActivePromaxWindows);
   SetInt(env, out, "countAreaLabels", scan.countAreaLabels);
   SetInt(env, out, "countSectorLabels", scan.countSectorLabels);
   SetInt(env, out, "countLocalLabels", scan.countLocalLabels);
