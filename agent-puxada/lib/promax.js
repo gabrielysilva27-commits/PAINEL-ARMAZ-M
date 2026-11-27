@@ -927,7 +927,7 @@ function recentDownloadNames(sinceMs) {
     let names = [];
     try { names = fs.readdirSync(dir); } catch { continue; }
     for (const name of names) {
-      if (!/\.inf$|\.csv$|\.pdf$/i.test(name)) continue;
+      if (!/\.inf$|\.csv$|\.pdf$|\.crdownload$|\.partial$/i.test(name)) continue;
       try {
         const st = fs.statSync(path.join(dir, name));
         if (st.isFile() && st.mtimeMs >= sinceMs - 2000) found.push(name);
@@ -2107,23 +2107,81 @@ async function export030519(job, config, rootDir, validateCsv) {
 }
 
 async function saveInventoryCountFormat(format, rootDir) {
-  const directory=path.join(rootDir,"downloads");fs.mkdirSync(directory,{recursive:true});
-  const suffix=format==="csv"?".csv.inf":".pdf",target=path.join(directory,"021101_"+format+"_"+Date.now()+suffix);
-  const pattern=format==="csv"?/\.csv\.inf$|\.csv$/i:/\.pdf$/i,since=Date.now();
-  await existingEdge.act(format==="csv"?"csv021101":"pdf021101");await sleep(900);
+  const directory=path.join(rootDir,"downloads");
+  fs.mkdirSync(directory,{recursive:true});
+  const suffix=format==="csv"?".csv.inf":".pdf";
+  const target=path.join(directory,"021101_"+format+"_"+Date.now()+suffix);
+  const pattern=format==="csv"?/\.csv\.inf$|\.csv$/i:/\.pdf$/i;
+  const since=Date.now();
+  await existingEdge.act(format==="csv"?"csv021101":"pdf021101");
+  await sleep(900);
+
   let saveStatus="automatic";
-  try{saveStatus=existingEdge.saveDialog(target);}
-  catch(error){if(!/save-dialog-not-found/.test(String(error&&error.message||error)))throw error;saveStatus="download automático";}
+  let hotkeyStatus="not-used";
+  let altSAttempted=false;
+  const tryAltSSave=async function(){
+    if(format!=="pdf"||altSAttempted)return;
+    altSAttempted=true;
+    try{
+      sendAltS();
+      hotkeyStatus="alt-s-sent";
+      await sleep(650);
+      try{saveStatus=existingEdge.saveDialog(target);}
+      catch(error){
+        if(!/save-dialog-not-found/.test(String(error&&error.message||error)))throw error;
+      }
+    }catch(error){
+      hotkeyStatus="alt-s-error";
+      saveStatus=String(error&&error.message||error).slice(0,90);
+    }
+  };
+
+  try{
+    saveStatus=existingEdge.saveDialog(target);
+  }catch(error){
+    if(!/save-dialog-not-found/.test(String(error&&error.message||error)))throw error;
+    saveStatus="no-dialog";
+    // Promax/Edge IE mode can require the real Alt+S keyboard gesture to
+    // accept its download bar. Re-check the native Save As dialog afterward.
+    await tryAltSSave();
+  }
+
   let previous=null,stable=0,lastSaveProbe=Date.now();
   const candidate=await waitUntil(async function(){
-    const direct=fs.existsSync(target)?{path:target,size:fs.statSync(target).size}:null,current=direct||newestCandidate(since,pattern);
-    if(!current){if(Date.now()-lastSaveProbe>=10000){lastSaveProbe=Date.now();try{saveStatus=existingEdge.saveDialog(target);}catch(error){if(!/save-dialog-not-found/.test(String(error&&error.message||error)))throw error;}}return null;}
-    if(current.size<50)return null;stable=previous&&previous.path===current.path&&previous.size===current.size?stable+1:0;previous=current;return stable>=2?current:null;
-  },60000,700).catch(error=>{if(/Tempo esgotado/.test(String(error&&error.message||error)))throw new Error("021101_"+format.toUpperCase()+"_DOWNLOAD_TIMEOUT: "+saveStatus);throw error;});
+    const direct=fs.existsSync(target)?{path:target,size:fs.statSync(target).size}:null;
+    const current=direct||newestCandidate(since,pattern);
+    if(!current){
+      if(Date.now()-lastSaveProbe>=10000){
+        lastSaveProbe=Date.now();
+        try{saveStatus=existingEdge.saveDialog(target);}
+        catch(error){
+          if(!/save-dialog-not-found/.test(String(error&&error.message||error)))throw error;
+          if(format==="pdf"&&!altSAttempted)await tryAltSSave();
+        }
+      }
+      return null;
+    }
+    if(current.size<50)return null;
+    stable=previous&&previous.path===current.path&&previous.size===current.size?stable+1:0;
+    previous=current;
+    return stable>=2?current:null;
+  },60000,700).catch(error=>{
+    if(!/Tempo esgotado/.test(String(error&&error.message||error)))throw error;
+    const recent=recentDownloadNames(since);
+    const partial=recent.filter(name=>/\.crdownload$|\.partial$/i.test(name)).length;
+    throw new Error("021101_"+format.toUpperCase()+"_DOWNLOAD_TIMEOUT: "+saveStatus+
+      "; hotkey="+hotkeyStatus+"; recent="+recent.length+"; partial="+partial);
+  });
+
   if(candidate.path!==target)fs.copyFileSync(candidate.path,target);
-  if(!fs.statSync(target).isFile()||fs.statSync(target).size<50)throw new Error("Arquivo "+format.toUpperCase()+" vazio.");
-  if(format==="pdf"){if(fs.readFileSync(target).subarray(0,5).toString("ascii")!=="%PDF-")throw new Error("O botão PDF não gerou PDF válido.");}
-  else if(/<html|<!doctype/i.test(fs.readFileSync(target).subarray(0,2000).toString("latin1")))throw new Error("O CSV retornou HTML em vez de dados.");
+  if(!fs.statSync(target).isFile()||fs.statSync(target).size<50)
+    throw new Error("Arquivo "+format.toUpperCase()+" vazio.");
+  if(format==="pdf"){
+    if(fs.readFileSync(target).subarray(0,5).toString("ascii")!=="%PDF-")
+      throw new Error("O botão PDF não gerou PDF válido.");
+  }else if(/<html|<!doctype/i.test(fs.readFileSync(target).subarray(0,2000).toString("latin1"))){
+    throw new Error("O CSV retornou HTML em vez de dados.");
+  }
   return target;
 }
 async function exportInventoryCount(job, config, rootDir) {
