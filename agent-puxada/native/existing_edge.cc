@@ -1351,7 +1351,9 @@ static bool LooksLike021101Form(HWND hwnd) {
     if (name.find(L"armazem") != std::wstring::npos) warehouse = true;
     if (name.find(L"deposito") != std::wstring::npos) deposit = true;
     if (name.find(L"area") != std::wstring::npos) area = true;
-    if (name.find(L"contagem") != std::wstring::npos) count = true;
+    // Count header may have a suffix in Edge's accessible name, but must
+    // never match "Recontagem". That column is not the requested identifier.
+    if (name.rfind(L"contagem",0)==0 && name.rfind(L"recontagem",0)!=0) count = true;
     if (c.type == UIA_ButtonControlTypeId && name.find(L"visualizar") != std::wstring::npos) visualize = true;
     if (Is021101Input(c)) ++inputs;
   }
@@ -1360,7 +1362,10 @@ static bool LooksLike021101Form(HWND hwnd) {
   // Promax tab exposes the complete five-input filter form and Visualizar.
   // Explicit report titles and the 02.11.01 MSHTML endpoint remain stronger
   // identifiers and do not depend on this heuristic.
-  return warehouse && deposit && inputs >= 5 && visualize;
+  // A live count grid header plus Visualizar can identify the report even
+  // when Edge does not expose filter captions as separate accessible labels.
+  // Fill021101 still fails closed until every required filter field resolves.
+  return (count && visualize) || (warehouse && deposit && inputs >= 5 && visualize);
 }
 
 static thread_local std::wstring COUNT021101_ISSUE;
