@@ -1547,10 +1547,15 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
   // "Contagem" header whose numeric rows have aligned checkboxes underneath.
   for (const auto& header : controls) {
     const std::wstring headerName=Normalize021101(header.name);
-    if (headerName.find(L"contagem") == std::wstring::npos ||
+    // Match the dedicated Contagem column only. "Recontagem" contains
+    // the same substring but is a separate column and must never be selected.
+    if (headerName != L"contagem" ||
         Is021101Input(header) || header.type == UIA_ButtonControlTypeId ||
         isCheck(header)) continue;
     ++countHeaderCandidates;
+    const int headerCenterX=(header.rect.left+header.rect.right)/2;
+    const int headerWidth=std::max(0,header.rect.right-header.rect.left);
+    const int columnXTolerance=std::max(58,headerWidth*3/4+24);
     std::vector<CountRow> candidateRows;
     for (const auto& label : controls) {
       if (Is021101Input(label) || label.type == UIA_ButtonControlTypeId || isCheck(label)) continue;
@@ -1560,6 +1565,10 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
       ++numericLabels;
       if (label.rect.top < header.rect.bottom - 2 ||
           label.rect.top > header.rect.bottom + 360) continue;
+      const int labelCenterX=(label.rect.left+label.rect.right)/2;
+      // Restrict numeric cells to the horizontal column band under the
+      // Contagem header; neighboring Deposito/Recontagem cells share row Y.
+      if(std::abs(labelCenterX-headerCenterX)>columnXTolerance) continue;
       ++numericUnderHeader;
 
       const VisibleControl* checkbox = nullptr;
