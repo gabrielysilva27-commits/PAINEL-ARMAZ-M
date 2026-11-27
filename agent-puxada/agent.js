@@ -42,7 +42,7 @@ function inventoryCountErrorCode(message) {
   if (/021101_EDGE_NATIVE_UNAVAILABLE|EDGE_NATIVE_ACTION_UNAVAILABLE/i.test(raw)) return "EDGE_NATIVO_INDISPONIVEL";
   if (/window-not-found|JANELA_021101_NAO_ENCONTRADA/i.test(raw)) return "JANELA_021101_NAO_ENCONTRADA";
   if (/count-selection-mismatch|count-selection-total|count-checkbox-state-unavailable|count-checkbox-readback-unavailable/i.test(raw)) return "CONTAGEM_6_NAO_MARCADA";
-  const gridDiag=raw.match(/count-column-header-or-rows:h=(\\d+):n=(\\d+):u=(\\d+):c=(\\d+):a=(\\d+):m=(\\d+)/i);
+  const gridDiag=raw.match(/count-column-header-or-rows:h=(\d+):n=(\d+):u=(\d+):c=(\d+):a=(\d+):m=(\d+)/i);
   if(gridDiag) return "GRADE_H"+gridDiag[1]+"N"+gridDiag[2]+"U"+gridDiag[3]+"C"+gridDiag[4]+"A"+gridDiag[5]+"M"+gridDiag[6];
   if (/count-row-ambiguous/i.test(raw)) return "CONTAGEM_6_AMBIGUA";
   if (/count-column-ambiguous|count-column-header-or-rows/i.test(raw)) return "GRADE_CONTAGEM_NAO_RECONHECIDA";
