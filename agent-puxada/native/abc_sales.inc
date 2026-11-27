@@ -38,7 +38,7 @@ static bool ABCOption(HWND hwnd,const std::vector<VisibleControl>& controls,cons
     }
     if(input)break;
   }
-  if(input&&SelectOCPOption(*input,selected))return true;
+  if(input&&SelectOCPOption(hwnd,*input,selected))return true;
   // IE can expose only labels: verify the known radio visually, without toggling.
   if(radio){const OCPVisual view(hwnd);for(const auto& c:controls)if(Contains(c.name,label.c_str())&&c.rect.bottom-c.rect.top<45&&view.radio(c,selected))return true;}
   return false;
@@ -83,7 +83,7 @@ static bool FillABCSales(HWND hwnd,const std::wstring* values){
   for(size_t i=0;i<ranges.size();++i)if(!Fill031120Control(ranges[i],i%2?L"999":L"0"))return false;
   const wchar_t* options[]={L"emitida",L"s/ devol nf",L"todas",L"n\u00e3o",L"gerencial"};
   for(const auto* option:options){ABC_SALES_ISSUE=L"option:"+std::wstring(option);if(!ABCOption(hwnd,controls,option,true,true))return false;}
-  for(const auto& c:controls)if(c.type==UIA_CheckBoxControlTypeId||c.legacyRole==ROLE_SYSTEM_CHECKBUTTON){ABC_SALES_ISSUE=L"unchecked-preference";if(!SelectOCPOption(c,false))return false;}
+  for(const auto& c:controls)if(c.type==UIA_CheckBoxControlTypeId||c.legacyRole==ROLE_SYSTEM_CHECKBUTTON){ABC_SALES_ISSUE=L"unchecked-preference";if(!SelectOCPOption(hwnd,c,false))return false;}
   // Date readback immediately before export; successful generation is separate.
   ABC_SALES_ISSUE=L"date-readback";
   return Read031120Value(dates[0])==values[0]&&Read031120Value(dates[1])==values[1];
