@@ -1,6 +1,6 @@
 {
   "name": "agente-logistica-promax",
-  "version": "3.2.198",
+  "version": "3.2.199",
   "private": true,
   "description": "Agente local autoatualizável do Painel Armazém para automações logísticas do Promax.",
   "main": "agent.js",
