@@ -17,7 +17,11 @@
       {
         "id": "6",
         "countId": "6",
+        "sector": "DEVOLUÇÃO",
         "label": "DEVOLUÇÃO",
+        "warehouse": "1",
+        "areaFrom": "1",
+        "areaTo": "1",
         "folder": "06 - Depósito DEVOLUÇÃO"
       }
     ]
