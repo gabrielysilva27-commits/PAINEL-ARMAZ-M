@@ -41,11 +41,12 @@ function inventoryCountErrorCode(message) {
   if (/CONTAGEM de Estoque.*não está acessível|Pasta-base de contagens não acessível/i.test(raw)) return "PASTA_BASE_NAO_ACESSIVEL";
   if (/021101_EDGE_NATIVE_UNAVAILABLE|EDGE_NATIVE_ACTION_UNAVAILABLE/i.test(raw)) return "EDGE_NATIVO_INDISPONIVEL";
   if (/window-not-found|JANELA_021101_NAO_ENCONTRADA/i.test(raw)) return "JANELA_021101_NAO_ENCONTRADA";
-  const filterCounts = raw.match(/filter-fields:warehouse=(\d+):deposit=(\d+):area=(\d+):edits=(\d+):combos=(\d+):wlabels=(\d+):dlabels=(\d+):alabels=(\d+):returned=(\d+)/i);
+  const filterCounts = raw.match(/filter-fields:warehouse=(\d+):deposit=(\d+):area=(\d+):edits=(\d+):combos=(\d+):wlabels=(\d+):dlabels=(\d+):alabels=(\d+):returned=(\d+):sector=(\d+):local=(\d+):zone=(\d+):street=(\d+):aisle=(\d+):rack=(\d+):address=(\d+)/i);
   if (filterCounts) {
-    const [,w,d,a,e,c,wl,dl,al,rb] = filterCounts;
+    const [,w,d,a,e,c,wl,dl,al,rb,se,lo,zo,st,ai,ra,en] = filterCounts;
     return "FILTROS_W" + w + "_D" + d + "_A" + a + "_E" + e + "_C" + c +
-      "_WL" + wl + "_DL" + dl + "_AL" + al + "_RB" + rb;
+      "_WL" + wl + "_DL" + dl + "_AL" + al + "_RB" + rb +
+      "_S" + se + "_L" + lo + "_Z" + zo + "_R" + st + "_AI" + ai + "_P" + ra + "_EN" + en;
   }
   const filterDetail = raw.match(/021101-filter-controls-not-found:(filter-fields:[A-Za-z0-9_=:-]+)/i);
   if (filterDetail) {

@@ -1168,13 +1168,41 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
   }
 
   if (!filtersReady) {
+    auto countAllowedName = [&](const std::vector<std::wstring>& keys) -> size_t {
+      size_t total = 0;
+      for (const auto& control : controls) {
+        if (!Is021101Label(control) && !Is021101Input(control)) continue;
+        const std::wstring name = Normalize021101(control.name);
+        if (name.empty()) continue;
+        for (const auto& key : keys) {
+          if (name.find(key) != std::wstring::npos) { ++total; break; }
+        }
+      }
+      return total;
+    };
+    // Count only approved label categories on the live filter screen. Do not
+    // serialize control names, user-entered values, or arbitrary page text.
+    const size_t sectorLabels = countAllowedName({L"setor"});
+    const size_t localLabels = countAllowedName({L"local"});
+    const size_t zoneLabels = countAllowedName({L"zona", L"regiao"});
+    const size_t streetLabels = countAllowedName({L"rua"});
+    const size_t aisleLabels = countAllowedName({L"corredor"});
+    const size_t rackLabels = countAllowedName({L"prateleira", L"estante"});
+    const size_t addressLabels = countAllowedName({L"endereco", L"posicao"});
     COUNT021101_ISSUE = L"filter-fields:warehouse=" + std::to_wstring(warehouse.size()) +
       L":deposit=" + std::to_wstring(deposit.size()) + L":area=" + std::to_wstring(area.size()) +
       L":edits=" + std::to_wstring(edits) + L":combos=" + std::to_wstring(combos) +
       L":wlabels=" + std::to_wstring(warehouseLabels) +
       L":dlabels=" + std::to_wstring(depositLabels) +
       L":alabels=" + std::to_wstring(areaLabels) +
-      L":returned=" + (returnedFromResults ? L"1" : L"0");
+      L":returned=" + (returnedFromResults ? L"1" : L"0") +
+      L":sector=" + std::to_wstring(sectorLabels) +
+      L":local=" + std::to_wstring(localLabels) +
+      L":zone=" + std::to_wstring(zoneLabels) +
+      L":street=" + std::to_wstring(streetLabels) +
+      L":aisle=" + std::to_wstring(aisleLabels) +
+      L":rack=" + std::to_wstring(rackLabels) +
+      L":address=" + std::to_wstring(addressLabels);
     return false;
   }
 
