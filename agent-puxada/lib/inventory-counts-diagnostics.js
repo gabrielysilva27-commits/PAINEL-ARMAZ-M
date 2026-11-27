@@ -38,7 +38,6 @@ function inventoryCountErrorCode(message) {
   if (/visualizar-button|visualizar-not-found/i.test(raw)) return "BOTAO_VISUALIZAR_NAO_LOCALIZADO";
   if (/csv-not-found/i.test(raw)) return "BOTAO_CSV_NAO_LOCALIZADO";
   if (/pdf-not-found/i.test(raw)) return "BOTAO_PDF_NAO_LOCALIZADO";
-  if (/CSV_DOWNLOAD_TIMEOUT/i.test(raw)) return "DOWNLOAD_CSV_TIMEOUT";
   const downloadTimeout=raw.match(/021101_(CSV|PDF)_DOWNLOAD_TIMEOUT:\s*([^;]+);\s*hotkey=([^;]+);\s*recent=(\d+);\s*partial=(\d+)/i);
   if(downloadTimeout){
     const format=downloadTimeout[1].toUpperCase();
