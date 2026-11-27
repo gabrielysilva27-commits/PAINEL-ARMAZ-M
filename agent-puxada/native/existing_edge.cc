@@ -17,9 +17,32 @@
 // Read-only discovery of IE-mode document surfaces. No URL, page content,
 // cookie, credential, or window title is returned to JavaScript.
 struct Surface { bool promax; bool accessible; bool edgeWindow; };
-struct Scan { std::vector<Surface> surfaces; std::vector<std::wstring> layout; std::vector<std::wstring> windows; bool edgeWindow; int reportWindows; int homeWindows; int shortcutControls; int uiaElements; int csvControls; int visualizeControls; };
+struct Scan { std::vector<Surface> surfaces; std::vector<std::wstring> layout; std::vector<std::wstring> windows; bool edgeWindow; int reportWindows; int homeWindows; int shortcutControls; int uiaElements; int csvControls; int visualizeControls; int count021101Windows; int countAreaLabels; int countSectorLabels; int countLocalLabels; int countZoneLabels; int countStreetLabels; int countAisleLabels; int countRackLabels; int countAddressLabels; int countWarehouseLabels; int countDepositLabels; int countCountLabels; };
 
-static void ProbeAccessibility(HWND hwnd, Scan* scan, const std::wstring& windowIndex) {
+static std::wstring NormalizeProbeLabel(const std::wstring& value) {
+  std::wstring out;
+  for (wchar_t raw : value) {
+    wchar_t c = towlower(raw);
+    switch (c) {
+      case 0x00E1: case 0x00E0: case 0x00E2: case 0x00E3: case 0x00E4: c=L'a'; break;
+      case 0x00E9: case 0x00E8: case 0x00EA: case 0x00EB: c=L'e'; break;
+      case 0x00ED: case 0x00EC: case 0x00EE: case 0x00EF: c=L'i'; break;
+      case 0x00F3: case 0x00F2: case 0x00F4: case 0x00F5: case 0x00F6: c=L'o'; break;
+      case 0x00FA: case 0x00F9: case 0x00FB: case 0x00FC: c=L'u'; break;
+      case 0x00E7: c=L'c'; break;
+      default: break;
+    }
+    if (iswalnum(c)) out.push_back(c);
+  }
+  return out;
+}
+static bool IsProbeStaticLabelType(CONTROLTYPEID type) {
+  return type != UIA_EditControlTypeId && type != UIA_ComboBoxControlTypeId &&
+      type != UIA_ButtonControlTypeId && type != UIA_CheckBoxControlTypeId &&
+      type != UIA_RadioButtonControlTypeId;
+}
+
+static void ProbeAccessibility(HWND hwnd, Scan* scan, const std::wstring& windowIndex, bool count021101 = false) {
   RECT windowRect = {};
   GetWindowRect(hwnd, &windowRect);
   IUIAutomation* automation = nullptr;
@@ -38,8 +61,9 @@ static void ProbeAccessibility(HWND hwnd, Scan* scan, const std::wstring& window
         IUIAutomationElement* item = nullptr;
         if (FAILED(elements->GetElement(i, &item)) || !item) continue;
         BSTR raw = nullptr;
+        std::wstring name;
         if (SUCCEEDED(item->get_CurrentName(&raw)) && raw) {
-          std::wstring name(raw, SysStringLen(raw));
+          name.assign(raw, SysStringLen(raw));
           std::transform(name.begin(), name.end(), name.begin(), towlower);
           if (name.find(L"csv") != std::wstring::npos) ++scan->csvControls;
           if (name.find(L"visualizar") != std::wstring::npos) ++scan->visualizeControls;
@@ -48,12 +72,31 @@ static void ProbeAccessibility(HWND hwnd, Scan* scan, const std::wstring& window
         }
         CONTROLTYPEID type = 0;
         RECT rect = {};
+        BOOL offscreen = TRUE;
         if (SUCCEEDED(item->get_CurrentControlType(&type)) &&
-            (type == UIA_EditControlTypeId || type == UIA_ComboBoxControlTypeId ||
-             type == UIA_CheckBoxControlTypeId || type == UIA_ButtonControlTypeId) &&
             SUCCEEDED(item->get_CurrentBoundingRectangle(&rect)) &&
-            rect.right > rect.left && rect.bottom > rect.top &&
-            scan->layout.size() < 90) {
+            SUCCEEDED(item->get_CurrentIsOffscreen(&offscreen)) && !offscreen &&
+            rect.left >= windowRect.left && rect.right <= windowRect.right &&
+            rect.top >= windowRect.top && rect.bottom <= windowRect.bottom &&
+            rect.right > rect.left + 2 && rect.bottom > rect.top + 2) {
+          if (count021101 && IsProbeStaticLabelType(type) &&
+              !name.empty() && rect.right-rect.left <= 700 && rect.bottom-rect.top <= 90) {
+            const std::wstring label=NormalizeProbeLabel(name);
+            if (label.find(L"area") != std::wstring::npos) ++scan->countAreaLabels;
+            if (label.find(L"setor") != std::wstring::npos) ++scan->countSectorLabels;
+            if (label.find(L"local") != std::wstring::npos) ++scan->countLocalLabels;
+            if (label.find(L"zona") != std::wstring::npos || label.find(L"regiao") != std::wstring::npos) ++scan->countZoneLabels;
+            if (label.find(L"rua") != std::wstring::npos) ++scan->countStreetLabels;
+            if (label.find(L"corredor") != std::wstring::npos) ++scan->countAisleLabels;
+            if (label.find(L"prateleira") != std::wstring::npos || label.find(L"estante") != std::wstring::npos) ++scan->countRackLabels;
+            if (label.find(L"endereco") != std::wstring::npos || label.find(L"posicao") != std::wstring::npos) ++scan->countAddressLabels;
+            if (label.find(L"armazem") != std::wstring::npos) ++scan->countWarehouseLabels;
+            if (label.find(L"deposito") != std::wstring::npos) ++scan->countDepositLabels;
+            if (label.find(L"contagem") != std::wstring::npos) ++scan->countCountLabels;
+          }
+          if ((type == UIA_EditControlTypeId || type == UIA_ComboBoxControlTypeId ||
+               type == UIA_CheckBoxControlTypeId || type == UIA_ButtonControlTypeId) &&
+              scan->layout.size() < 90) {
           const wchar_t* kind = type == UIA_EditControlTypeId ? L"E" :
               type == UIA_ComboBoxControlTypeId ? L"C" :
               type == UIA_CheckBoxControlTypeId ? L"K" : L"B";
@@ -159,14 +202,21 @@ static BOOL CALLBACK VisitWindow(HWND hwnd, LPARAM state) {
   GetWindowTextW(hwnd, rawTitle, 512);
   std::wstring title(rawTitle);
   std::transform(title.begin(), title.end(), title.begin(), towlower);
-  if (title.find(L"movimenta") != std::wstring::npos &&
-      title.find(L"estoque") != std::wstring::npos) {
+  const bool stockReport = title.find(L"movimenta") != std::wstring::npos &&
+      title.find(L"estoque") != std::wstring::npos;
+  const bool countReport = title.find(L"02.11.01") != std::wstring::npos ||
+      title.find(L"conciliacao da contagem") != std::wstring::npos ||
+      title.find(L"conciliação da contagem") != std::wstring::npos;
+  if (countReport) {
+    ++scan->count021101Windows;
+    ProbeAccessibility(hwnd, scan, L"Q" + std::to_wstring(scan->count021101Windows), true);
+  } else if (stockReport) {
     ++scan->reportWindows;
     ProbeAccessibility(hwnd, scan, std::to_wstring(scan->reportWindows));
   }
   RECT bounds={};
   if(IsWindowVisible(hwnd)&&GetWindowRect(hwnd,&bounds)&&bounds.right-bounds.left>500&&scan->windows.size()<20){
-    const std::wstring kind=title.find(L"ocp carregamento")!=std::wstring::npos?L"OCP":title.find(L"promaxweb")!=std::wstring::npos?L"HOME":title.find(L"movimenta")!=std::wstring::npos?L"STOCK":L"OTHER";
+    const std::wstring kind=countReport?L"COUNT":title.find(L"ocp carregamento")!=std::wstring::npos?L"OCP":title.find(L"promaxweb")!=std::wstring::npos?L"HOME":stockReport?L"STOCK":L"OTHER";
     HWND owner=GetAncestor(hwnd,GA_ROOTOWNER);
     scan->windows.push_back(kind+L":enabled="+std::to_wstring(IsWindowEnabled(hwnd)?1:0)+L":foreground="+std::to_wstring(GetAncestor(GetForegroundWindow(),GA_ROOT)==hwnd?1:0)+L":owner_enabled="+std::to_wstring(IsWindowEnabled(owner)?1:0));
   }
@@ -180,8 +230,7 @@ static BOOL CALLBACK VisitWindow(HWND hwnd, LPARAM state) {
   bool hasPromaxTab = false;
   int tabItems = 0;
   InspectEdgeWindow(hwnd, &automated, &tabItems, &hasPromaxTab);
-  if ((titleLooksPromax || hasPromaxTab) && !automated &&
-      !(title.find(L"movimenta") != std::wstring::npos && title.find(L"estoque") != std::wstring::npos)) {
+  if ((titleLooksPromax || hasPromaxTab) && !automated && !stockReport && !countReport) {
     ++scan->homeWindows;
     // Only map controls when Promax is the active tab; a background Promax tab
     // is enough for readiness but its window currently exposes another page.
@@ -240,6 +289,18 @@ static napi_value Probe(napi_env env, napi_callback_info info) {
   SetInt(env, out, "uiaElements", scan.uiaElements);
   SetInt(env, out, "csvControls", scan.csvControls);
   SetInt(env, out, "visualizeControls", scan.visualizeControls);
+  SetInt(env, out, "count021101Windows", scan.count021101Windows);
+  SetInt(env, out, "countAreaLabels", scan.countAreaLabels);
+  SetInt(env, out, "countSectorLabels", scan.countSectorLabels);
+  SetInt(env, out, "countLocalLabels", scan.countLocalLabels);
+  SetInt(env, out, "countZoneLabels", scan.countZoneLabels);
+  SetInt(env, out, "countStreetLabels", scan.countStreetLabels);
+  SetInt(env, out, "countAisleLabels", scan.countAisleLabels);
+  SetInt(env, out, "countRackLabels", scan.countRackLabels);
+  SetInt(env, out, "countAddressLabels", scan.countAddressLabels);
+  SetInt(env, out, "countWarehouseLabels", scan.countWarehouseLabels);
+  SetInt(env, out, "countDepositLabels", scan.countDepositLabels);
+  SetInt(env, out, "countCountLabels", scan.countCountLabels);
   SetLayout(env, out, scan);
   return out;
 }
