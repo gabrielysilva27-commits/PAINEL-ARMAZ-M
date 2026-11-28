@@ -753,6 +753,9 @@ static bool FillControl(const VisibleControl& c, const std::wstring& value) {
 static bool Contains(const std::wstring& text, const wchar_t* fragment) {
   return text.find(fragment) != std::wstring::npos;
 }
+
+// Forward declaration: report-form detection is used by the earlier shortcut flow.
+static bool Is021101VisualizeAction(const VisibleControl& c);
 struct ShortcutControls { RECT field = {}, ok = {}; bool found = false; };
 // The Promax shortcut moves with display scaling and browser zoom. Locate the
 // edit box and its adjacent OK button through UI Automation instead of pixels.
