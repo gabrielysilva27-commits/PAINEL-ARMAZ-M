@@ -516,7 +516,11 @@ static BOOL CALLBACK Find021101Window(HWND hwnd, LPARAM raw) {
   // IEFrame windows, not every Chromium frame.
   const bool titleLooksPromax=name.find(L"promaxweb")!=std::wstring::npos;
   const bool foreground = HasForeground(hwnd);
-  const bool documentMatch = windowClass==L"IEFrame"
+  // Edge IE mode hosts the MSHTML report inside a Chromium frame. Inspect the
+  // live document only for the active Edge window (or a legacy IEFrame) so
+  // generic Chromium titles do not hide a genuine 02.11.01 report.
+  const bool documentMatch = (windowClass==L"IEFrame" ||
+      (windowClass==L"Chrome_WidgetWin_1" && foreground))
       ? Has021101PromaxDocument(hwnd) : false;
   bool automated=false,hasPromaxTab=false;
   int tabItems=0;
@@ -862,8 +866,7 @@ static bool FillReport(HWND hwnd, const std::wstring* values) {
   for (const auto& c : controls) {
     if (c.type == UIA_EditControlTypeId) edits.push_back(c);
     if (c.type == UIA_ComboBoxControlTypeId) combos.push_back(c);
-    if (c.type == UIA_ButtonControlTypeId && Contains(c.name, L"visualizar"))
-      visualizes.push_back(c);
+    if (Is021101VisualizeAction(c)) visualizes.push_back(c);
     if (Contains(c.name, L"entrega")) {
       if (c.type == UIA_CheckBoxControlTypeId || c.type == UIA_RadioButtonControlTypeId ||
           c.type == UIA_ButtonControlTypeId)
@@ -1203,8 +1206,13 @@ static std::wstring Normalize021101(const std::wstring& value) {
 static bool Is021101Input(const VisibleControl& c) {
   return c.type == UIA_EditControlTypeId || c.type == UIA_ComboBoxControlTypeId;
 }
+static bool Is021101VisualizeAction(const VisibleControl& c) {
+  if (Normalize021101(c.name).find(L"visualizar") == std::wstring::npos) return false;
+  return c.type == UIA_ButtonControlTypeId || c.type == UIA_HyperlinkControlTypeId;
+}
 static bool Is021101Label(const VisibleControl& c) {
   if (Is021101Input(c) || c.type == UIA_ButtonControlTypeId ||
+      c.type == UIA_HyperlinkControlTypeId ||
       c.type == UIA_CheckBoxControlTypeId || c.type == UIA_RadioButtonControlTypeId ||
       c.name.empty()) return false;
   return c.rect.right-c.rect.left <= 700 && c.rect.bottom-c.rect.top <= 90;
@@ -1399,7 +1407,7 @@ static bool LooksLike021101Form(HWND hwnd) {
     // Count header may have a suffix in Edge's accessible name, but must
     // never match "Recontagem". That column is not the requested identifier.
     if (name.rfind(L"contagem",0)==0 && name.rfind(L"recontagem",0)!=0) count = true;
-    if (c.type == UIA_ButtonControlTypeId && name.find(L"visualizar") != std::wstring::npos) visualize = true;
+    if (Is021101VisualizeAction(c)) visualize = true;
     if (Is021101Input(c)) ++inputs;
   }
   // Generic Promax home pages can contain isolated warehouse/deposit
@@ -1486,8 +1494,7 @@ static bool Fill021101(HWND hwnd, const std::wstring* values) {
         hasBack = true;
         backButton = &c;
       }
-      if (c.type == UIA_ButtonControlTypeId && name.find(L"visualizar") != std::wstring::npos)
-        hasVisualize = true;
+      if (Is021101VisualizeAction(c)) hasVisualize = true;
       if (name == L"contagem" && !Is021101Input(c) && c.type != UIA_ButtonControlTypeId)
         hasCountHeader = true;
       if (isCheck(c)) ++checkboxes;
